@@ -31,11 +31,36 @@ export default async function TracesPage({
   const to = toStr ? new Date(toStr) : defaults.to;
   const cursor = str(sp.cursor);
   const q = str(sp.q)?.trim();
+  const userId = str(sp.user)?.trim();
+  const sessionId = str(sp.session)?.trim();
+  const model = str(sp.model)?.trim();
+  const tagRaw = str(sp.tag)?.trim();
+  const tags = tagRaw
+    ? tagRaw.split(",").map((s) => s.trim()).filter(Boolean)
+    : [];
+  const level = str(sp.level)?.trim();
 
   const where = {
     projectId,
     timestamp: { gte: from, lte: to },
     ...(q ? { name: { contains: q, mode: "insensitive" as const } } : {}),
+    ...(userId
+      ? { userId: { contains: userId, mode: "insensitive" as const } }
+      : {}),
+    ...(sessionId
+      ? { sessionId: { contains: sessionId, mode: "insensitive" as const } }
+      : {}),
+    ...(model
+      ? {
+          observations: {
+            some: { model: { contains: model, mode: "insensitive" as const } },
+          },
+        }
+      : {}),
+    ...(level
+      ? { observations: { some: { level } } }
+      : {}),
+    ...(tags.length > 0 ? { tags: { hasEvery: tags } } : {}),
   };
 
   const items = await prisma.trace.findMany({
@@ -99,6 +124,62 @@ export default async function TracesPage({
             placeholder="trace 名称..."
             style={inputStyle}
           />
+        </label>
+        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <span className="mute2" style={{ fontSize: 12 }}>
+            用户
+          </span>
+          <input
+            name="user"
+            defaultValue={userId ?? ""}
+            placeholder="userId 模糊匹配..."
+            style={inputStyle}
+          />
+        </label>
+        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <span className="mute2" style={{ fontSize: 12 }}>
+            会话
+          </span>
+          <input
+            name="session"
+            defaultValue={sessionId ?? ""}
+            placeholder="sessionId 模糊匹配..."
+            style={inputStyle}
+          />
+        </label>
+        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <span className="mute2" style={{ fontSize: 12 }}>
+            模型
+          </span>
+          <input
+            name="model"
+            defaultValue={model ?? ""}
+            placeholder="模型名，如 deepseek"
+            style={inputStyle}
+          />
+        </label>
+        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <span className="mute2" style={{ fontSize: 12 }}>
+            标签
+          </span>
+          <input
+            name="tag"
+            defaultValue={tagRaw ?? ""}
+            placeholder="逗号分隔，全部命中"
+            style={inputStyle}
+          />
+        </label>
+        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <span className="mute2" style={{ fontSize: 12 }}>
+            级别
+          </span>
+          <select name="level" defaultValue={level ?? ""} style={inputStyle}>
+            <option value="">全部</option>
+            <option value="ERROR">ERROR</option>
+            <option value="WARNING">WARNING</option>
+            <option value="DEFAULT">DEFAULT</option>
+            <option value="DEBUG">DEBUG</option>
+          </select>
         </label>
         <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           <span className="mute2" style={{ fontSize: 12 }}>
@@ -247,7 +328,17 @@ export default async function TracesPage({
           {nextCursor && (
             <Link
               className="btn primary"
-              href={`/traces?${buildQuery({ from, to, q, cursor: nextCursor })}`}
+              href={`/traces?${buildQuery({
+                from,
+                to,
+                q,
+                userId,
+                sessionId,
+                model,
+                tags,
+                level,
+                cursor: nextCursor,
+              })}`}
               prefetch={false}
             >
               下一页 →
@@ -290,12 +381,22 @@ function buildQuery(p: {
   from: Date;
   to: Date;
   q?: string;
+  userId?: string;
+  sessionId?: string;
+  model?: string;
+  tags?: string[];
+  level?: string;
   cursor?: string;
 }): string {
   const params = new URLSearchParams();
   params.set("from", p.from.toISOString());
   params.set("to", p.to.toISOString());
   if (p.q) params.set("q", p.q);
+  if (p.userId) params.set("user", p.userId);
+  if (p.sessionId) params.set("session", p.sessionId);
+  if (p.model) params.set("model", p.model);
+  if (p.tags && p.tags.length > 0) params.set("tag", p.tags.join(","));
+  if (p.level) params.set("level", p.level);
   if (p.cursor) params.set("cursor", p.cursor);
   return params.toString();
 }

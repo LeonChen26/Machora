@@ -163,6 +163,7 @@ OpenClaw 每次 agent 运行即作为一条 trace（含工具调用/LLM 调用�
   - 详情页 observations 由平铺表格改为**调用树缩进视图**（按 parentObservationId 递归渲染，depth 缩进）
   - Observation 详情卡片补充 **METADATA / USAGE** 区块（OpenClaw 上报的 `openclaw.*` 字段与 cache tokens 现可在 UI 查看）
   - 已用真实 OpenClaw fixture 注入 machora 验证：HTTP 200，时间轴含紫色 GENERATION 条，缩进 18/36px 两级，badge purple×18 / blue×20
+- **traces 列表多维筛选（2026-08-01）**：`web/src/app/traces/page.tsx` 在名称+时间窗基础上新增用户/会话/模型/标签（逗号分隔 hasEvery）/级别（ERROR/WARNING/DEFAULT/DEBUG）筛选；模型与级别通过 `observations.some` 子查询，标签用数组 `hasEvery`，筛选参数随分页链接透传。验证：model=deepseek → 7 条，level=ERROR → 0 条（当前无 ERROR 数据），level=DEFAULT → 75 条
 
 ## 8. 里程碑
 
