@@ -170,6 +170,11 @@ OpenClaw 每次 agent 运行即作为一条 trace（含工具调用/LLM 调用�
   - `packages/shared/src/otel/protobuf.test.ts` 新增 `buildEventSpanFixture()`（手工 wire-format 构造含 2 事件的 span）+ `describe("span events → EVENT observation")`：断言 1 SPAN + 2 EVENT、id 形如 `<spanId>:e{i}`、exception → ERROR、metadata 正确；全测 44/44 通过
   - 端到端验证：注入 1 trace（2 事件）→ 3 observation（1 GENERATION + 2 EVENT）落库，详情页 HTTP 200，EVENT 徽章（amber）与 gen_ai.choice/exception metadata 均正确渲染
   - **陷阱**：spanId 作为 Observation 主键，注入测试数据若与库中既有 id 冲突，prisma upsert 走 UPDATE 分支不更新 traceId，会把 observation 悬挂到旧 trace——测试数据须保证 id 唯一
+- **UI 补强（2026-08-01）**：对照 Langfuse 盘点后补齐三处（Scores/Sessions/时间轴/调用树此前已具备）：
+  - 修复首页 [Generation 延迟] 统计的 type 大小写 bug（`type: "generation"` → `"GENERATION"`，此前 OTel 大写数据匹配不到，延迟恒为空；修复后正确显示，如 6.30s）
+  - 新增 **Users 页**（`web/src/app/users/page.tsx`，导航 Sessions 旁）：按 userId 聚合 trace 数/obs/token/成本/ERROR/最近活动，行内链接跳 `/traces?user=<userId>` 复用列表筛选
+  - traces 列表 **Score 列增强**：由计数徽章改为显示最近 2 条评分 chips（`name:value`，NUMERIC toFixed(3) / BOOLEAN ✓✗），超过显示 `+N` 溢出计数
+  - 验证：注入 1 trace（2 score）后列表 chip、Users 聚合均正确渲染
 
 ## 8. 里程碑
 

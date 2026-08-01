@@ -53,6 +53,7 @@ export default async function RootLayout({
             <NavItem href="/analytics" label="模型分析" icon="▦" />
             <NavItem href="/scores" label="Scores" icon="★" />
             <NavItem href="/sessions" label="Sessions" icon="◔" />
+            <NavItem href="/users" label="Users" icon="◉" />
             <div className="nav-section">项目</div>
             <NavItem href="/projects" label="Projects" icon="▤" />
             <NavItem href="/api-keys" label="API Keys" icon="⚿" />

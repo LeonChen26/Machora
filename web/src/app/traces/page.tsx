@@ -73,6 +73,11 @@ export default async function TracesPage({
         select: { model: true, type: true, startTime: true, endTime: true },
         orderBy: { startTime: "asc" },
       },
+      scores: {
+        select: { id: true, name: true, value: true, dataType: true },
+        orderBy: { timestamp: "desc" },
+        take: 3,
+      },
       _count: { select: { observations: true, scores: true } },
     },
   });
@@ -298,8 +303,21 @@ export default async function TracesPage({
                       <span className="badge blue">{t._count.observations}</span>
                     </td>
                     <td>
-                      {t._count.scores > 0 ? (
-                        <span className="badge amber">{t._count.scores}</span>
+                      {t.scores.length > 0 ? (
+                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                          {t.scores.slice(0, 2).map((s) => (
+                            <span
+                              key={s.id}
+                              className="badge amber"
+                              title={`${s.name}: ${formatScoreValue(s.value, s.dataType)}`}
+                            >
+                              {short(s.name, 8)}: {formatScoreValue(s.value, s.dataType)}
+                            </span>
+                          ))}
+                          {t._count.scores > 2 && (
+                            <span className="badge">+{t._count.scores - 2}</span>
+                          )}
+                        </div>
                       ) : (
                         <span className="mute2">—</span>
                       )}
@@ -375,6 +393,12 @@ function short(s: string, len = 10): string {
 function fmtMs(ms: number): string {
   if (ms < 1000) return `${Math.round(ms)}ms`;
   return `${(ms / 1000).toFixed(2)}s`;
+}
+
+function formatScoreValue(value: number, dataType: string): string {
+  if (dataType === "NUMERIC") return value.toFixed(3);
+  if (dataType === "BOOLEAN") return value ? "✓" : "✗";
+  return String(value);
 }
 
 function buildQuery(p: {

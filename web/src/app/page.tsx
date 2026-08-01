@@ -48,7 +48,7 @@ export default async function Home() {
     prisma.observation.findMany({
       where: {
         projectId,
-        type: "generation",
+        type: "GENERATION",
         startTime: { gte: trendSince },
         endTime: { not: null },
       },
