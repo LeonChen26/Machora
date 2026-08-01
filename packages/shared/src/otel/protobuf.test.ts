@@ -218,3 +218,89 @@ describe("protobuf → parseOtelPayload 集成", () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// span events → EVENT observation（流式输出 / 异常记录）
+// ---------------------------------------------------------------------------
+
+function buildEventSpanFixture(): Uint8Array {
+  const traceId = Uint8Array.from({ length: 16 }, (_, i) => i + 1); // 01..10
+  const spanId = Uint8Array.from({ length: 8 }, (_, i) => 0x11 + i); // 11..18
+
+  const span = concat(
+    ld(1, traceId),
+    ld(2, spanId),
+    str(5, "gen-span"),
+    vint(6, 1), // SPAN_KIND_INTERNAL
+    fixed64(7, 1_000_000_000_000n),
+    fixed64(8, 2_000_000_000_000n),
+    repeated(9, [keyValue("gen_ai.request.model", avString("gpt-4o"))]),
+    repeated(11, [
+      // Event{ time_unix_nano=1, name=2, attributes=3 }
+      concat(
+        fixed64(1, 1_100_000_000n),
+        str(2, "gen_ai.choice"),
+        repeated(3, [
+          keyValue("index", avInt(0)),
+          keyValue("delta", avString("hel")),
+        ]),
+      ),
+      concat(
+        fixed64(1, 1_200_000_000n),
+        str(2, "exception"),
+        repeated(3, [keyValue("message", avString("boom"))]),
+      ),
+    ]),
+  );
+
+  const scopeSpans = concat(ld(1, str(1, "test-scope")), ld(2, span));
+  const resourceSpans = concat(
+    ld(1, ld(1, keyValue("service.name", avString("test-svc")))),
+    ld(2, scopeSpans),
+  );
+  return ld(1, resourceSpans);
+}
+
+describe("span events → EVENT observation", () => {
+  it("每个 event 生成一个挂在父 span 下的 EVENT observation", () => {
+    const decoded = decodeOtlpProtobuf(buildEventSpanFixture());
+    const { traces, observations } = parseOtelPayload("project-1", decoded);
+
+    expect(traces).toHaveLength(1);
+    expect(observations).toHaveLength(3); // 1 SPAN + 2 EVENT
+
+    const span = observations.find((o) => o.id === "1112131415161718")!;
+    expect(span).toMatchObject({
+      type: "GENERATION",
+      parentObservationId: null,
+    });
+
+    const choice = observations.find((o) => o.name === "gen_ai.choice")!;
+    expect(choice).toMatchObject({
+      id: "1112131415161718:e0",
+      traceId: "0102030405060708090a0b0c0d0e0f10",
+      projectId: "project-1",
+      type: "EVENT",
+      name: "gen_ai.choice",
+      parentObservationId: "1112131415161718",
+      level: "DEFAULT",
+      model: null,
+      inputTokens: null,
+      outputTokens: null,
+      totalTokens: null,
+    });
+    expect(choice.startTime).toEqual(new Date("1970-01-01T00:00:01.100Z"));
+    expect(choice.endTime).toEqual(choice.startTime);
+    expect(choice.metadata).toEqual({ index: 0, delta: "hel" });
+
+    // exception 事件 → ERROR 级别
+    const exc = observations.find((o) => o.name === "exception")!;
+    expect(exc).toMatchObject({
+      id: "1112131415161718:e1",
+      type: "EVENT",
+      level: "ERROR",
+      parentObservationId: "1112131415161718",
+    });
+    expect(exc.metadata).toEqual({ message: "boom" });
+  });
+});

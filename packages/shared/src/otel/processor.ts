@@ -89,6 +89,7 @@ interface FlattenedSpan {
   endTime: Date | null;
   statusCode: number;
   statusMessage: string | null;
+  events: { time: Date; name: string; attrs: Record<string, unknown> }[];
 }
 
 // ---------------------------------------------------------------------------
@@ -317,6 +318,13 @@ export function parseOtelPayload(
           endTime: nanosToDate(span.endTimeUnixNano),
           statusCode: span.status?.code ?? 0,
           statusMessage: span.status?.message ?? null,
+          events: (span.events ?? [])
+            .map((e) => ({
+              time: nanosToDate(e.timeUnixNano),
+              name: e.name ?? "",
+              attrs: decodeAttributes(e.attributes),
+            }))
+            .filter((e): e is { time: Date; name: string; attrs: Record<string, unknown> } => e.time !== null),
         };
         flattened.push(f);
         bySpanId.set(spanId, f);
@@ -414,6 +422,31 @@ export function parseOtelPayload(
         totalTokens: usage.totalTokens,
         totalCost: usage.totalCost,
       });
+
+      // span events → EVENT observations（挂在该 span 下，时间=事件时间）
+      for (let i = 0; i < s.events.length; i++) {
+        const ev = s.events[i];
+        observations.push({
+          id: `${s.spanId}:e${i}`,
+          traceId,
+          projectId,
+          type: "EVENT",
+          name: ev.name || null,
+          parentObservationId: s.spanId,
+          startTime: ev.time,
+          endTime: ev.time,
+          model: null,
+          input: null,
+          output: null,
+          metadata: Object.keys(ev.attrs).length > 0 ? ev.attrs : null,
+          level: ev.name.toLowerCase().includes("exception") ? "ERROR" : "DEFAULT",
+          usage: null,
+          inputTokens: null,
+          outputTokens: null,
+          totalTokens: null,
+          totalCost: null,
+        });
+      }
     }
   }
 

@@ -164,6 +164,12 @@ OpenClaw 每次 agent 运行即作为一条 trace（含工具调用/LLM 调用�
   - Observation 详情卡片补充 **METADATA / USAGE** 区块（OpenClaw 上报的 `openclaw.*` 字段与 cache tokens 现可在 UI 查看）
   - 已用真实 OpenClaw fixture 注入 machora 验证：HTTP 200，时间轴含紫色 GENERATION 条，缩进 18/36px 两级，badge purple×18 / blue×20
 - **traces 列表多维筛选（2026-08-01）**：`web/src/app/traces/page.tsx` 在名称+时间窗基础上新增用户/会话/模型/标签（逗号分隔 hasEvery）/级别（ERROR/WARNING/DEFAULT/DEBUG）筛选；模型与级别通过 `observations.some` 子查询，标签用数组 `hasEvery`，筛选参数随分页链接透传。验证：model=deepseek → 7 条，level=ERROR → 0 条（当前无 ERROR 数据），level=DEFAULT → 75 条
+- **span events → EVENT observation（2026-08-01）**：OTLP span 内带时间戳的事件流此前被丢弃，现已映射为 `EVENT` observation：
+  - `packages/shared/src/otel/processor.ts`：`FlattenedSpan` 增加 `events` 字段（`{time, name, attrs}[]`，解码时用 `nanosToDate` 转时间、`decodeAttributes` 转 attrs）；observation 循环末尾为每个事件生成 `EVENT` observation，挂在该 span 下（`parentObservationId=spanId`），`startTime=endTime=事件时间`，attrs 入 `metadata`，事件名含 `exception` 时 level=ERROR，否则 DEFAULT
+  - 覆盖场景：`gen_ai.choice`（流式输出，attrs 含 delta）、`exception`（异常记录）等
+  - `packages/shared/src/otel/protobuf.test.ts` 新增 `buildEventSpanFixture()`（手工 wire-format 构造含 2 事件的 span）+ `describe("span events → EVENT observation")`：断言 1 SPAN + 2 EVENT、id 形如 `<spanId>:e{i}`、exception → ERROR、metadata 正确；全测 44/44 通过
+  - 端到端验证：注入 1 trace（2 事件）→ 3 observation（1 GENERATION + 2 EVENT）落库，详情页 HTTP 200，EVENT 徽章（amber）与 gen_ai.choice/exception metadata 均正确渲染
+  - **陷阱**：spanId 作为 Observation 主键，注入测试数据若与库中既有 id 冲突，prisma upsert 走 UPDATE 分支不更新 traceId，会把 observation 悬挂到旧 trace——测试数据须保证 id 唯一
 
 ## 8. 里程碑
 
