@@ -9,7 +9,7 @@
 
 import { spawn } from "node:child_process";
 import { resolve } from "node:path";
-import { existsSync, mkdirSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { createServer, type Server } from "node:http";
 
@@ -173,6 +173,48 @@ async function runPrismaGenerate(): Promise<void> {
   console.log("[Prisma] client 生成完成");
 }
 
+/**
+ * Turbopack 会把 @prisma/client 外部化为 web/.next/node_modules/@prisma/<hash> 副本，
+ * 其 default.js 内是 require('.prisma/client/default')——注意该字符串不是相对路径
+ * （缺少 ./ 前缀），Node 会把它当包名沿 node_modules 链向上解析。在全新环境（发布包
+ * 解压后）这条链上不存在生成的 Prisma Client，页面会报 Cannot find module
+ * '.prisma/client/default'。因此把生成的 client 补到 web/.next/node_modules/.prisma/client，
+ * 该位置位于 default.js 的包解析链（副本/node_modules → .next/node_modules）上。
+ */
+async function ensureNextPrismaClientCopy(): Promise<void> {
+  const root = resolve(import.meta.dirname, "..", "..");
+  const nextNodeModules = resolve(root, "web", ".next", "node_modules");
+  if (!existsSync(nextNodeModules)) return;
+
+  const dest = resolve(nextNodeModules, ".prisma", "client");
+  if (existsSync(resolve(dest, "default.js"))) {
+    console.log("[Prisma] .next 已含生成的 client，跳过补全");
+    return;
+  }
+
+  // 定位 prisma generate 的默认输出：cwd/根 node_modules/.prisma/client，或 pnpm 虚拟存储
+  const candidates = [
+    resolve(root, "node_modules", ".prisma", "client"),
+    resolve(process.cwd(), "node_modules", ".prisma", "client"),
+  ];
+  const pnpmRoot = resolve(root, "node_modules", ".pnpm");
+  if (existsSync(pnpmRoot)) {
+    for (const d of readdirSync(pnpmRoot)) {
+      if (d.startsWith("@prisma+client")) {
+        candidates.push(resolve(pnpmRoot, d, "node_modules", ".prisma", "client"));
+      }
+    }
+  }
+  const src = candidates.find((c) => existsSync(resolve(c, "default.js")));
+  if (!src) {
+    console.warn("[Prisma] 未找到生成的 client 目录，跳过 .next 补全");
+    return;
+  }
+  mkdirSync(resolve(dest, ".."), { recursive: true });
+  cpSync(src, dest, { recursive: true });
+  console.log("[Prisma] 已把 client 补到 .next/node_modules/.prisma/client");
+}
+
 // ---------------------------------------------------------------------------
 // Seed 默认数据
 // ---------------------------------------------------------------------------
@@ -306,6 +348,7 @@ async function main() {
 
   await runPrismaMigrations();
   await runPrismaGenerate();
+  await ensureNextPrismaClientCopy();
   await seedStandaloneData();
 
   await registerQueueProcessors();

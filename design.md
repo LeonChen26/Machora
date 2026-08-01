@@ -199,3 +199,8 @@ OpenClaw 每次 agent 运行即作为一条 trace（含工具调用/LLM 调用�
 - **npm / pip 发布探索结论**：
   - **npm 可行（推荐）**：`@machora/shared` 已是标准库包形态（dist + .d.ts + exports），去掉 `private` + 加 `files` 后 `pnpm publish --access public` 即可，价值最高（OTel protobuf 解码/解析纯函数可复用）。完整应用也可做成 npm 包（`bin` 入口 + pglite/next 等 dependencies + web/.next 随包），包体积约 10–50MB
   - **pip 不适用**：machora 是 Node/TypeScript 运行时，PyPI 包需内嵌整个 Node 应用（node_modules 无法由 pip 管理）或要求系统 node + 安装时 npm install，跨平台与体积成本高、收益低。若需 Python 生态消费，应走 HTTP API（/api/public/ingestion + OTel 端点）而非本地包装
+- **Turbopack Prisma 外部化陷阱（发布包验证发现，2026-08-02）**：
+  - 现象：发布包解压全新环境启动后 health 200，但所有页面 500，报 `Cannot find module '.prisma/client/default'`（开发仓库正常）
+  - 根因：Next 16 Turbopack 把 `@prisma/client` 外部化为 `web/.next/node_modules/@prisma/client-<hash>` 副本，其 `default.js` 内是 `require('.prisma/client/default')`——**该字符串不是相对路径（缺 `./` 前缀）**，Node 会把它当包名沿 node_modules 链向上解析（`副本/node_modules → web/.next/node_modules/.prisma → web/node_modules → 根 node_modules`）。开发仓库恰好命中 pnpm 虚拟存储里的 `.prisma` 包，发布包全新环境无此目录 → 解析失败
+  - 修复：`web/next.config.ts` 配 `serverExternalPackages: ["@prisma/client"]`（未阻止副本生成，仅作语义声明）；真正兜底在 `standalone/src/start.ts` 的 `ensureNextPrismaClientCopy()`——`prisma generate` 后把生成的 client 复制到 **`web/.next/node_modules/.prisma/client`**（包解析链上正确位置），Next.js 启动前完成
+  - 验证：重新打包（365.0MB）→ 全新目录解压 → `pnpm install --frozen-lockfile`（110 包）→ production 启动出现 `[Prisma] 已把 client 补到 .next/node_modules/.prisma/client` → 全页面 200，ingestion 401（认证保护，符合预期）
