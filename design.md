@@ -67,7 +67,7 @@ Machora 已有事件注入 API（trace/observation/score 手工上报），但**
 |---|---|---|---|
 | **B. OTel / OTLP（主）** | `POST /api/public/otel/v1/traces`，兼容 OTLP HTTP 导出 | **Phase 0 已实现（JSON）** | 厂商中立，LangChain py/js、LangGraph、LlamaIndex(OpenInference)、Vercel AI SDK、Pydantic AI、CrewAI 均原生导出 OTel |
 | **A. LangSmith 兼容 API（辅）** | 实现 `/api/public/runs` 等端点，`LANGCHAIN_TRACING_V2=true` + `LANGCHAIN_ENDPOINT` 指向 Machora | 后续 Phase | 数据最完整（含流事件/反馈），需逆向兼容字段 |
-| **C. 原生 Machora SDK（备）** | TS/Python SDK + LangChain `BaseCallbackHandler` | 后续 Phase | 给不支持前两者的框架或自定义控制用 |
+| **C. 原生 Machora SDK（备）** | TS/Python SDK + LangChain `BaseCallbackHandler` | **Python SDK 已实现（2026-08-02）** | 给不支持前两者的框架或自定义控制用（见 §6.5） |
 
 ### 6.3 OTel 接入设计（Phase 0 实现范围）
 
@@ -130,6 +130,31 @@ source scripts/connect-openclaw.sh   # 设置 OTEL_* 环境变量指向 machora
 `OTEL_SERVICE_NAME`。注意：环境变量只覆盖导出地址，**还需配置启用插件**（
 `plugins.entries["diagnostics-otel"].enabled` + `diagnostics.otel.enabled`，见 §7）。
 OpenClaw 每次 agent 运行即作为一条 trace（含工具调用/LLM 调用子 span）出现在 machora UI。
+
+### 6.5 原生 Python SDK（通道 C，已实现 2026-08-02）
+
+`sdk/python/`：包名 `machora-sdk`（模块 `machora`），依赖 `httpx` + `pydantic`，
+可选依赖 `langchain-core`（回调埋点）。**仓库内实现，未发布 PyPI**。
+
+- **事件契约**：与 `packages/shared/src/domain/index.ts` 的 zod schema 对齐
+  （trace-create / observation-create / score-create，字段 camelCase，type 枚举大写）。
+  事件先缓存，`flush()` 按 trace→observation→score 稳定排序后批量 POST
+  `/api/public/ingestion`（同批先建 trace 满足外键）
+- **客户端 API**：`MachoraClient`（Basic Auth；凭据走 `MACHORA_*` / 兼容 `LANGFUSE_*` 环境变量）；
+  `client.trace(...)` 上下文管理器自动 flush；`t.span(...)` / `t.generation(...)` handle 在
+  `end()` 时生成含 start/end 的完整 observation（服务端 create 非 upsert，重复 id 会失败，
+  因此不采用"先建后补"流式补全）；`t.score(...)` 按值推断 dataType
+  （bool→BOOLEAN、str→CATEGORICAL、数字→NUMERIC）；低层 `create_trace/create_observation/create_score`
+  供手动控制
+- **LangChain 回调**：`MachoraCallbackHandler`（`langchain_core.callbacks.BaseCallbackHandler`），
+  一次顶层链 run = 一条 trace，LLM/chat 调用 = GENERATION，工具/子链 = SPAN，
+  error 事件 → level=ERROR；顶层 chain_end 自动 flush。注意：langchain-core 对简单链
+  （`prompt | llm`）做 run 合并优化，子 run 不独立触发回调，此时只有 trace 无 observation，
+  属框架行为而非 SDK 缺陷
+- **验证**：18/18 unittest 通过（MockTransport 验证排序/Basic Auth/序列化/回调映射）；
+  端到端（standalone production）：原生注入的 trace/observation/score 与 LangChain 回调的
+  trace 均在 UI 可见
+- **示例**：`sdk/python/examples/demo.py`（原生 + LangChain 两种用法）
 
 ## 7. 实现现状与偏差记录（2026-08-01）
 

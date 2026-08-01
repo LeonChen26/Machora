@@ -11,3 +11,6 @@ scripts/npm/
 .env
 *.log
 *.tsbuildinfo
+.venv*/
+__pycache__/
+*.egg-info/
