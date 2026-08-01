@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import type { ReactNode } from "react";
+import type { Observation } from "@prisma/client";
 import { prisma } from "@machora/shared";
 import {
   formatDateTime,
@@ -10,6 +12,9 @@ import {
   formatCost,
 } from "../../../lib/format";
 import { getCurrentProjectId } from "../../../server/project";
+
+// 调用树节点：observation + 子节点
+type ObsNode = Observation & { children: ObsNode[] };
 
 export const dynamic = "force-dynamic";
 
@@ -47,6 +52,22 @@ export default async function TraceDetailPage({
   );
   const span = Math.max(traceEnd - traceStart, 1);
 
+  // 调用树：按 parentObservationId 构建父子层级（根为父不在本 trace 的 observation）
+  function buildObsTree(obs: Observation[]): ObsNode[] {
+    const byId = new Map<string, ObsNode>();
+    for (const o of obs) byId.set(o.id, { ...o, children: [] });
+    const roots: ObsNode[] = [];
+    for (const n of byId.values()) {
+      const parent = n.parentObservationId
+        ? byId.get(n.parentObservationId)
+        : undefined;
+      if (parent) parent.children.push(n);
+      else roots.push(n);
+    }
+    return roots;
+  }
+  const obsTree = buildObsTree(trace.observations);
+
   // Token / 成本汇总
   const totalTokens = trace.observations.reduce(
     (s, o) => s + (o.totalTokens ?? 0),
@@ -64,6 +85,141 @@ export default async function TraceDetailPage({
     const left = ((s - traceStart) / span) * 100;
     const width = Math.max(((e - s) / span) * 100, 1);
     return { left: Math.max(left, 0), width: Math.min(width, 100 - left) };
+  }
+
+  // 树形渲染：当前节点行 + 递归子节点（depth 控制名称缩进）
+  function renderObsRows(nodes: ObsNode[], depth: number): ReactNode[] {
+    return nodes.flatMap((o) => {
+      const dur = durationMs(o.startTime, o.endTime);
+      const pos = barPos(o.startTime, o.endTime);
+      const typeColor =
+        o.type === "GENERATION"
+          ? "purple"
+          : o.type === "SPAN"
+            ? "blue"
+            : "amber";
+      // 条颜色：ERROR/WARNING 用警示色覆盖类型色，突出异常
+      const barColor =
+        o.level === "ERROR"
+          ? "var(--red)"
+          : o.level === "WARNING"
+            ? "var(--amber)"
+            : o.type === "GENERATION"
+              ? "var(--purple)"
+              : o.type === "SPAN"
+                ? "var(--accent)"
+                : "var(--amber)";
+      const showLabel = pos.width > 18;
+      const barTip =
+        `${o.name || o.id}\n` +
+        `${formatDateTime(o.startTime)} → ${o.endTime ? formatDateTime(o.endTime) : "—"}\n` +
+        `耗时 ${formatDuration(dur)}`;
+      const row = (
+        <tr key={o.id}>
+          <td>
+            <div style={{ paddingLeft: depth * 18 }}>
+              <div>{o.name || <span className="mute2">（未命名）</span>}</div>
+              <div className="mono mute2" style={{ fontSize: 11 }}>
+                {o.id}
+              </div>
+              <div style={{ marginTop: 2 }}>
+                <span className={`badge ${typeColor}`}>{o.type}</span>
+              </div>
+            </div>
+          </td>
+          <td>
+            {o.model ? (
+              <span className="badge purple">{o.model}</span>
+            ) : (
+              <span className="mute2">—</span>
+            )}
+          </td>
+          <td className="mono muted" style={{ fontSize: 11 }}>
+            {formatDateTime(o.startTime)}
+          </td>
+          <td className="mono">{formatDuration(dur)}</td>
+          <td>
+            {o.totalTokens != null && o.totalTokens > 0 ? (
+              <>
+                <div className="mono" style={{ fontSize: 12 }}>
+                  {formatTokens(o.totalTokens)}
+                </div>
+                <div className="mono" style={{ fontSize: 11, color: "var(--green)" }}>
+                  {formatCost(o.totalCost)}
+                </div>
+              </>
+            ) : (
+              <span className="mute2">—</span>
+            )}
+          </td>
+          <td>
+            <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+              <div
+                style={{
+                  position: "relative",
+                  height: 16,
+                  background: "var(--bg-elev-2)",
+                  borderRadius: 4,
+                }}
+                title={barTip}
+              >
+                <div
+                  style={{
+                    position: "absolute",
+                    left: `${pos.left}%`,
+                    width: `${pos.width}%`,
+                    top: 0,
+                    bottom: 0,
+                    background: barColor,
+                    borderRadius: 4,
+                    opacity: 0.75,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    overflow: "hidden",
+                  }}
+                >
+                  {showLabel && (
+                    <span
+                      style={{
+                        fontSize: 9,
+                        color: "#fff",
+                        whiteSpace: "nowrap",
+                        fontFamily: "var(--mono)",
+                      }}
+                    >
+                      {formatDuration(dur)}
+                    </span>
+                  )}
+                </div>
+              </div>
+              {/* 相对时间刻度：0 / 50% / 总耗时 */}
+              <div style={{ position: "relative", height: 11 }}>
+                {[0, 50, 100].map((p) => (
+                  <span
+                    key={p}
+                    style={{
+                      position: "absolute",
+                      left: `${p}%`,
+                      transform: "translateX(-50%)",
+                      fontSize: 9,
+                      color: "var(--text-mute)",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {p === 0 ? "0" : p === 50 ? "50%" : formatDuration(span)}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </td>
+          <td>
+            <LevelBadge level={o.level} />
+          </td>
+        </tr>
+      );
+      return [row, ...renderObsRows(o.children, depth + 1)];
+    });
   }
 
   return (
@@ -158,136 +314,7 @@ export default async function TraceDetailPage({
                 <th>级别</th>
               </tr>
             </thead>
-            <tbody>
-              {trace.observations.map((o) => {
-                const dur = durationMs(o.startTime, o.endTime);
-                const pos = barPos(o.startTime, o.endTime);
-                const typeColor =
-                  o.type === "generation"
-                    ? "purple"
-                    : o.type === "span"
-                      ? "blue"
-                      : "amber";
-                // 条颜色：ERROR/WARNING 用警示色覆盖类型色，突出异常
-                const barColor =
-                  o.level === "ERROR"
-                    ? "var(--red)"
-                    : o.level === "WARNING"
-                      ? "var(--amber)"
-                      : o.type === "generation"
-                        ? "var(--purple)"
-                        : o.type === "span"
-                          ? "var(--accent)"
-                          : "var(--amber)";
-                const showLabel = pos.width > 18;
-                const barTip =
-                  `${o.name || o.id}\n` +
-                  `${formatDateTime(o.startTime)} → ${o.endTime ? formatDateTime(o.endTime) : "—"}\n` +
-                  `耗时 ${formatDuration(dur)}`;
-                return (
-                  <tr key={o.id}>
-                    <td>
-                      <div>{o.name || <span className="mute2">（未命名）</span>}</div>
-                      <div className="mono mute2" style={{ fontSize: 11 }}>
-                        {o.id}
-                      </div>
-                      <div style={{ marginTop: 2 }}>
-                        <span className={`badge ${typeColor}`}>{o.type}</span>
-                      </div>
-                    </td>
-                    <td>
-                      {o.model ? (
-                        <span className="badge purple">{o.model}</span>
-                      ) : (
-                        <span className="mute2">—</span>
-                      )}
-                    </td>
-                    <td className="mono muted" style={{ fontSize: 11 }}>
-                      {formatDateTime(o.startTime)}
-                    </td>
-                    <td className="mono">{formatDuration(dur)}</td>
-                    <td>
-                      {o.totalTokens != null && o.totalTokens > 0 ? (
-                        <>
-                          <div className="mono" style={{ fontSize: 12 }}>
-                            {formatTokens(o.totalTokens)}
-                          </div>
-                          <div className="mono" style={{ fontSize: 11, color: "var(--green)" }}>
-                            {formatCost(o.totalCost)}
-                          </div>
-                        </>
-                      ) : (
-                        <span className="mute2">—</span>
-                      )}
-                    </td>
-                    <td>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                        <div
-                          style={{
-                            position: "relative",
-                            height: 16,
-                            background: "var(--bg-elev-2)",
-                            borderRadius: 4,
-                          }}
-                          title={barTip}
-                        >
-                          <div
-                            style={{
-                              position: "absolute",
-                              left: `${pos.left}%`,
-                              width: `${pos.width}%`,
-                              top: 0,
-                              bottom: 0,
-                              background: barColor,
-                              borderRadius: 4,
-                              opacity: 0.75,
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              overflow: "hidden",
-                            }}
-                          >
-                            {showLabel && (
-                              <span
-                                style={{
-                                  fontSize: 9,
-                                  color: "#fff",
-                                  whiteSpace: "nowrap",
-                                  fontFamily: "var(--mono)",
-                                }}
-                              >
-                                {formatDuration(dur)}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        {/* 相对时间刻度：0 / 50% / 总耗时 */}
-                        <div style={{ position: "relative", height: 11 }}>
-                          {[0, 50, 100].map((p) => (
-                            <span
-                              key={p}
-                              style={{
-                                position: "absolute",
-                                left: `${p}%`,
-                                transform: "translateX(-50%)",
-                                fontSize: 9,
-                                color: "var(--text-mute)",
-                                whiteSpace: "nowrap",
-                              }}
-                            >
-                              {p === 0 ? "0" : p === 50 ? "50%" : formatDuration(span)}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    </td>
-                    <td>
-                      <LevelBadge level={o.level} />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
+            <tbody>{renderObsRows(obsTree, 0)}</tbody>
           </table>
         </div>
       )}
@@ -301,7 +328,7 @@ export default async function TraceDetailPage({
           <div className="card" key={o.id}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
               <strong>{o.name || o.id}</strong>
-              <span className={`badge ${o.type === "generation" ? "purple" : o.type === "span" ? "blue" : "amber"}`}>
+              <span className={`badge ${o.type === "GENERATION" ? "purple" : o.type === "SPAN" ? "blue" : "amber"}`}>
                 {o.type}
               </span>
             </div>
@@ -329,14 +356,30 @@ export default async function TraceDetailPage({
               </div>
             )}
             {o.output != null && (
-              <div>
+              <div style={{ marginBottom: 6 }}>
                 <div className="mute2" style={{ fontSize: 11, marginBottom: 2 }}>
                   OUTPUT
                 </div>
                 <div className="json-view">{prettyJson(o.output)}</div>
               </div>
             )}
-            {o.input == null && o.output == null && (
+            {o.usage != null && (
+              <div style={{ marginBottom: 6 }}>
+                <div className="mute2" style={{ fontSize: 11, marginBottom: 2 }}>
+                  USAGE
+                </div>
+                <div className="json-view">{prettyJson(o.usage)}</div>
+              </div>
+            )}
+            {o.metadata != null && (
+              <div>
+                <div className="mute2" style={{ fontSize: 11, marginBottom: 2 }}>
+                  METADATA
+                </div>
+                <div className="json-view">{prettyJson(o.metadata)}</div>
+              </div>
+            )}
+            {o.input == null && o.output == null && o.usage == null && o.metadata == null && (
               <div className="mute2">无 input/output</div>
             )}
           </div>

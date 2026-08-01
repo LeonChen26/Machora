@@ -157,6 +157,12 @@ OpenClaw 每次 agent 运行即作为一条 trace（含工具调用/LLM 调用�
 - **已知偏差**：
   - Observation 仅冗余 projectId；environment/userId 反规范化待 OTel 维度聚合时补齐
   - worker 独立进程模式未做（同进程共享 queueBus，无 Redis）
+- **UI 对齐 Langfuse 修复（2026-08-01）**：核对 UI 发现 observation type 大小写 bug（数据层存 `GENERATION`/`SPAN`，UI 用小写比较），导致 traces 列表"耗时"列恒为 "—"、详情页类型徽章/时间轴颜色全部落 amber。已修复：
+  - `web/src/app/traces/page.tsx`：latency 判定改为大写 `GENERATION`
+  - `web/src/app/traces/[id]/page.tsx`：typeColor/barColor/badge 改为大写比较
+  - 详情页 observations 由平铺表格改为**调用树缩进视图**（按 parentObservationId 递归渲染，depth 缩进）
+  - Observation 详情卡片补充 **METADATA / USAGE** 区块（OpenClaw 上报的 `openclaw.*` 字段与 cache tokens 现可在 UI 查看）
+  - 已用真实 OpenClaw fixture 注入 machora 验证：HTTP 200，时间轴含紫色 GENERATION 条，缩进 18/36px 两级，badge purple×18 / blue×20
 
 ## 8. 里程碑
 
