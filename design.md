@@ -185,3 +185,17 @@ OpenClaw 每次 agent 运行即作为一条 trace（含工具调用/LLM 调用�
 | **Phase 1** | LangChain/LangGraph demo 用环境变量灌数 + Web 列表/详情 UI（Next.js） | 一次 Agent 运行完整呈现调用树 |
 | **Phase 2** | ~~OTLP protobuf~~ ✅、流事件（gen_ai.choice 等）、metadata 去噪完善 | 与 Python 默认导出兼容 |
 | **Phase 3** | LangSmith 兼容 API（通道 A）、查询 API 游标分页、评估 | LangChain 应用零改动接入 |
+
+## 9. 构建与发布（2026-08-01）
+
+- **完整编译产物链路**：此前所有包 tsconfig 均 `noEmit`（生产靠 tsx 运行时转译）。现已改为真实编译：
+  - 各包新增 `tsconfig.build.json`（`module/moduleResolution: NodeNext`、`outDir: dist`）；shared/worker 开 `declaration`；shared 另开 `rewriteRelativeImportExtensions`（源码大量 `.ts` 扩展相对导入，emit 时改写为 `.js`，需 TypeScript ≥5.7，已统一升到 ^5.9.0）
+  - `@machora/shared`：`main/types/exports` 指向 `dist/*`（`type: module`）；`build` 产出 dist + .d.ts
+  - `@machora/worker`：`exports "." → dist/app.js`（导出 `registerQueueProcessors`），`build` 产出 dist
+  - `@machora/standalone`：`start` 改为 `NODE_ENV=production node dist/start.js`（**零 tsx**）；`registerQueueProcessors` 从 `import("../../worker/src/app.ts")` 改为 `import("@machora/worker")`（workspace 依赖）；`start.ts` 里 `resolve(import.meta.dirname, "..", "..")` 在 dist 下指向仓库根不变，prisma/next 路径无需调整
+  - `turbo.json`：`dev` 加 `dependsOn: ["^build"]`（dev 前先产出 dist）；包级 turbo `outputs: []` 删除，统一用全局 `dist/**`、`.next/**`
+  - 验证：`pnpm build` 4/4 成功；`pnpm standalone:start`（production）启动正常（`Next.js 启动（in-process，production）`），全页面 200，ingestion 注入 + users 聚合正常；shared 测试 44/44
+- **发布打包（`scripts/release.mjs`，根 `pnpm release`）**：`pnpm build` → 组装 `.release/machora-<version>/`（源码 + dist + prisma schema + web/.next + start.cmd/start.sh + README.txt）→ 系统 `tar`（libarchive）打 zip（**不能用 PowerShell Compress-Archive**：会写 Windows Recent 目录触发沙箱拦截）→ 打印发布指引。分发形态：目标机 `pnpm install --frozen-lockfile` → `start.cmd`（`node standalone/dist/start.js`）
+- **npm / pip 发布探索结论**：
+  - **npm 可行（推荐）**：`@machora/shared` 已是标准库包形态（dist + .d.ts + exports），去掉 `private` + 加 `files` 后 `pnpm publish --access public` 即可，价值最高（OTel protobuf 解码/解析纯函数可复用）。完整应用也可做成 npm 包（`bin` 入口 + pglite/next 等 dependencies + web/.next 随包），包体积约 10–50MB
+  - **pip 不适用**：machora 是 Node/TypeScript 运行时，PyPI 包需内嵌整个 Node 应用（node_modules 无法由 pip 管理）或要求系统 node + 安装时 npm install，跨平台与体积成本高、收益低。若需 Python 生态消费，应走 HTTP API（/api/public/ingestion + OTel 端点）而非本地包装

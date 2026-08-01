@@ -228,8 +228,9 @@ async function seedStandaloneData(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function registerQueueProcessors(): Promise<void> {
-  // 动态 import worker/src/app，注册 ingestion 消费者
-  const { registerQueueProcessors } = await import("../../worker/src/app.ts");
+  // 动态 import @machora/worker（编译产物 dist/app.js），注册 ingestion 消费者；
+  // 编译产物与开发（tsx）均解析到同一入口
+  const { registerQueueProcessors } = await import("@machora/worker");
   registerQueueProcessors();
   console.log("[Queue] 处理器已注册");
 }

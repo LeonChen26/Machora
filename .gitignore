@@ -2,6 +2,7 @@ node_modules/
 .next/
 dist/
 .turbo/
+.release/
 .machora-data/
 .machora-v5/
 .machora-data-bak*/

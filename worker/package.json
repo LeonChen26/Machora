@@ -3,20 +3,24 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "main": "./dist/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/app.d.ts",
+      "default": "./dist/app.js"
+    }
+  },
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc",
+    "build": "tsc -p tsconfig.build.json",
     "lint": "echo lint",
     "typecheck": "tsc --noEmit"
-  },
-  "turbo": {
-    "build": { "outputs": [] }
   },
   "dependencies": {
     "@machora/shared": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^26.1.2",
-    "typescript": "^5.6.0"
+    "typescript": "^5.9.0"
   }
 }
