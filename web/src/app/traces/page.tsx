@@ -193,7 +193,7 @@ export default async function TracesPage({
           <input
             type="datetime-local"
             name="from"
-            value={toLocalInput(from)}
+            defaultValue={toLocalInput(from)}
             style={inputStyle}
           />
         </label>
@@ -204,7 +204,7 @@ export default async function TracesPage({
           <input
             type="datetime-local"
             name="to"
-            value={toLocalInput(to)}
+            defaultValue={toLocalInput(to)}
             style={inputStyle}
           />
         </label>
