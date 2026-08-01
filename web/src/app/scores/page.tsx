@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { Link } from "../../components/NativeLink";
 import { prisma } from "@machora/shared";
 import { formatRelative, formatDateTime } from "../../lib/format";
 import { BarChart } from "../../components/BarChart";

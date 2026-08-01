@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { Link } from "../components/NativeLink";
 import { getProjectContext } from "../server/project";
 import { ProjectSwitcher } from "../components/ProjectSwitcher";
 import "./globals.css";

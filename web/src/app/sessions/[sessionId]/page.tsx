@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { Link } from "../../../components/NativeLink";
 import { notFound } from "next/navigation";
 import { prisma } from "@machora/shared";
 import {
