@@ -1,0 +1,15 @@
+packages:
+  - "web"
+  - "worker"
+  - "standalone"
+  - "packages/**"
+allowBuilds:
+  esbuild: true
+  sharp: true
+  "@prisma/client": true
+  "@prisma/engines": true
+  prisma: true
+supportedArchitectures:
+  os: [ win32 ]
+  cpu: [ x64 ]
+  libc: [ msvc ]

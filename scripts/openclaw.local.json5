@@ -1,0 +1,72 @@
+{
+  "gateway": {
+    "mode": "local",
+    "port": 3109
+  },
+  "diagnostics": {
+    "enabled": true,
+    "otel": {
+      "enabled": true,
+      "endpoint": "http://localhost:3100/api/public/otel",
+      "protocol": "http/protobuf",
+      "serviceName": "openclaw",
+      "traces": true,
+      "metrics": false,
+      "logs": false,
+      "headers": {
+        "Authorization": "Basic cGstbWFjaG9yYS1kZXYtMDAwMDAwMDAwMDAwMDAwMDAwMDAwOnNrLW1hY2hvcmEtZGV2LTAwMDAwMDAwMDAwMDAwMDAwMDAwMA=="
+      }
+    }
+  },
+  "plugins": {
+    "allow": [
+      "diagnostics-otel",
+      "deepseek"
+    ],
+    "entries": {
+      "diagnostics-otel": {
+        "enabled": true
+      },
+      "deepseek": {
+        "enabled": true
+      }
+    }
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "deepseek/deepseek-v4-flash"
+      },
+      "sandbox": {
+        "mode": "off"
+      },
+      "skills": ["machora-demo"]
+    }
+  },
+  "skills": {
+    "load": {
+      "extraDirs": ["E:/code/opensource/machora/scripts/skills"]
+    }
+  },
+  "mcp": {
+    "servers": {
+      "machora-demo": {
+        "command": "node",
+        "args": ["E:/code/opensource/machora/scripts/mcp-demo-server.mjs"]
+      }
+    }
+  },
+  "tools": {
+    "sandbox": {
+      "tools": {
+        "alsoAllow": ["exec", "web_search", "web_fetch", "bundle-mcp"]
+      }
+    }
+  },
+  "meta": {
+    "migrations": {
+      "modelPolicyAllowlist": true
+    },
+    "lastTouchedVersion": "2026.7.2"
+  }
+}

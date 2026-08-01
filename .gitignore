@@ -1,0 +1,12 @@
+node_modules/
+.next/
+dist/
+.turbo/
+.machora-data/
+.machora-v5/
+.machora-data-bak*/
+.openclaw-home/
+scripts/npm/
+.env
+*.log
+*.tsbuildinfo

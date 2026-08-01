@@ -1,0 +1,22 @@
+{
+  "name": "@machora/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "lint": "echo lint",
+    "typecheck": "tsc --noEmit"
+  },
+  "turbo": {
+    "build": { "outputs": [] }
+  },
+  "dependencies": {
+    "@machora/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.2",
+    "typescript": "^5.6.0"
+  }
+}

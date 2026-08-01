@@ -1,0 +1,157 @@
+import Link from "next/link";
+import { prisma } from "@machora/shared";
+import {
+  formatDateTime,
+  formatDuration,
+  formatRelative,
+  formatTokens,
+  formatCost,
+} from "../../lib/format";
+import { getCurrentProjectId } from "../../server/project";
+
+export const dynamic = "force-dynamic";
+
+export default async function SessionsPage() {
+  const projectId = await getCurrentProjectId();
+  const traces = await prisma.trace.findMany({
+    where: { projectId, sessionId: { not: null } },
+    select: {
+      id: true,
+      sessionId: true,
+      name: true,
+      timestamp: true,
+      environment: true,
+      observations: {
+        select: {
+          startTime: true,
+          endTime: true,
+          totalTokens: true,
+          totalCost: true,
+          level: true,
+        },
+      },
+      _count: { select: { scores: true } },
+    },
+  });
+
+  // 按 sessionId 聚合
+  const bySession = new Map<
+    string,
+    {
+      traces: (typeof traces)[number][];
+      first: Date;
+      last: Date;
+      obsCount: number;
+      tokens: number;
+      cost: number;
+      errors: number;
+    }
+  >();
+  for (const t of traces) {
+    const sid = t.sessionId!;
+    const s = bySession.get(sid) ?? {
+      traces: [],
+      first: t.timestamp,
+      last: t.timestamp,
+      obsCount: 0,
+      tokens: 0,
+      cost: 0,
+      errors: 0,
+    };
+    s.traces.push(t);
+    if (t.timestamp < s.first) s.first = t.timestamp;
+    if (t.timestamp > s.last) s.last = t.timestamp;
+    for (const o of t.observations) {
+      s.obsCount++;
+      s.tokens += o.totalTokens ?? 0;
+      s.cost += o.totalCost ?? 0;
+      if (o.level === "ERROR") s.errors++;
+    }
+    bySession.set(sid, s);
+  }
+
+  const sessions = Array.from(bySession.entries())
+    .map(([sessionId, s]) => ({
+      sessionId,
+      traceCount: s.traces.length,
+      first: s.first,
+      last: s.last,
+      spanMs: s.last.getTime() - s.first.getTime(),
+      obsCount: s.obsCount,
+      tokens: s.tokens,
+      cost: s.cost,
+      errors: s.errors,
+    }))
+    .sort((a, b) => b.last.getTime() - a.last.getTime());
+
+  return (
+    <>
+      <div className="page-head">
+        <div>
+          <h1>Sessions</h1>
+          <div className="sub">
+            按 sessionId 聚合的会话 · 共 {sessions.length} 个
+          </div>
+        </div>
+      </div>
+
+      {sessions.length === 0 ? (
+        <div className="card empty">
+          <div className="icon">◔</div>
+          暂无会话数据。注入 trace 时带上 sessionId 即可聚合。
+        </div>
+      ) : (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Session</th>
+                <th>Traces</th>
+                <th>时间范围</th>
+                <th>跨度</th>
+                <th>Token</th>
+                <th>成本</th>
+                <th>ERROR</th>
+                <th>最近活动</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sessions.map((s) => (
+                <tr key={s.sessionId}>
+                  <td>
+                    <Link href={`/sessions/${encodeURIComponent(s.sessionId)}`} prefetch={false}>
+                      <span className="mono">{s.sessionId}</span>
+                    </Link>
+                  </td>
+                  <td>
+                    <span className="badge blue">{s.traceCount}</span>
+                  </td>
+                  <td className="mono muted" style={{ fontSize: 11 }}>
+                    {formatDateTime(s.first)}
+                    <br />
+                    {formatDateTime(s.last)}
+                  </td>
+                  <td className="mono">{formatDuration(s.spanMs)}</td>
+                  <td className="mono">{formatTokens(s.tokens)}</td>
+                  <td className="mono" style={{ color: s.cost > 0 ? "var(--green)" : undefined }}>
+                    {formatCost(s.cost)}
+                  </td>
+                  <td>
+                    {s.errors > 0 ? (
+                      <span className="badge red">{s.errors}</span>
+                    ) : (
+                      <span className="mute2">0</span>
+                    )}
+                  </td>
+                  <td className="muted" title={formatDateTime(s.last)}>
+                    {formatRelative(s.last)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  );
+}

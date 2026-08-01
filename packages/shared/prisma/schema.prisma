@@ -1,0 +1,113 @@
+// Machora Prisma schema — 单一真源
+// 参考 Langfuse packages/shared/prisma/schema.prisma 宽事件设计
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// 元数据
+// ---------------------------------------------------------------------------
+
+model Project {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  apiKeys   ApiKey[]
+  traces    Trace[]
+}
+
+model ApiKey {
+  id           String   @id @default(cuid())
+  projectId    String
+  publicKey    String   @unique
+  hashedSecret String
+  name         String?
+  createdAt    DateTime @default(now())
+  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String?
+  createdAt    DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// 核心观测数据（宽事件模型）
+// ---------------------------------------------------------------------------
+
+model Trace {
+  id          String   @id // OTel traceId（hex）
+  projectId   String
+  name        String?
+  timestamp   DateTime
+  environment String   @default("default")
+  userId      String?
+  sessionId   String?
+  input       Json?
+  output      Json?
+  metadata    Json?
+  tags        String[]
+  createdAt   DateTime @default(now())
+  project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  observations Observation[]
+  scores      Score[]
+
+  @@index([projectId, timestamp])
+  @@index([userId])
+  @@index([sessionId])
+}
+
+model Observation {
+  id                 String    @id // OTel spanId（hex）
+  traceId            String
+  projectId          String
+  type               String // SPAN | GENERATION | EVENT
+  name               String?
+  parentObservationId String? // OTel parentSpanId → 本批内父 observation
+  startTime          DateTime
+  endTime            DateTime?
+  model              String?
+  input              Json?
+  output             Json?
+  metadata           Json?
+  level              String    @default("DEFAULT") // DEBUG | DEFAULT | WARNING | ERROR
+  // Token / 成本统计（服务端根据 usage 推算并写入）
+  usage              Json?
+  inputTokens        Int?
+  outputTokens       Int?
+  totalTokens        Int?
+  totalCost          Float?
+  trace              Trace @relation(fields: [traceId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, startTime])
+  @@index([traceId])
+  @@index([parentObservationId])
+}
+
+model Score {
+  id            String   @id @default(cuid())
+  traceId       String?
+  observationId String?
+  projectId     String
+  name          String
+  value         Float
+  dataType      String // NUMERIC | CATEGORICAL | BOOLEAN
+  source        String // API | ANNOTATION
+  comment       String?
+  timestamp     DateTime @default(now())
+  trace         Trace? @relation(fields: [traceId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, timestamp])
+  @@index([traceId])
+}

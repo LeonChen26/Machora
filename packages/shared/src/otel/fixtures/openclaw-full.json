@@ -1,0 +1,1143 @@
+{
+  "resourceSpans": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "host.name",
+            "value": {
+              "stringValue": "DESKTOP-TR465M7"
+            }
+          },
+          {
+            "key": "host.arch",
+            "value": {
+              "stringValue": "amd64"
+            }
+          },
+          {
+            "key": "host.id",
+            "value": {
+              "stringValue": "09a8abf1-4cee-4386-be04-f7b577e2414a"
+            }
+          },
+          {
+            "key": "process.pid",
+            "value": {
+              "intValue": "5804"
+            }
+          },
+          {
+            "key": "process.executable.name",
+            "value": {
+              "stringValue": "openclaw-gateway"
+            }
+          },
+          {
+            "key": "process.executable.path",
+            "value": {
+              "stringValue": "D:\\programs\\nodejs\\node.exe"
+            }
+          },
+          {
+            "key": "process.command_args",
+            "value": {
+              "bytesValue": "Ch0KG0Q6XHByb2dyYW1zXG5vZGVqc1xub2RlLmV4ZQoqCihFOlxjb2RlXG9wZW5zb3VyY2Vcb3BlbmNsYXdcb3BlbmNsYXcubWpzCgkKB2dhdGV3YXk="
+            }
+          },
+          {
+            "key": "process.runtime.version",
+            "value": {
+              "stringValue": "24.16.0"
+            }
+          },
+          {
+            "key": "process.runtime.name",
+            "value": {
+              "stringValue": "nodejs"
+            }
+          },
+          {
+            "key": "process.runtime.description",
+            "value": {
+              "stringValue": "Node.js"
+            }
+          },
+          {
+            "key": "process.command",
+            "value": {
+              "stringValue": "E:\\code\\opensource\\openclaw\\openclaw.mjs"
+            }
+          },
+          {
+            "key": "process.owner",
+            "value": {
+              "stringValue": "glche"
+            }
+          },
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "openclaw"
+            }
+          }
+        ]
+      },
+      "scopeSpans": [
+        {
+          "scope": {
+            "name": "openclaw"
+          },
+          "spans": [
+            {
+              "traceId": "b460363f68582dc19193ee9b881f20e3",
+              "spanId": "d686e90191de315e",
+              "parentSpanId": "c70e85bdbe53b3e2",
+              "name": "openclaw.context.assembled",
+              "kind": 1,
+              "startTimeUnixNano": "1785594823752000000",
+              "endTimeUnixNano": "1785594823752000000",
+              "attributes": [
+                {
+                  "key": "openclaw.context.message_count",
+                  "value": {
+                    "intValue": "20"
+                  }
+                },
+                {
+                  "key": "openclaw.context.history_text_chars",
+                  "value": {
+                    "intValue": "1473"
+                  }
+                },
+                {
+                  "key": "openclaw.context.history_image_blocks",
+                  "value": {
+                    "intValue": "0"
+                  }
+                },
+                {
+                  "key": "openclaw.context.max_message_text_chars",
+                  "value": {
+                    "intValue": "403"
+                  }
+                },
+                {
+                  "key": "openclaw.context.system_prompt_chars",
+                  "value": {
+                    "intValue": "28163"
+                  }
+                },
+                {
+                  "key": "openclaw.context.prompt_chars",
+                  "value": {
+                    "intValue": "116"
+                  }
+                },
+                {
+                  "key": "openclaw.context.prompt_images",
+                  "value": {
+                    "intValue": "0"
+                  }
+                },
+                {
+                  "key": "openclaw.provider",
+                  "value": {
+                    "stringValue": "deepseek"
+                  }
+                },
+                {
+                  "key": "openclaw.model",
+                  "value": {
+                    "stringValue": "deepseek-v4-flash"
+                  }
+                },
+                {
+                  "key": "openclaw.channel",
+                  "value": {
+                    "stringValue": "webchat"
+                  }
+                },
+                {
+                  "key": "openclaw.trigger",
+                  "value": {
+                    "stringValue": "user"
+                  }
+                },
+                {
+                  "key": "openclaw.context.token_budget",
+                  "value": {
+                    "intValue": "1000000"
+                  }
+                },
+                {
+                  "key": "openclaw.context.reserve_tokens",
+                  "value": {
+                    "intValue": "20000"
+                  }
+                }
+              ]
+            },
+            {
+              "traceId": "651acd99b43d36eabc84b8db0b0e3207",
+              "spanId": "0dd5bc33a4738f14",
+              "name": "openclaw.liveness.warning",
+              "kind": 1,
+              "startTimeUnixNano": "1785594823860000000",
+              "endTimeUnixNano": "1785594823860000000",
+              "attributes": [
+                {
+                  "key": "openclaw.liveness.reason",
+                  "value": {
+                    "stringValue": "event_loop_delay"
+                  }
+                },
+                {
+                  "key": "openclaw.liveness.active",
+                  "value": {
+                    "intValue": "1"
+                  }
+                },
+                {
+                  "key": "openclaw.liveness.waiting",
+                  "value": {
+                    "intValue": "0"
+                  }
+                },
+                {
+                  "key": "openclaw.liveness.queued",
+                  "value": {
+                    "intValue": "0"
+                  }
+                },
+                {
+                  "key": "openclaw.liveness.interval_ms",
+                  "value": {
+                    "intValue": "30652"
+                  }
+                },
+                {
+                  "key": "openclaw.liveness.event_loop_delay_p99_ms",
+                  "value": {
+                    "doubleValue": 36.5
+                  }
+                },
+                {
+                  "key": "openclaw.liveness.event_loop_delay_max_ms",
+                  "value": {
+                    "doubleValue": 1063.8
+                  }
+                },
+                {
+                  "key": "openclaw.liveness.event_loop_utilization",
+                  "value": {
+                    "doubleValue": 0.071
+                  }
+                },
+                {
+                  "key": "openclaw.liveness.cpu_user_ms",
+                  "value": {
+                    "intValue": "1125"
+                  }
+                },
+                {
+                  "key": "openclaw.liveness.cpu_system_ms",
+                  "value": {
+                    "intValue": "422"
+                  }
+                },
+                {
+                  "key": "openclaw.liveness.cpu_total_ms",
+                  "value": {
+                    "intValue": "1547"
+                  }
+                },
+                {
+                  "key": "openclaw.liveness.cpu_core_ratio",
+                  "value": {
+                    "doubleValue": 0.05
+                  }
+                }
+              ]
+            },
+            {
+              "traceId": "b460363f68582dc19193ee9b881f20e3",
+              "spanId": "37c03ee123c54b0b",
+              "parentSpanId": "c70e85bdbe53b3e2",
+              "name": "openclaw.model.call",
+              "kind": 3,
+              "startTimeUnixNano": "1785594823832000000",
+              "endTimeUnixNano": "1785594825585000000",
+              "attributes": [
+                {
+                  "key": "openclaw.provider",
+                  "value": {
+                    "stringValue": "deepseek"
+                  }
+                },
+                {
+                  "key": "openclaw.model",
+                  "value": {
+                    "stringValue": "deepseek-v4-flash"
+                  }
+                },
+                {
+                  "key": "gen_ai.system",
+                  "value": {
+                    "stringValue": "deepseek"
+                  }
+                },
+                {
+                  "key": "gen_ai.request.model",
+                  "value": {
+                    "stringValue": "deepseek-v4-flash"
+                  }
+                },
+                {
+                  "key": "gen_ai.operation.name",
+                  "value": {
+                    "stringValue": "text_completion"
+                  }
+                },
+                {
+                  "key": "openclaw.model_call.observation_unit",
+                  "value": {
+                    "stringValue": "request"
+                  }
+                },
+                {
+                  "key": "openclaw.api",
+                  "value": {
+                    "stringValue": "openai-completions"
+                  }
+                },
+                {
+                  "key": "openclaw.transport",
+                  "value": {
+                    "stringValue": "auto"
+                  }
+                },
+                {
+                  "key": "openclaw.model_call.prompt.input_messages_count",
+                  "value": {
+                    "intValue": "21"
+                  }
+                },
+                {
+                  "key": "openclaw.model_call.prompt.input_messages_chars",
+                  "value": {
+                    "intValue": "11859"
+                  }
+                },
+                {
+                  "key": "openclaw.model_call.prompt.system_prompt_chars",
+                  "value": {
+                    "intValue": "28163"
+                  }
+                },
+                {
+                  "key": "openclaw.model_call.prompt.tool_definitions_count",
+                  "value": {
+                    "intValue": "43"
+                  }
+                },
+                {
+                  "key": "openclaw.model_call.prompt.tool_definitions_chars",
+                  "value": {
+                    "intValue": "54447"
+                  }
+                },
+                {
+                  "key": "openclaw.model_call.prompt.total_chars",
+                  "value": {
+                    "intValue": "94469"
+                  }
+                },
+                {
+                  "key": "openclaw.model_call.request_bytes",
+                  "value": {
+                    "intValue": "92164"
+                  }
+                },
+                {
+                  "key": "openclaw.model_call.response_bytes",
+                  "value": {
+                    "intValue": "1538"
+                  }
+                },
+                {
+                  "key": "openclaw.model_call.time_to_first_byte_ms",
+                  "value": {
+                    "intValue": "260"
+                  }
+                },
+                {
+                  "key": "openclaw.model_call.usage.input_tokens",
+                  "value": {
+                    "intValue": "147"
+                  }
+                },
+                {
+                  "key": "openclaw.model_call.usage.output_tokens",
+                  "value": {
+                    "intValue": "107"
+                  }
+                },
+                {
+                  "key": "openclaw.model_call.usage.cache_read_input_tokens",
+                  "value": {
+                    "intValue": "24320"
+                  }
+                },
+                {
+                  "key": "openclaw.model_call.usage.reasoning_output_tokens",
+                  "value": {
+                    "intValue": "73"
+                  }
+                },
+                {
+                  "key": "openclaw.model_call.usage.prompt_tokens",
+                  "value": {
+                    "intValue": "24467"
+                  }
+                },
+                {
+                  "key": "openclaw.model_call.usage.total_tokens",
+                  "value": {
+                    "intValue": "24574"
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.input_tokens",
+                  "value": {
+                    "intValue": "24467"
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.output_tokens",
+                  "value": {
+                    "intValue": "107"
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.cache_read.input_tokens",
+                  "value": {
+                    "intValue": "24320"
+                  }
+                }
+              ]
+            },
+            {
+              "traceId": "b460363f68582dc19193ee9b881f20e3",
+              "spanId": "06f4f732c9f65f26",
+              "parentSpanId": "c70e85bdbe53b3e2",
+              "name": "openclaw.model.call",
+              "kind": 3,
+              "startTimeUnixNano": "1785594825674000000",
+              "endTimeUnixNano": "1785594827223000000",
+              "attributes": [
+                {
+                  "key": "openclaw.provider",
+                  "value": {
+                    "stringValue": "deepseek"
+                  }
+                },
+                {
+                  "key": "openclaw.model",
+                  "value": {
+                    "stringValue": "deepseek-v4-flash"
+                  }
+                },
+                {
+                  "key": "gen_ai.system",
+                  "value": {
+                    "stringValue": "deepseek"
+                  }
+                },
+                {
+                  "key": "gen_ai.request.model",
+                  "value": {
+                    "stringValue": "deepseek-v4-flash"
+                  }
+                },
+                {
+                  "key": "gen_ai.operation.name",
+                  "value": {
+                    "stringValue": "text_completion"
+                  }
+                },
+                {
+                  "key": "openclaw.model_call.observation_unit",
+                  "value": {
+                    "stringValue": "request"
+                  }
+                },
+                {
+                  "key": "openclaw.api",
+                  "value": {
+                    "stringValue": "openai-completions"
+                  }
+                },
+                {
+                  "key": "openclaw.transport",
+                  "value": {
+                    "stringValue": "auto"
+                  }
+                },
+                {
+                  "key": "openclaw.model_call.prompt.input_messages_count",
+                  "value": {
+                    "intValue": "23"
+                  }
+                },
+                {
+                  "key": "openclaw.model_call.prompt.input_messages_chars",
+                  "value": {
+                    "intValue": "13002"
+                  }
+                },
+                {
+                  "key": "openclaw.model_call.prompt.system_prompt_chars",
+                  "value": {
+                    "intValue": "28163"
+                  }
+                },
+                {
+                  "key": "openclaw.model_call.prompt.tool_definitions_count",
+                  "value": {
+                    "intValue": "43"
+                  }
+                },
+                {
+                  "key": "openclaw.model_call.prompt.tool_definitions_chars",
+                  "value": {
+                    "intValue": "54447"
+                  }
+                },
+                {
+                  "key": "openclaw.model_call.prompt.total_chars",
+                  "value": {
+                    "intValue": "95612"
+                  }
+                },
+                {
+                  "key": "openclaw.model_call.request_bytes",
+                  "value": {
+                    "intValue": "92762"
+                  }
+                },
+                {
+                  "key": "openclaw.model_call.response_bytes",
+                  "value": {
+                    "intValue": "1293"
+                  }
+                },
+                {
+                  "key": "openclaw.model_call.time_to_first_byte_ms",
+                  "value": {
+                    "intValue": "323"
+                  }
+                },
+                {
+                  "key": "openclaw.model_call.usage.input_tokens",
+                  "value": {
+                    "intValue": "153"
+                  }
+                },
+                {
+                  "key": "openclaw.model_call.usage.output_tokens",
+                  "value": {
+                    "intValue": "96"
+                  }
+                },
+                {
+                  "key": "openclaw.model_call.usage.cache_read_input_tokens",
+                  "value": {
+                    "intValue": "24448"
+                  }
+                },
+                {
+                  "key": "openclaw.model_call.usage.prompt_tokens",
+                  "value": {
+                    "intValue": "24601"
+                  }
+                },
+                {
+                  "key": "openclaw.model_call.usage.total_tokens",
+                  "value": {
+                    "intValue": "24697"
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.input_tokens",
+                  "value": {
+                    "intValue": "24601"
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.output_tokens",
+                  "value": {
+                    "intValue": "96"
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.cache_read.input_tokens",
+                  "value": {
+                    "intValue": "24448"
+                  }
+                }
+              ]
+            },
+            {
+              "traceId": "b460363f68582dc19193ee9b881f20e3",
+              "spanId": "297d36c46cbd46e4",
+              "parentSpanId": "97671caf3cfd408c",
+              "name": "openclaw.exec",
+              "kind": 1,
+              "startTimeUnixNano": "1785594827322000000",
+              "endTimeUnixNano": "1785594827635000000",
+              "attributes": [
+                {
+                  "key": "openclaw.exec.target",
+                  "value": {
+                    "stringValue": "host"
+                  }
+                },
+                {
+                  "key": "openclaw.exec.mode",
+                  "value": {
+                    "stringValue": "child"
+                  }
+                },
+                {
+                  "key": "openclaw.outcome",
+                  "value": {
+                    "stringValue": "completed"
+                  }
+                },
+                {
+                  "key": "openclaw.exec.command_length",
+                  "value": {
+                    "intValue": "10"
+                  }
+                },
+                {
+                  "key": "openclaw.exec.exit_code",
+                  "value": {
+                    "intValue": "0"
+                  }
+                }
+              ]
+            },
+            {
+              "traceId": "b460363f68582dc19193ee9b881f20e3",
+              "spanId": "e38161167cfe5a7c",
+              "parentSpanId": "c70e85bdbe53b3e2",
+              "name": "openclaw.tool.execution",
+              "kind": 1,
+              "startTimeUnixNano": "1785594827308000000",
+              "endTimeUnixNano": "1785594827636000000",
+              "attributes": [
+                {
+                  "key": "openclaw.toolName",
+                  "value": {
+                    "stringValue": "exec"
+                  }
+                },
+                {
+                  "key": "openclaw.tool.source",
+                  "value": {
+                    "stringValue": "core"
+                  }
+                },
+                {
+                  "key": "gen_ai.tool.name",
+                  "value": {
+                    "stringValue": "exec"
+                  }
+                },
+                {
+                  "key": "openclaw.tool.params.kind",
+                  "value": {
+                    "stringValue": "object"
+                  }
+                },
+                {
+                  "key": "gen_ai.operation.name",
+                  "value": {
+                    "stringValue": "execute_tool"
+                  }
+                },
+                {
+                  "key": "gen_ai.tool.call.id",
+                  "value": {
+                    "stringValue": "call_01_ET_J9Ju7OXKkgSvfoX71SmU1433"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "host.name",
+            "value": {
+              "stringValue": "DESKTOP-TR465M7"
+            }
+          },
+          {
+            "key": "host.arch",
+            "value": {
+              "stringValue": "amd64"
+            }
+          },
+          {
+            "key": "host.id",
+            "value": {
+              "stringValue": "09a8abf1-4cee-4386-be04-f7b577e2414a"
+            }
+          },
+          {
+            "key": "process.pid",
+            "value": {
+              "intValue": "5804"
+            }
+          },
+          {
+            "key": "process.executable.name",
+            "value": {
+              "stringValue": "openclaw-gateway"
+            }
+          },
+          {
+            "key": "process.executable.path",
+            "value": {
+              "stringValue": "D:\\programs\\nodejs\\node.exe"
+            }
+          },
+          {
+            "key": "process.command_args",
+            "value": {
+              "bytesValue": "Ch0KG0Q6XHByb2dyYW1zXG5vZGVqc1xub2RlLmV4ZQoqCihFOlxjb2RlXG9wZW5zb3VyY2Vcb3BlbmNsYXdcb3BlbmNsYXcubWpzCgkKB2dhdGV3YXk="
+            }
+          },
+          {
+            "key": "process.runtime.version",
+            "value": {
+              "stringValue": "24.16.0"
+            }
+          },
+          {
+            "key": "process.runtime.name",
+            "value": {
+              "stringValue": "nodejs"
+            }
+          },
+          {
+            "key": "process.runtime.description",
+            "value": {
+              "stringValue": "Node.js"
+            }
+          },
+          {
+            "key": "process.command",
+            "value": {
+              "stringValue": "E:\\code\\opensource\\openclaw\\openclaw.mjs"
+            }
+          },
+          {
+            "key": "process.owner",
+            "value": {
+              "stringValue": "glche"
+            }
+          },
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "openclaw"
+            }
+          }
+        ]
+      },
+      "scopeSpans": [
+        {
+          "scope": {
+            "name": "openclaw"
+          },
+          "spans": [
+            {
+              "traceId": "b460363f68582dc19193ee9b881f20e3",
+              "spanId": "c70e85bdbe53b3e2",
+              "parentSpanId": "97671caf3cfd408c",
+              "name": "openclaw.run",
+              "kind": 1,
+              "startTimeUnixNano": "1785594822491000000",
+              "endTimeUnixNano": "1785594829465000000",
+              "attributes": [
+                {
+                  "key": "openclaw.provider",
+                  "value": {
+                    "stringValue": "deepseek"
+                  }
+                },
+                {
+                  "key": "openclaw.model",
+                  "value": {
+                    "stringValue": "deepseek-v4-flash"
+                  }
+                },
+                {
+                  "key": "openclaw.channel",
+                  "value": {
+                    "stringValue": "webchat"
+                  }
+                },
+                {
+                  "key": "openclaw.trigger",
+                  "value": {
+                    "stringValue": "user"
+                  }
+                },
+                {
+                  "key": "openclaw.outcome",
+                  "value": {
+                    "stringValue": "completed"
+                  }
+                }
+              ]
+            },
+            {
+              "traceId": "b460363f68582dc19193ee9b881f20e3",
+              "spanId": "1915bab94bdc587c",
+              "parentSpanId": "c70e85bdbe53b3e2",
+              "name": "openclaw.model.call",
+              "kind": 3,
+              "startTimeUnixNano": "1785594827675000000",
+              "endTimeUnixNano": "1785594829291000000",
+              "attributes": [
+                {
+                  "key": "openclaw.provider",
+                  "value": {
+                    "stringValue": "deepseek"
+                  }
+                },
+                {
+                  "key": "openclaw.model",
+                  "value": {
+                    "stringValue": "deepseek-v4-flash"
+                  }
+                },
+                {
+                  "key": "gen_ai.system",
+                  "value": {
+                    "stringValue": "deepseek"
+                  }
+                },
+                {
+                  "key": "gen_ai.request.model",
+                  "value": {
+                    "stringValue": "deepseek-v4-flash"
+                  }
+                },
+                {
+                  "key": "gen_ai.operation.name",
+                  "value": {
+                    "stringValue": "text_completion"
+                  }
+                },
+                {
+                  "key": "openclaw.model_call.observation_unit",
+                  "value": {
+                    "stringValue": "request"
+                  }
+                },
+                {
+                  "key": "openclaw.api",
+                  "value": {
+                    "stringValue": "openai-completions"
+                  }
+                },
+                {
+                  "key": "openclaw.transport",
+                  "value": {
+                    "stringValue": "auto"
+                  }
+                },
+                {
+                  "key": "openclaw.model_call.prompt.input_messages_count",
+                  "value": {
+                    "intValue": "26"
+                  }
+                },
+                {
+                  "key": "openclaw.model_call.prompt.input_messages_chars",
+                  "value": {
+                    "intValue": "14085"
+                  }
+                },
+                {
+                  "key": "openclaw.model_call.prompt.system_prompt_chars",
+                  "value": {
+                    "intValue": "28163"
+                  }
+                },
+                {
+                  "key": "openclaw.model_call.prompt.tool_definitions_count",
+                  "value": {
+                    "intValue": "43"
+                  }
+                },
+                {
+                  "key": "openclaw.model_call.prompt.tool_definitions_chars",
+                  "value": {
+                    "intValue": "54447"
+                  }
+                },
+                {
+                  "key": "openclaw.model_call.prompt.total_chars",
+                  "value": {
+                    "intValue": "96695"
+                  }
+                },
+                {
+                  "key": "openclaw.model_call.request_bytes",
+                  "value": {
+                    "intValue": "93338"
+                  }
+                },
+                {
+                  "key": "openclaw.model_call.response_bytes",
+                  "value": {
+                    "intValue": "1191"
+                  }
+                },
+                {
+                  "key": "openclaw.model_call.time_to_first_byte_ms",
+                  "value": {
+                    "intValue": "233"
+                  }
+                },
+                {
+                  "key": "openclaw.model_call.usage.input_tokens",
+                  "value": {
+                    "intValue": "160"
+                  }
+                },
+                {
+                  "key": "openclaw.model_call.usage.output_tokens",
+                  "value": {
+                    "intValue": "111"
+                  }
+                },
+                {
+                  "key": "openclaw.model_call.usage.cache_read_input_tokens",
+                  "value": {
+                    "intValue": "24576"
+                  }
+                },
+                {
+                  "key": "openclaw.model_call.usage.prompt_tokens",
+                  "value": {
+                    "intValue": "24736"
+                  }
+                },
+                {
+                  "key": "openclaw.model_call.usage.total_tokens",
+                  "value": {
+                    "intValue": "24847"
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.input_tokens",
+                  "value": {
+                    "intValue": "24736"
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.output_tokens",
+                  "value": {
+                    "intValue": "111"
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.cache_read.input_tokens",
+                  "value": {
+                    "intValue": "24576"
+                  }
+                }
+              ]
+            },
+            {
+              "traceId": "b460363f68582dc19193ee9b881f20e3",
+              "spanId": "97671caf3cfd408c",
+              "name": "openclaw.harness.run",
+              "kind": 1,
+              "startTimeUnixNano": "1785594822487000000",
+              "endTimeUnixNano": "1785594829467000000",
+              "attributes": [
+                {
+                  "key": "openclaw.harness.id",
+                  "value": {
+                    "stringValue": "openclaw"
+                  }
+                },
+                {
+                  "key": "openclaw.harness.plugin",
+                  "value": {
+                    "stringValue": "unknown"
+                  }
+                },
+                {
+                  "key": "openclaw.provider",
+                  "value": {
+                    "stringValue": "deepseek"
+                  }
+                },
+                {
+                  "key": "openclaw.model",
+                  "value": {
+                    "stringValue": "deepseek-v4-flash"
+                  }
+                },
+                {
+                  "key": "openclaw.channel",
+                  "value": {
+                    "stringValue": "webchat"
+                  }
+                },
+                {
+                  "key": "openclaw.outcome",
+                  "value": {
+                    "stringValue": "completed"
+                  }
+                },
+                {
+                  "key": "openclaw.harness.items.started",
+                  "value": {
+                    "intValue": "4"
+                  }
+                },
+                {
+                  "key": "openclaw.harness.items.completed",
+                  "value": {
+                    "intValue": "4"
+                  }
+                },
+                {
+                  "key": "openclaw.harness.items.active",
+                  "value": {
+                    "intValue": "0"
+                  }
+                }
+              ]
+            },
+            {
+              "traceId": "56227a41d949e1afa4867c57893139e9",
+              "spanId": "2e465af9589e247a",
+              "name": "openclaw.model.usage",
+              "kind": 1,
+              "startTimeUnixNano": "1785594822518000000",
+              "endTimeUnixNano": "1785594830144000000",
+              "attributes": [
+                {
+                  "key": "openclaw.channel",
+                  "value": {
+                    "stringValue": "webchat"
+                  }
+                },
+                {
+                  "key": "openclaw.agent",
+                  "value": {
+                    "stringValue": "main"
+                  }
+                },
+                {
+                  "key": "openclaw.provider",
+                  "value": {
+                    "stringValue": "deepseek"
+                  }
+                },
+                {
+                  "key": "openclaw.model",
+                  "value": {
+                    "stringValue": "deepseek-v4-flash"
+                  }
+                },
+                {
+                  "key": "openclaw.tokens.input",
+                  "value": {
+                    "intValue": "460"
+                  }
+                },
+                {
+                  "key": "openclaw.tokens.output",
+                  "value": {
+                    "intValue": "314"
+                  }
+                },
+                {
+                  "key": "openclaw.tokens.cache_read",
+                  "value": {
+                    "intValue": "73344"
+                  }
+                },
+                {
+                  "key": "openclaw.tokens.cache_write",
+                  "value": {
+                    "intValue": "0"
+                  }
+                },
+                {
+                  "key": "openclaw.tokens.total",
+                  "value": {
+                    "intValue": "24847"
+                  }
+                },
+                {
+                  "key": "gen_ai.system",
+                  "value": {
+                    "stringValue": "deepseek"
+                  }
+                },
+                {
+                  "key": "gen_ai.request.model",
+                  "value": {
+                    "stringValue": "deepseek-v4-flash"
+                  }
+                },
+                {
+                  "key": "gen_ai.operation.name",
+                  "value": {
+                    "stringValue": "chat"
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.input_tokens",
+                  "value": {
+                    "intValue": "73804"
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.output_tokens",
+                  "value": {
+                    "intValue": "314"
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.cache_read.input_tokens",
+                  "value": {
+                    "intValue": "73344"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
