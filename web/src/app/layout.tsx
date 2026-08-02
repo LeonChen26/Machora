@@ -2,12 +2,37 @@ import type { Metadata } from "next";
 import { Link } from "../components/NativeLink";
 import { getProjectContext } from "../server/project";
 import { ProjectSwitcher } from "../components/ProjectSwitcher";
+import { ThemeToggle } from "../components/ThemeToggle";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Machora",
   description: "简化版 LLM 可观测平台（standalone）",
 };
+
+// 首帧前应用主题（防闪烁）：读 localStorage，system 模式跟随系统并监听变化
+const THEME_INIT_SCRIPT = `(function () {
+  var KEY = "machora-theme";
+  var mq = window.matchMedia("(prefers-color-scheme: light)");
+  function current() { return localStorage.getItem(KEY) || "system"; }
+  function apply() {
+    var t = current();
+    var light = t === "light" || (t === "system" && mq.matches);
+    document.documentElement.dataset.theme = light ? "light" : "dark";
+  }
+  apply();
+  mq.addEventListener("change", function () { if (current() === "system") apply(); });
+  window.__machoraTheme = {
+    current: current,
+    cycle: function () {
+      var order = ["light", "dark", "system"];
+      var next = order[(order.indexOf(current()) + 1) % order.length];
+      localStorage.setItem(KEY, next);
+      apply();
+      return next;
+    }
+  };
+})();`;
 
 function NavItem({
   href,
@@ -40,6 +65,7 @@ export default async function RootLayout({
   return (
     <html lang="zh-CN" suppressHydrationWarning>
       <body>
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
         <div className="shell">
           <aside className="sidebar">
             <div className="brand">
@@ -59,6 +85,7 @@ export default async function RootLayout({
             <NavItem href="/api-keys" label="API Keys" icon="⚿" />
             <div className="nav-section">接入</div>
             <NavItem href="/docs" label="接入文档" icon="?" />
+            <ThemeToggle />
           </aside>
           <main className="main">{children}</main>
         </div>
