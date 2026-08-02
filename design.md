@@ -210,6 +210,10 @@ OpenClaw 每次 agent 运行即作为一条 trace（含工具调用/LLM 调用�
   - traces 列表 **Score 列增强**：由计数徽章改为显示最近 2 条评分 chips（`name:value`，NUMERIC toFixed(3) / BOOLEAN ✓✗），超过显示 `+N` 溢出计数
   - 验证：注入 1 trace（2 score）后列表 chip、Users 聚合均正确渲染
 - **消除 RSC 预取噪音（2026-08-01）**：浏览器 console 频繁出现 `net::ERR_ABORTED`（`?_rsc=` 请求）——`next/link` 即使 `prefetch={false}`，点击导航仍走 client router 发 RSC 取数请求，快速导航即被 abort。本应用纯服务端渲染（全部 `force-dynamic`），无需 SPA 过渡：新增 `web/src/components/NativeLink.tsx`（原生 `<a>` 包装，剥离 prefetch prop），10 个页面 import 从 `next/link` 改为该组件，彻底绕开 client router，RSC 请求与 ERR_ABORTED 不再产生。代价：导航为整页加载（页面 <100ms，无感知）。
+- **三态主题（2026-08-02）**：默认暗色 + 新增亮色 + 跟随系统。
+  - 方案：`:root`（暗色）+ `html[data-theme="light"]`（亮色）双变量块覆盖全部 CSS 变量，`color-scheme` 同步原生控件；`web/src/components/ThemeToggle.tsx`（侧边栏按钮，☀/🌙/◇ 三态轮换）
+  - 防闪烁：`web/src/app/layout.tsx` 内联 `THEME_INIT_SCRIPT`（body 首帧前执行），读 `localStorage["machora-theme"]`（默认 `system`）设置 `document.documentElement.dataset.theme`，`system` 模式监听 `prefers-color-scheme` 变化；暴露 `window.__machoraTheme.current()/cycle()` 供组件调用
+  - 验证：production 构建 + 发布包（extracted6，3101）首页 HTML 含 `machora-theme`/`theme-toggle`/`__machoraTheme`，健康检查 200
 
 ## 8. 里程碑
 
