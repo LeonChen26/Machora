@@ -151,6 +151,13 @@ OpenClaw 每次 agent 运行即作为一条 trace（含工具调用/LLM 调用�
   error 事件 → level=ERROR；顶层 chain_end 自动 flush。注意：langchain-core 对简单链
   （`prompt | llm`）做 run 合并优化，子 run 不独立触发回调，此时只有 trace 无 observation，
   属框架行为而非 SDK 缺陷
+- **LangGraph 接入（走 OTel 通道，验证于 2026-08-02）**：LangGraph 1.x 默认把节点/模型子 run
+  合并进顶层 run，第三方回调拿不到 LLM/工具子级（实测 invoke/ainvoke/stream 均只触发
+  graph 级 chain 事件），因此回调 SDK 不适用；正确接入是**通道 B OTel**——标准
+  `opentelemetry-sdk` + `OTLPSpanExporter`（http/protobuf）指向 `/api/public/otel/v1/traces`，
+  span 按 OTel GenAI 语义约定埋点（`openinference.span.kind`、`gen_ai.operation.name`、
+  `gen_ai.request.model`、`gen_ai.usage.*`），machora 映射为 trace + SPAN/GENERATION。
+  示例：`sdk/python/examples/langgraph_demo.py`（已验证：agent=SPAN、chat=GENERATION 落库）
 - **验证**：18/18 unittest 通过（MockTransport 验证排序/Basic Auth/序列化/回调映射）；
   端到端（standalone production）：原生注入的 trace/observation/score 与 LangChain 回调的
   trace 均在 UI 可见
