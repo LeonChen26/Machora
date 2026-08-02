@@ -2,7 +2,13 @@
 // 参考 Langfuse OtelIngestionProcessor + ObservationTypeMapperRegistry
 
 import { Prisma } from "@prisma/client";
-import { ATTR, NOISE_PREFIXES } from "./attributes.ts";
+import {
+  ATTR,
+  AGENT_OPERATIONS,
+  NOISE_PREFIXES,
+  OPENINFERENCE_GENERATION_KINDS,
+  OPENINFERENCE_SPAN_KINDS,
+} from "./attributes.ts";
 import {
   decodeAttributes,
   type OtlpExportTraceServiceRequest,
@@ -37,7 +43,6 @@ const LEVEL_ALIASES: Record<string, string> = {
 const EXTRACTED_KEYS = new Set<string>(
   Object.values(ATTR).concat(["gen_ai.usage.input_tokens", "gen_ai.usage.output_tokens"]),
 );
-
 // ---------------------------------------------------------------------------
 // 中间结构
 // ---------------------------------------------------------------------------
@@ -50,6 +55,9 @@ export interface TraceRecord {
   environment: string;
   userId: string | null;
   sessionId: string | null;
+  agentName: string | null;
+  workflowName: string | null;
+  skillName: string | null;
   input: unknown;
   output: unknown;
   metadata: unknown;
@@ -66,6 +74,9 @@ export interface ObservationRecord {
   startTime: Date;
   endTime: Date | null;
   model: string | null;
+  agentName: string | null;
+  workflowName: string | null;
+  skillName: string | null;
   input: unknown;
   output: unknown;
   metadata: unknown;
@@ -132,6 +143,8 @@ function parseLevel(attrs: Record<string, unknown>, statusCode: number): string 
     return LEVEL_ALIASES[raw.trim().toUpperCase()];
   }
   if (statusCode === 2) return "ERROR";
+  // OTel GenAI 语义：error.type 存在（且无显式 level / 非 OK status）→ ERROR
+  if (attrs[ATTR.GEN_AI_ERROR_TYPE] !== undefined) return "ERROR";
   return "DEFAULT";
 }
 
@@ -151,10 +164,12 @@ function mapObservationType(
     return "SPAN";
   }
 
-  // 2. OpenInference span kind
+  // 2. OpenInference span kind（LlamaIndex 生态，required 属性）
   const oi = attrs[ATTR.OPENINFERENCE_KIND];
-  if (typeof oi === "string" && oi.trim().toUpperCase() === "LLM") {
-    return "GENERATION";
+  if (typeof oi === "string" && oi.trim() !== "") {
+    const kind = oi.trim().toUpperCase();
+    if (OPENINFERENCE_GENERATION_KINDS.has(kind)) return "GENERATION";
+    if (OPENINFERENCE_SPAN_KINDS.has(kind)) return "SPAN";
   }
 
   // 3. GenAI operation name
@@ -171,9 +186,22 @@ function mapObservationType(
     ) {
       return "GENERATION";
     }
+    // agent / workflow / plan / memory / retrieval 系列：显式枚举 → SPAN
+    // （语义保留在 SPAN.name / metadata，见 design.md §6.3）
+    if (AGENT_OPERATIONS.has(o)) {
+      return "SPAN";
+    }
   }
 
-  // 4. 工具调用
+  // 4. LoongSuite gen_ai.span.kind（LLM/STEP/TOOL/AGENT/ENTRY 等，见 design.md §6.8）
+  const sk = attrs[ATTR.GEN_AI_SPAN_KIND];
+  if (typeof sk === "string" && sk.trim() !== "") {
+    const kind = sk.trim().toUpperCase();
+    if (kind === "LLM" || kind === "EMBEDDING") return "GENERATION";
+    return "SPAN";
+  }
+
+  // 5. 工具调用
   if (
     attrs[ATTR.GEN_AI_TOOL_NAME] !== undefined ||
     attrs[ATTR.GEN_AI_TOOL_CALL_ID] !== undefined
@@ -181,7 +209,7 @@ function mapObservationType(
     return "SPAN"; // TOOL 语义暂落在 SPAN.name（见 design.md §6.3）
   }
 
-  // 5. 含模型信息 → generation
+  // 6. 含模型信息 → generation
   if (
     attrs[ATTR.OBS_MODEL] !== undefined ||
     attrs[ATTR.GEN_AI_REQUEST_MODEL] !== undefined ||
@@ -202,11 +230,43 @@ function extractModel(attrs: Record<string, unknown>): string | null {
     ATTR.OBS_MODEL,
     ATTR.GEN_AI_REQUEST_MODEL,
     ATTR.GEN_AI_RESPONSE_MODEL,
+    ATTR.OPENINFERENCE_LLM_MODEL,
   ]) {
     const v = attrs[k];
     if (typeof v === "string" && v.trim() !== "") return v;
   }
   return null;
+}
+
+/** OpenInference 的 input/output.value 是字符串（mime_type 多为 application/json），尝试解码为对象 */
+function decodeOtelValue(
+  v: unknown,
+  mime: unknown,
+): unknown {
+  if (typeof v !== "string") return v;
+  const trimmed = v.trim();
+  if (trimmed === "") return v;
+  const mimeStr = typeof mime === "string" ? mime.toLowerCase() : "";
+  const looksJson =
+    (trimmed.startsWith("{") && trimmed.endsWith("}")) ||
+    (trimmed.startsWith("[") && trimmed.endsWith("]"));
+  if (mimeStr.includes("json") || looksJson) {
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return v;
+    }
+  }
+  return v;
+}
+
+/** 提取 gen_ai.agent.name / gen_ai.workflow.name（空串视为无） */
+function extractSemanticName(
+  attrs: Record<string, unknown>,
+  key: string,
+): string | null {
+  const v = attrs[key];
+  return typeof v === "string" && v.trim() !== "" ? v : null;
 }
 
 function extractIo(
@@ -217,19 +277,30 @@ function extractIo(
 
   if (attrs[ATTR.OBS_INPUT] !== undefined) input = attrs[ATTR.OBS_INPUT];
   else if (attrs[ATTR.GEN_AI_INPUT_MESSAGES] !== undefined)
-    input = attrs[ATTR.GEN_AI_INPUT_MESSAGES];
+    // LoongSuite 等 SDK 可能把 messages 序列化为 JSON 字符串，尝试解码为数组
+    input = decodeOtelValue(attrs[ATTR.GEN_AI_INPUT_MESSAGES], undefined);
   else if (attrs[ATTR.GEN_AI_TOOL_ARGS] !== undefined)
     input = attrs[ATTR.GEN_AI_TOOL_ARGS];
   else if (attrs[ATTR.GEN_AI_PROMPT] !== undefined)
     input = attrs[ATTR.GEN_AI_PROMPT];
+  else if (attrs[ATTR.OPENINFERENCE_INPUT] !== undefined)
+    input = decodeOtelValue(
+      attrs[ATTR.OPENINFERENCE_INPUT],
+      attrs[ATTR.OPENINFERENCE_INPUT_MIME],
+    );
 
   if (attrs[ATTR.OBS_OUTPUT] !== undefined) output = attrs[ATTR.OBS_OUTPUT];
   else if (attrs[ATTR.GEN_AI_OUTPUT_MESSAGES] !== undefined)
-    output = attrs[ATTR.GEN_AI_OUTPUT_MESSAGES];
+    output = decodeOtelValue(attrs[ATTR.GEN_AI_OUTPUT_MESSAGES], undefined);
   else if (attrs[ATTR.GEN_AI_TOOL_RESULT] !== undefined)
     output = attrs[ATTR.GEN_AI_TOOL_RESULT];
   else if (attrs[ATTR.GEN_AI_COMPLETION] !== undefined)
     output = attrs[ATTR.GEN_AI_COMPLETION];
+  else if (attrs[ATTR.OPENINFERENCE_OUTPUT] !== undefined)
+    output = decodeOtelValue(
+      attrs[ATTR.OPENINFERENCE_OUTPUT],
+      attrs[ATTR.OPENINFERENCE_OUTPUT_MIME],
+    );
 
   return { input, output };
 }
@@ -250,13 +321,19 @@ function extractUsage(attrs: Record<string, unknown>): {
     inputTokens ??= asNumber(usageDetails["input"]);
     outputTokens ??= asNumber(usageDetails["output"]);
   }
+  // OpenInference：llm.token_count.{prompt,completion,total}
+  inputTokens ??= asNumber(attrs[ATTR.OPENINFERENCE_LLM_TOKEN_PROMPT]);
+  outputTokens ??= asNumber(attrs[ATTR.OPENINFERENCE_LLM_TOKEN_COMPLETION]);
   const costDetails = asObject(attrs[ATTR.OBS_COST_DETAILS]);
   if (costDetails) totalCost = asNumber(costDetails["total"]);
+  totalCost ??= asNumber(attrs[ATTR.OPENINFERENCE_LLM_COST_TOTAL]);
 
+  // totalTokens 优先级：显式 total > input+output 推算
+  const explicitTotal = asNumber(attrs[ATTR.OPENINFERENCE_LLM_TOKEN_TOTAL]);
   const totalTokens =
-    inputTokens !== null || outputTokens !== null
+    explicitTotal ?? (inputTokens !== null || outputTokens !== null
       ? (inputTokens ?? 0) + (outputTokens ?? 0)
-      : null;
+      : null);
 
   return {
     usage: attrs[ATTR.OBS_USAGE_DETAILS] ?? null,
@@ -360,13 +437,25 @@ export function parseOtelPayload(
     };
     const traceName = firstDefined(ATTR.TRACE_NAME);
     const userId =
-      firstDefined(ATTR.TRACE_USER_ID) ?? firstDefined(ATTR.COMPAT_USER_ID);
+      firstDefined(ATTR.TRACE_USER_ID) ??
+      firstDefined(ATTR.COMPAT_USER_ID) ??
+      firstDefined(ATTR.OPENINFERENCE_USER_ID) ??
+      firstDefined(ATTR.GEN_AI_USER_ID);
     const sessionId =
-      firstDefined(ATTR.TRACE_SESSION_ID) ?? firstDefined(ATTR.COMPAT_SESSION_ID);
+      firstDefined(ATTR.TRACE_SESSION_ID) ??
+      firstDefined(ATTR.COMPAT_SESSION_ID) ??
+      firstDefined(ATTR.OPENINFERENCE_SESSION_ID) ??
+      firstDefined(ATTR.GEN_AI_SESSION_ID);
     const traceInput = firstDefined(ATTR.TRACE_INPUT);
     const traceOutput = firstDefined(ATTR.TRACE_OUTPUT);
     const traceMetadata = firstDefined(ATTR.TRACE_METADATA);
+    // OpenInference：metadata 为 JSON 字符串（精简键），解码后作为 trace 级 metadata
+    const oiMetadata = decodeOtelValue(
+      firstDefined(ATTR.OPENINFERENCE_METADATA),
+      "application/json",
+    );
     const tags = asStringArray(firstDefined(ATTR.TRACE_TAGS));
+    const oiTags = asStringArray(firstDefined(ATTR.OPENINFERENCE_TAGS));
     const environment =
       (firstDefined(ATTR.ENVIRONMENT) as string | undefined) ??
       (root.resourceAttrs["deployment.environment"] as string | undefined) ??
@@ -384,10 +473,24 @@ export function parseOtelPayload(
       userId: typeof userId === "string" && userId !== "" ? userId : null,
       sessionId:
         typeof sessionId === "string" && sessionId !== "" ? sessionId : null,
+      agentName:
+        extractSemanticName(root.attrs, ATTR.GEN_AI_AGENT_NAME) ??
+        extractSemanticName(root.attrs, ATTR.OPENINFERENCE_AGENT_NAME) ??
+        (firstDefined(ATTR.GEN_AI_AGENT_NAME) as string | null) ??
+        (firstDefined(ATTR.OPENINFERENCE_AGENT_NAME) as string | null) ??
+        null,
+      workflowName:
+        extractSemanticName(root.attrs, ATTR.GEN_AI_WORKFLOW_NAME) ??
+        (firstDefined(ATTR.GEN_AI_WORKFLOW_NAME) as string | null) ??
+        null,
+      skillName:
+        extractSemanticName(root.attrs, ATTR.GEN_AI_SKILL_NAME) ??
+        (firstDefined(ATTR.GEN_AI_SKILL_NAME) as string | null) ??
+        null,
       input: traceInput ?? null,
       output: traceOutput ?? null,
-      metadata: traceMetadata ?? null,
-      tags,
+      metadata: traceMetadata ?? oiMetadata ?? null,
+      tags: tags.length > 0 ? tags : oiTags,
     };
     traces.push(trace);
 
@@ -399,7 +502,12 @@ export function parseOtelPayload(
       const obsName =
         (typeof s.attrs[ATTR.GEN_AI_TOOL_NAME] === "string"
           ? (s.attrs[ATTR.GEN_AI_TOOL_NAME] as string)
-          : null) ?? s.span.name ?? null;
+          : null) ??
+        (typeof s.attrs[ATTR.OPENINFERENCE_TOOL_NAME] === "string"
+          ? (s.attrs[ATTR.OPENINFERENCE_TOOL_NAME] as string)
+          : null) ??
+        s.span.name ??
+        null;
 
       observations.push({
         id: s.spanId,
@@ -412,6 +520,11 @@ export function parseOtelPayload(
         startTime: s.startTime,
         endTime: s.endTime,
         model: extractModel(s.attrs),
+        agentName:
+          extractSemanticName(s.attrs, ATTR.GEN_AI_AGENT_NAME) ??
+          extractSemanticName(s.attrs, ATTR.OPENINFERENCE_AGENT_NAME),
+        workflowName: extractSemanticName(s.attrs, ATTR.GEN_AI_WORKFLOW_NAME),
+        skillName: extractSemanticName(s.attrs, ATTR.GEN_AI_SKILL_NAME),
         input,
         output,
         metadata: buildMetadata(s.attrs, s.resourceAttrs),
@@ -436,6 +549,9 @@ export function parseOtelPayload(
           startTime: ev.time,
           endTime: ev.time,
           model: null,
+          agentName: null,
+          workflowName: null,
+          skillName: null,
           input: null,
           output: null,
           metadata: Object.keys(ev.attrs).length > 0 ? ev.attrs : null,
@@ -478,8 +594,13 @@ export async function persistOtelRecords(
           name: t.name,
           timestamp: t.timestamp,
           environment: t.environment,
-          userId: t.userId,
-          sessionId: t.sessionId,
+          // 分批导出（如 SimpleSpanProcessor 逐 span POST）时，后续批次的
+          // root span 可能没有这些语义属性；null 不覆盖已落库的非空值
+          userId: t.userId ?? undefined,
+          sessionId: t.sessionId ?? undefined,
+          agentName: t.agentName ?? undefined,
+          workflowName: t.workflowName ?? undefined,
+          skillName: t.skillName ?? undefined,
           input: t.input ?? Prisma.JsonNull,
           output: t.output ?? Prisma.JsonNull,
           metadata: t.metadata ?? Prisma.JsonNull,
@@ -493,6 +614,9 @@ export async function persistOtelRecords(
           environment: t.environment,
           userId: t.userId,
           sessionId: t.sessionId,
+          agentName: t.agentName,
+          workflowName: t.workflowName,
+          skillName: t.skillName,
           input: t.input ?? Prisma.JsonNull,
           output: t.output ?? Prisma.JsonNull,
           metadata: t.metadata ?? Prisma.JsonNull,
@@ -515,6 +639,9 @@ export async function persistOtelRecords(
           startTime: o.startTime,
           endTime: o.endTime,
           model: o.model,
+          agentName: o.agentName ?? undefined,
+          workflowName: o.workflowName ?? undefined,
+          skillName: o.skillName ?? undefined,
           input: o.input ?? Prisma.JsonNull,
           output: o.output ?? Prisma.JsonNull,
           metadata: o.metadata ?? Prisma.JsonNull,
@@ -535,6 +662,9 @@ export async function persistOtelRecords(
           startTime: o.startTime,
           endTime: o.endTime,
           model: o.model,
+          agentName: o.agentName,
+          workflowName: o.workflowName,
+          skillName: o.skillName,
           input: o.input ?? Prisma.JsonNull,
           output: o.output ?? Prisma.JsonNull,
           metadata: o.metadata ?? Prisma.JsonNull,

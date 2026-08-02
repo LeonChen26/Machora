@@ -16,6 +16,9 @@ export const TraceCreateSchema = z.object({
   environment: z.string().default("default"),
   userId: z.string().nullable().optional(),
   sessionId: z.string().nullable().optional(),
+  agentName: z.string().nullable().optional(),
+  workflowName: z.string().nullable().optional(),
+  skillName: z.string().nullable().optional(),
   input: jsonSchema.nullable().optional(),
   output: jsonSchema.nullable().optional(),
   metadata: z.record(z.string(), z.any()).nullable().optional(),
@@ -39,6 +42,9 @@ export const ObservationCreateSchema = z.object({
   startTime: z.string().datetime(),
   endTime: z.string().datetime().nullable().optional(),
   model: z.string().nullable().optional(),
+  agentName: z.string().nullable().optional(),
+  workflowName: z.string().nullable().optional(),
+  skillName: z.string().nullable().optional(),
   input: jsonSchema.nullable().optional(),
   output: jsonSchema.nullable().optional(),
   metadata: z.record(z.string(), z.any()).nullable().optional(),
@@ -56,7 +62,7 @@ export type ObservationCreate = z.infer<typeof ObservationCreateSchema>;
 export const ScoreDataTypeEnum = z.enum(["NUMERIC", "CATEGORICAL", "BOOLEAN"]);
 export type ScoreDataType = z.infer<typeof ScoreDataTypeEnum>;
 
-export const ScoreSourceEnum = z.enum(["API", "ANNOTATION"]);
+export const ScoreSourceEnum = z.enum(["API", "ANNOTATION", "EVALUATION"]);
 export type ScoreSource = z.infer<typeof ScoreSourceEnum>;
 
 export const ScoreCreateSchema = z.object({

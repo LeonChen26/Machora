@@ -1,0 +1,5 @@
+# langchain-opentelemetry 包已从 PyPI 移除，改用 LangChain 1.x 内置 OTel（langsmith tracing_mode="otel"）
+langchain>=1.3
+langchain-openai>=0.3
+langgraph>=1.2
+langsmith[otel]>=0.10

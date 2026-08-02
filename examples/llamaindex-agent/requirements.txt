@@ -1,0 +1,7 @@
+# LlamaIndex + OpenInference instrumentation 示例依赖
+# 版本策略：宽松下限，与 LlamaIndex 1.x 生态兼容
+llama-index-core>=0.12
+llama-index-llms-openai>=0.3
+openinference-instrumentation-llama-index>=1.0
+opentelemetry-sdk>=1.25
+opentelemetry-exporter-otlp-proto-http>=1.25

@@ -54,6 +54,9 @@ model Trace {
   environment String   @default("default")
   userId      String?
   sessionId   String?
+  agentName   String?
+  workflowName String?
+  skillName   String?
   input       Json?
   output      Json?
   metadata    Json?
@@ -62,6 +65,7 @@ model Trace {
   project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
   observations Observation[]
   scores      Score[]
+  evaluations Evaluation[]
 
   @@index([projectId, timestamp])
   @@index([userId])
@@ -78,6 +82,9 @@ model Observation {
   startTime          DateTime
   endTime            DateTime?
   model              String?
+  agentName          String?
+  workflowName       String?
+  skillName          String?
   input              Json?
   output             Json?
   metadata           Json?
@@ -103,11 +110,34 @@ model Score {
   name          String
   value         Float
   dataType      String // NUMERIC | CATEGORICAL | BOOLEAN
-  source        String // API | ANNOTATION
+  source        String // API | ANNOTATION | EVALUATION
   comment       String?
   timestamp     DateTime @default(now())
   trace         Trace? @relation(fields: [traceId], references: [id], onDelete: Cascade)
 
   @@index([projectId, timestamp])
   @@index([traceId])
+}
+
+// ---------------------------------------------------------------------------
+// 服务端评估任务（Phase 3）
+// ---------------------------------------------------------------------------
+
+model Evaluation {
+  id            String   @id @default(cuid())
+  projectId     String
+  traceId       String
+  name          String // 写回 Score 时的 name
+  evaluatorType String // 内置规则类型；预留 "llm" 等扩展
+  config        Json? // 评估器配置（阈值等）
+  status        String   @default("PENDING") // PENDING | RUNNING | COMPLETED | ERROR
+  error         String?
+  result        Json? // 评估结果摘要（EvaluationResult）
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  trace         Trace @relation(fields: [traceId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+  @@index([traceId])
+  @@index([status])
 }
