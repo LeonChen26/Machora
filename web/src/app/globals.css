@@ -373,6 +373,49 @@ pre.code .s {
 .btn.primary:hover {
   filter: brightness(1.1);
 }
+.btn-sm {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-elev-2);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+.btn-sm:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+.btn-sm:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* 表格行选中详览 */
+.table-wrap tr[data-obs] {
+  cursor: pointer;
+}
+.table-wrap tr[data-obs]:hover {
+  background: var(--bg-elev-2);
+}
+.table-wrap tr[data-obs].selected {
+  background: var(--accent-soft);
+}
+.obs-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.obs-panel-head .spacer {
+  flex: 1;
+}
+.obs-detail-card {
+  max-height: 60vh;
+  overflow: auto;
+}
 
 /* ---------- Detail page ---------- */
 .kv {

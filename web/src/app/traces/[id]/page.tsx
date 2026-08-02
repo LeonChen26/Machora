@@ -12,6 +12,10 @@ import {
   formatCost,
 } from "../../../lib/format";
 import { getCurrentProjectId } from "../../../server/project";
+import {
+  ObservationDetailPanel,
+  type ObservationView,
+} from "../../../components/ObservationDetailPanel";
 
 // 调用树节点：observation + 子节点
 type ObsNode = Observation & { children: ObsNode[] };
@@ -68,6 +72,25 @@ export default async function TraceDetailPage({
   }
   const obsTree = buildObsTree(trace.observations);
 
+  // 序列化后传给 client 面板（Date → ISO 字符串，RSC props 需 JSON 可序列化）
+  const obsViews: ObservationView[] = trace.observations.map((o) => ({
+    id: o.id,
+    name: o.name,
+    type: o.type,
+    level: o.level,
+    model: o.model,
+    startTime: o.startTime.toISOString(),
+    endTime: o.endTime ? o.endTime.toISOString() : null,
+    inputTokens: o.inputTokens,
+    outputTokens: o.outputTokens,
+    totalTokens: o.totalTokens,
+    totalCost: o.totalCost,
+    input: o.input,
+    output: o.output,
+    usage: o.usage,
+    metadata: o.metadata,
+  }));
+
   // Token / 成本汇总
   const totalTokens = trace.observations.reduce(
     (s, o) => s + (o.totalTokens ?? 0),
@@ -115,7 +138,7 @@ export default async function TraceDetailPage({
         `${formatDateTime(o.startTime)} → ${o.endTime ? formatDateTime(o.endTime) : "—"}\n` +
         `耗时 ${formatDuration(dur)}`;
       const row = (
-        <tr key={o.id}>
+        <tr key={o.id} data-obs={o.id}>
           <td>
             <div style={{ paddingLeft: depth * 18 }}>
               <div>{o.name || <span className="mute2">（未命名）</span>}</div>
@@ -319,72 +342,11 @@ export default async function TraceDetailPage({
         </div>
       )}
 
-      {/* Observations 输入输出 */}
+      {/* Observations 输入输出（选中详览：点表格行或 ‹/› 切换） */}
       <div className="section-title">
-        Observation 详情
+        Observation 详情 <span className="count">{trace.observations.length}</span>
       </div>
-      <div className="grid grid-2">
-        {trace.observations.map((o) => (
-          <div className="card" key={o.id}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-              <strong>{o.name || o.id}</strong>
-              <span className={`badge ${o.type === "GENERATION" ? "purple" : o.type === "SPAN" ? "blue" : "amber"}`}>
-                {o.type}
-              </span>
-            </div>
-            <div className="mono mute2" style={{ fontSize: 11, marginBottom: 8 }}>
-              {o.model ? `${o.model} · ` : ""}
-              {formatDateTime(o.startTime)}
-              {o.endTime ? ` → ${formatDateTime(o.endTime)}` : ""}
-            </div>
-            {o.totalTokens != null && o.totalTokens > 0 && (
-              <div style={{ marginBottom: 6, fontSize: 12 }}>
-                <span className="mono">
-                  {formatTokens(o.inputTokens)} in / {formatTokens(o.outputTokens)} out
-                </span>
-                <span className="mono" style={{ color: "var(--green)", marginLeft: 8 }}>
-                  {formatCost(o.totalCost)}
-                </span>
-              </div>
-            )}
-            {o.input != null && (
-              <div style={{ marginBottom: 6 }}>
-                <div className="mute2" style={{ fontSize: 11, marginBottom: 2 }}>
-                  INPUT
-                </div>
-                <div className="json-view">{prettyJson(o.input)}</div>
-              </div>
-            )}
-            {o.output != null && (
-              <div style={{ marginBottom: 6 }}>
-                <div className="mute2" style={{ fontSize: 11, marginBottom: 2 }}>
-                  OUTPUT
-                </div>
-                <div className="json-view">{prettyJson(o.output)}</div>
-              </div>
-            )}
-            {o.usage != null && (
-              <div style={{ marginBottom: 6 }}>
-                <div className="mute2" style={{ fontSize: 11, marginBottom: 2 }}>
-                  USAGE
-                </div>
-                <div className="json-view">{prettyJson(o.usage)}</div>
-              </div>
-            )}
-            {o.metadata != null && (
-              <div>
-                <div className="mute2" style={{ fontSize: 11, marginBottom: 2 }}>
-                  METADATA
-                </div>
-                <div className="json-view">{prettyJson(o.metadata)}</div>
-              </div>
-            )}
-            {o.input == null && o.output == null && o.usage == null && o.metadata == null && (
-              <div className="mute2">无 input/output</div>
-            )}
-          </div>
-        ))}
-      </div>
+      <ObservationDetailPanel observations={obsViews} />
 
       {/* Scores */}
       <div className="section-title">
