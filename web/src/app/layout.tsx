@@ -43,7 +43,7 @@ export default async function RootLayout({
         <div className="shell">
           <aside className="sidebar">
             <div className="brand">
-              <span className="logo">M</span>
+              <img src="/icon.jpg" alt="Machora" className="logo-img" />
               <span className="name">Machora</span>
             </div>
             <ProjectSwitcher projects={projects} currentId={currentId} />

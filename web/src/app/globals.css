@@ -76,6 +76,13 @@ a:hover {
   color: #fff;
   font-size: 14px;
 }
+.brand .logo-img {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  object-fit: cover;
+  display: block;
+}
 .brand .name {
   font-weight: 600;
   letter-spacing: 0.02em;
