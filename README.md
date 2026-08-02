@@ -67,10 +67,6 @@ pnpm workspace monorepo，依赖方向：`standalone → web + worker + shared`�
 
 技术栈：TypeScript · Next.js · tRPC · Prisma · PGlite（进程内 Postgres）· Zod · OpenTelemetry（protobufjs）· bcryptjs
 
-## 文档
-
-- [`design.md`](design.md)：完整设计方案（OTel 接入、Python SDK、三态主题、构建与发布等）
-
 ## 开发命令（仓库根）
 
 ```bash

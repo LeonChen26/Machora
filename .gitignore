@@ -7,6 +7,8 @@ dist/
 .machora-v5/
 .machora-data-bak*/
 .openclaw-home/
+# 本地设计文档，不上传仓库（保留本机）
+design.md
 scripts/npm/
 .env
 *.log
