@@ -9,15 +9,15 @@
 ## 核心能力
 
 - **Traces / Observations / Scores**：SPAN、GENERATION、EVENT 三种观测类型，支持父子调用树与详情选中详览
-- **OTLP 接入**：OpenTelemetry 观测数据直接接入（JSON + protobuf 双通道），OpenClaw、LangChain 1.x（langsmith OTel 模式）等自动上报
-- **批量注入 API**：`POST /api/public/ingestion`，Basic Auth（pk:sk）鉴权，同批事件自动排序建链
+- **OTLP 接入**：`POST /api/public/otel/v1/traces` 接收 OpenTelemetry 数据（JSON + protobuf 双通道），任意 OTLP exporter 可直接上报（示例见 `scripts/connect-openclaw.sh`、`sdk/python/examples/langgraph_demo.py`）
+- **批量注入 API**：`POST /api/public/ingestion`，Basic Auth（pk:sk）鉴权，单批 ≤1000 条、按收到顺序写入（同一批先建 trace 再挂 observation，满足外键依赖）
 - **Python SDK**（`sdk/python`，包名 `machora-sdk`）：原生注入客户端 + LangChain 回调（`MachoraCallbackHandler`）
-- **多租户**：Project 隔离 + API Key 管理（bcrypt 校验）
+- **多租户**：Project 隔离 + API Key 管理（bcryptjs 校验）
 - **Web UI**：概览 / Traces / 模型分析 / Scores / Sessions / Users / Projects / API Keys / 接入文档（三态主题：亮色 / 暗色 / 跟随系统）
 
 ## 快速开始
 
-要求：Node.js ≥ 20、pnpm ≥ 9
+要求：Node.js 与 pnpm workspace（根 `package.json` 的 `devEngines` 指定 pnpm 11.10.0；npm registry 走 npmmirror，见 `.npmrc`）
 
 ```bash
 pnpm install
@@ -45,13 +45,13 @@ pnpm standalone:start   # 生产模式，默认 http://localhost:3100
 
 ## 上报示例
 
-- **Python SDK**（`sdk/python/examples/`）：
-  - `demo.py`：原生注入 + LangChain 回调两种用法
-  - `call_chain_demo.py`：多层嵌套调用链（演示 parentObservationId 层级树）
-  - `langgraph_demo.py`：LangGraph 走 OTel 通道（标准 `OTLPSpanExporter`）
-- **LangGraph 示例 Agent**（`examples/langchain-agent/`）：ReAct agent，零埋点，纯环境变量走 langsmith 内置 OTel
+`sdk/python/examples/`：
 
-上报时把 `MACHORA_HOST`（SDK）或 `OTEL_EXPORTER_OTLP_ENDPOINT`（OTel）指向实例即可。
+- `demo.py`：原生注入 + LangChain 回调两种用法
+- `call_chain_demo.py`：多层嵌套调用链（演示 parentObservationId 层级树）
+- `langgraph_demo.py`：LangGraph 走 OTel 通道（标准 `OTLPSpanExporter`，`openinference.span.kind` 属性映射 SPAN/GENERATION）
+
+上报时把环境变量 `MACHORA_HOST`（默认 `http://localhost:3100`）指向目标实例即可；凭据走 `MACHORA_PUBLIC_KEY` / `MACHORA_SECRET_KEY`。
 
 ## 架构
 
@@ -61,11 +61,11 @@ pnpm workspace monorepo，依赖方向：`standalone → web + worker + shared`�
 |---|---|
 | `packages/shared` | 领域模型（Zod）+ Prisma schema + OTel 解码/解析 + 鉴权 + 队列（单一真源） |
 | `web` | Next.js App Router UI（force-dynamic SSR）+ tRPC + 公共 REST（ingestion / otel / health） |
-| `worker` | 队列处理器（与 web 同进程共享 queueBus，无 Redis） |
+| `worker` | 队列处理器（standalone 进程内注册，共享 queueBus，无 Redis） |
 | `standalone` | 单进程入口：PGlite + Prisma push + seed + Next.js in-process |
 | `sdk/python` | Python SDK（httpx + pydantic，可选 langchain-core） |
 
-技术栈：TypeScript · Next.js · tRPC · Prisma · PGlite（进程内 Postgres）· Zod · OpenTelemetry（protobufjs）· bcrypt
+技术栈：TypeScript · Next.js · tRPC · Prisma · PGlite（进程内 Postgres）· Zod · OpenTelemetry（protobufjs）· bcryptjs
 
 ## 文档
 
