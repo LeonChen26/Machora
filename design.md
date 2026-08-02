@@ -214,6 +214,10 @@ OpenClaw 每次 agent 运行即作为一条 trace（含工具调用/LLM 调用�
   - 方案：`:root`（暗色）+ `html[data-theme="light"]`（亮色）双变量块覆盖全部 CSS 变量，`color-scheme` 同步原生控件；`web/src/components/ThemeToggle.tsx`（侧边栏按钮，☀/🌙/◇ 三态轮换）
   - 防闪烁：`web/src/app/layout.tsx` 内联 `THEME_INIT_SCRIPT`（body 首帧前执行），读 `localStorage["machora-theme"]`（默认 `system`）设置 `document.documentElement.dataset.theme`，`system` 模式监听 `prefers-color-scheme` 变化；暴露 `window.__machoraTheme.current()/cycle()` 供组件调用
   - 验证：production 构建 + 发布包（extracted6，3101）首页 HTML 含 `machora-theme`/`theme-toggle`/`__machoraTheme`，健康检查 200
+- **Observation 详情改为选中详览（2026-08-02）**：对齐 Langfuse 交互，解决长调用链时详情区无限平铺变长的问题：
+  - 移除"每个 observation 一个卡片"的 `grid grid-2` 平铺，改为 `web/src/components/ObservationDetailPanel.tsx`（client 组件，选中详览面板）
+  - 表格行加 `data-obs={id}` 属性（服务端渲染），面板用 document 事件委托捕获点击行 → 高亮该行（`.selected`）+ 面板只显示该条；面板头部 `‹ 上一个 / 下一个 ›` + `x/N` 顺序扫查；卡片 `max-height: 60vh` 内部滚动
+  - 数据经 RSC props 序列化（Date → ISO 字符串）传入 client 组件；格式化复用 `web/src/lib/format.ts`（纯工具，client/server 通用）
 
 ## 8. 里程碑
 
