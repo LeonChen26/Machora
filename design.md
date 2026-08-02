@@ -161,7 +161,9 @@ OpenClaw 每次 agent 运行即作为一条 trace（含工具调用/LLM 调用�
 - **验证**：18/18 unittest 通过（MockTransport 验证排序/Basic Auth/序列化/回调映射）；
   端到端（standalone production）：原生注入的 trace/observation/score 与 LangChain 回调的
   trace 均在 UI 可见
-- **示例**：`sdk/python/examples/demo.py`（原生 + LangChain 两种用法）
+- **示例**：`sdk/python/examples/demo.py`（原生 + LangChain 两种用法）、
+  `langgraph_demo.py`（LangGraph OTel 接入）、`call_chain_demo.py`（多层嵌套调用链：
+  agent → search/plan → chat/embed，演示 parentObservationId 层级树）
 
 ## 7. 实现现状与偏差记录（2026-08-01）
 
