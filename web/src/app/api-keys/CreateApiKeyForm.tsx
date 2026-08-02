@@ -1,7 +1,7 @@
 "use client";
 
 import { useTransition, useState } from "react";
-import { CopyButton } from "./CopyButton";
+import { CopyButton } from "../../components/CopyButton";
 
 export interface CreatedKey {
   id: string;

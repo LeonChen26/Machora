@@ -110,62 +110,52 @@ export default async function SessionDetailPage({
         </div>
       </div>
 
-      {/* Traces 时间线 */}
+      {/* Traces 时间线串联 */}
       <div className="section-title">
         Traces <span className="count">{traces.length}</span>
       </div>
-      <div className="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>时间</th>
-              <th>名称</th>
-              <th>耗时</th>
-              <th>Obs</th>
-              <th>Scores</th>
-              <th>Token</th>
-              <th>成本</th>
-              <th>级别</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map(({ t, dur, tokens, cost, hasError }) => (
-              <tr key={t.id}>
-                <td className="mono muted" style={{ fontSize: 11 }}>
-                  {formatDateTime(t.timestamp)}
-                </td>
-                <td>
+      <div className="card tl">
+        {rows.map(({ t, dur, tokens, cost, hasError }, i) => {
+          const prev = i > 0 ? rows[i - 1].t.timestamp : null;
+          const gapMs = prev ? t.timestamp.getTime() - prev.getTime() : null;
+          return (
+            <div className="tl-item" key={t.id}>
+              <div
+                className="tl-node"
+                style={hasError ? { background: "var(--red)", borderColor: "var(--red)" } : undefined}
+              />
+              <div className="tl-body">
+                <div className="tl-head">
+                  <span className="mono muted" style={{ fontSize: 11 }}>
+                    {formatDateTime(t.timestamp)}
+                  </span>
                   <Link href={`/traces/${t.id}`} prefetch={false}>
                     {t.name || <span className="mute2">（未命名）</span>}
                   </Link>
-                  <div className="mono mute2" style={{ fontSize: 11 }}>{t.id}</div>
-                </td>
-                <td className="mono">{formatDuration(dur)}</td>
-                <td>
-                  <span className="badge blue">{t.observations.length}</span>
-                </td>
-                <td>
-                  {t._count.scores > 0 ? (
-                    <span className="badge amber">{t._count.scores}</span>
-                  ) : (
-                    <span className="mute2">—</span>
+                  {hasError && <span className="badge red">ERROR</span>}
+                </div>
+                <div className="tl-meta">
+                  <span className="mono" style={{ color: dur != null ? "var(--text)" : "var(--text-dim)" }}>
+                    耗时 {formatDuration(dur)}
+                  </span>
+                  <span className="badge blue">{t.observations.length} obs</span>
+                  {t._count.scores > 0 && (
+                    <span className="badge amber">{t._count.scores} score</span>
                   )}
-                </td>
-                <td className="mono">{formatTokens(tokens)}</td>
-                <td className="mono" style={{ color: cost > 0 ? "var(--green)" : undefined }}>
-                  {formatCost(cost)}
-                </td>
-                <td>
-                  {hasError ? (
-                    <span className="badge red">ERROR</span>
-                  ) : (
-                    <span className="badge">DEFAULT</span>
+                  <span className="mono">{formatTokens(tokens)}</span>
+                  <span className="mono" style={{ color: cost > 0 ? "var(--green)" : "var(--text-dim)" }}>
+                    {formatCost(cost)}
+                  </span>
+                  {gapMs != null && (
+                    <span className="mute2" style={{ fontSize: 11 }}>
+                      距上一条 +{formatDuration(gapMs)}
+                    </span>
                   )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {errorCount > 0 && (

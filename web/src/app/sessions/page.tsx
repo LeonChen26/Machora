@@ -11,10 +11,28 @@ import { getCurrentProjectId } from "../../server/project";
 
 export const dynamic = "force-dynamic";
 
-export default async function SessionsPage() {
+const DAY_MS = 24 * 60 * 60 * 1000;
+const DAY_OPTIONS = [0, 7, 30]; // 0 = 全部
+
+export default async function SessionsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const sp = await searchParams;
+  const str = (v: string | string[] | undefined) =>
+    Array.isArray(v) ? v[0] : v;
+  const rawDays = Number.parseInt(str(sp.days) ?? "", 10);
+  const days = DAY_OPTIONS.includes(rawDays) ? rawDays : 0;
+  const since = days > 0 ? new Date(Date.now() - days * DAY_MS) : undefined;
+
   const projectId = await getCurrentProjectId();
   const traces = await prisma.trace.findMany({
-    where: { projectId, sessionId: { not: null } },
+    where: {
+      projectId,
+      sessionId: { not: null },
+      ...(since ? { timestamp: { gte: since } } : {}),
+    },
     select: {
       id: true,
       sessionId: true,
@@ -91,8 +109,23 @@ export default async function SessionsPage() {
           <h1>Sessions</h1>
           <div className="sub">
             按 sessionId 聚合的会话 · 共 {sessions.length} 个
+            {since ? ` · 近 ${days} 天有活动` : ""}
           </div>
         </div>
+      </div>
+
+      {/* 时间窗筛选：仅统计近 N 天有活动的会话 */}
+      <div className="seg" style={{ marginBottom: "1rem" }}>
+        {DAY_OPTIONS.map((d) => (
+          <Link
+            key={d}
+            href={d === 0 ? "/sessions" : `/sessions?days=${d}`}
+            prefetch={false}
+            className={d === days ? "seg-btn active" : "seg-btn"}
+          >
+            {d === 0 ? "全部" : `${d} 天`}
+          </Link>
+        ))}
       </div>
 
       {sessions.length === 0 ? (

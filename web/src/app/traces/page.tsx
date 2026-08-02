@@ -1,6 +1,11 @@
 import { Link } from "../../components/NativeLink";
 import { prisma } from "@machora/shared";
-import { formatRelative, formatDateTime } from "../../lib/format";
+import {
+  formatRelative,
+  formatDateTime,
+  formatTokens,
+  formatCost,
+} from "../../lib/format";
 import { getCurrentProjectId } from "../../server/project";
 
 export const dynamic = "force-dynamic";
@@ -29,7 +34,8 @@ export default async function TracesPage({
   const toStr = str(sp.to);
   const from = fromStr ? new Date(fromStr) : defaults.from;
   const to = toStr ? new Date(toStr) : defaults.to;
-  const cursor = str(sp.cursor);
+  const rawPage = Number.parseInt(str(sp.page) ?? "", 10);
+  const page = rawPage >= 1 ? rawPage : 1;
   const q = str(sp.q)?.trim();
   const userId = str(sp.user)?.trim();
   const sessionId = str(sp.session)?.trim();
@@ -39,6 +45,7 @@ export default async function TracesPage({
     ? tagRaw.split(",").map((s) => s.trim()).filter(Boolean)
     : [];
   const level = str(sp.level)?.trim();
+  const env = str(sp.env)?.trim();
 
   const where = {
     projectId,
@@ -60,17 +67,33 @@ export default async function TracesPage({
     ...(level
       ? { observations: { some: { level } } }
       : {}),
+    ...(env ? { environment: env } : {}),
     ...(tags.length > 0 ? { tags: { hasEvery: tags } } : {}),
   };
+
+  // 环境下拉选项（当前项目去重）
+  const envs = await prisma.trace.findMany({
+    where: { projectId },
+    select: { environment: true },
+    distinct: ["environment"],
+    orderBy: { environment: "asc" },
+  });
 
   const items = await prisma.trace.findMany({
     where,
     orderBy: { timestamp: "desc" },
-    take: PAGE_SIZE + 1,
-    ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+    skip: (page - 1) * PAGE_SIZE,
+    take: PAGE_SIZE,
     include: {
       observations: {
-        select: { model: true, type: true, startTime: true, endTime: true },
+        select: {
+          model: true,
+          type: true,
+          startTime: true,
+          endTime: true,
+          totalTokens: true,
+          totalCost: true,
+        },
         orderBy: { startTime: "asc" },
       },
       scores: {
@@ -83,9 +106,8 @@ export default async function TracesPage({
   });
 
   const total = await prisma.trace.count({ where });
-  const hasNext = items.length > PAGE_SIZE;
-  const shown = hasNext ? items.slice(0, PAGE_SIZE) : items;
-  const nextCursor = hasNext ? items[items.length - 1].id : null;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const shown = items;
 
   // 统计本页 latency（基于 observation 第一个 generation 的耗时）
   function firstGenLatency(t: (typeof shown)[number]): number | null {
@@ -188,6 +210,19 @@ export default async function TracesPage({
         </label>
         <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           <span className="mute2" style={{ fontSize: 12 }}>
+            环境
+          </span>
+          <select name="env" defaultValue={env ?? ""} style={inputStyle}>
+            <option value="">全部</option>
+            {envs.map((e) => (
+              <option key={e.environment} value={e.environment}>
+                {e.environment}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <span className="mute2" style={{ fontSize: 12 }}>
             起始时间
           </span>
           <input
@@ -227,11 +262,14 @@ export default async function TracesPage({
             <thead>
               <tr>
                 <th>名称</th>
+                <th>Agent</th>
                 <th>Trace ID</th>
                 <th>时间</th>
                 <th>用户</th>
                 <th>模型</th>
                 <th>耗时</th>
+                <th>Token</th>
+                <th>成本</th>
                 <th>Obs</th>
                 <th>Score</th>
                 <th>环境</th>
@@ -264,6 +302,18 @@ export default async function TracesPage({
                       )}
                     </td>
                     <td className="mono muted">{t.id}</td>
+                    <td>
+                      {t.agentName ? (
+                        <span className="badge green">{t.agentName}</span>
+                      ) : (
+                        <span className="mute2">—</span>
+                      )}
+                      {t.skillName ? (
+                        <span className="badge" style={{ marginLeft: 4 }}>
+                          {t.skillName}
+                        </span>
+                      ) : null}
+                    </td>
                     <td className="muted" title={formatDateTime(t.timestamp)}>
                       {formatRelative(t.timestamp)}
                     </td>
@@ -297,6 +347,16 @@ export default async function TracesPage({
                         </span>
                       ) : (
                         <span className="mute2">—</span>
+                      )}
+                    </td>
+                    <td className="mono">
+                      {formatTokens(
+                        t.observations.reduce((s, o) => s + (o.totalTokens ?? 0), 0),
+                      )}
+                    </td>
+                    <td className="mono" style={{ color: "var(--green)" }}>
+                      {formatCost(
+                        t.observations.reduce((s, o) => s + (o.totalCost ?? 0), 0),
                       )}
                     </td>
                     <td>
@@ -335,15 +395,32 @@ export default async function TracesPage({
 
       <div className="pager">
         <span className="info">
-          显示 {shown.length} / {total} 条
+          {shown.length === 0
+            ? `0 / ${total} 条 · 第 ${page}/${totalPages} 页`
+            : `显示 ${(page - 1) * PAGE_SIZE + 1}–${(page - 1) * PAGE_SIZE + shown.length} / ${total} 条 · 第 ${page}/${totalPages} 页`}
         </span>
         <div style={{ display: "flex", gap: "0.5rem" }}>
-          {cursor && (
-            <Link className="btn" href="/traces" prefetch={false}>
-              ← 首页
+          {page > 1 && (
+            <Link
+              className="btn"
+              href={`/traces?${buildQuery({
+                from,
+                to,
+                q,
+                userId,
+                sessionId,
+                model,
+                tags,
+                level,
+                env,
+                page: page - 1,
+              })}`}
+              prefetch={false}
+            >
+              ← 上一页
             </Link>
           )}
-          {nextCursor && (
+          {page < totalPages && (
             <Link
               className="btn primary"
               href={`/traces?${buildQuery({
@@ -355,7 +432,8 @@ export default async function TracesPage({
                 model,
                 tags,
                 level,
-                cursor: nextCursor,
+                env,
+                page: page + 1,
               })}`}
               prefetch={false}
             >
@@ -410,7 +488,8 @@ function buildQuery(p: {
   model?: string;
   tags?: string[];
   level?: string;
-  cursor?: string;
+  env?: string;
+  page?: number;
 }): string {
   const params = new URLSearchParams();
   params.set("from", p.from.toISOString());
@@ -421,6 +500,7 @@ function buildQuery(p: {
   if (p.model) params.set("model", p.model);
   if (p.tags && p.tags.length > 0) params.set("tag", p.tags.join(","));
   if (p.level) params.set("level", p.level);
-  if (p.cursor) params.set("cursor", p.cursor);
+  if (p.env) params.set("env", p.env);
+  if (p.page && p.page > 1) params.set("page", String(p.page));
   return params.toString();
 }

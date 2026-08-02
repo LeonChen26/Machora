@@ -1,8 +1,8 @@
 import { prisma } from "@machora/shared";
 import { formatDateTime } from "../../lib/format";
+import { CopyButton } from "../../components/CopyButton";
 import { CreateApiKeyForm } from "./CreateApiKeyForm";
 import { DeleteApiKeyButton } from "./DeleteApiKeyButton";
-import { CopyButton } from "./CopyButton";
 
 export const dynamic = "force-dynamic";
 

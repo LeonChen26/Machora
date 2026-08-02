@@ -171,8 +171,75 @@ export default function DocsPage() {
               <td className="mono">/api/trpc/traces.byId</td>
               <td className="muted">tRPC 单条查询（需 id 参数）</td>
             </tr>
+            <tr>
+              <td><span className="badge blue">POST</span></td>
+              <td className="mono">/api/public/otel/v1/traces</td>
+              <td className="muted">OTLP 注入（JSON / protobuf，Basic Auth）</td>
+            </tr>
+            <tr>
+              <td><span className="badge green">GET</span></td>
+              <td className="mono">/api/public/traces</td>
+              <td className="muted">查询 Trace（时间窗 + 游标分页 + select 字段选择）</td>
+            </tr>
+            <tr>
+              <td><span className="badge green">GET</span></td>
+              <td className="mono">/api/public/observations</td>
+              <td className="muted">查询 Observation（traceId/type/level/model 过滤）</td>
+            </tr>
+            <tr>
+              <td><span className="badge green">GET</span></td>
+              <td className="mono">/api/public/scores</td>
+              <td className="muted">查询 Score（traceId/name 过滤）</td>
+            </tr>
+            <tr>
+              <td><span className="badge blue">POST</span></td>
+              <td className="mono">/api/public/scores</td>
+              <td className="muted">提交 annotation 评分（source 强制 ANNOTATION）</td>
+            </tr>
+            <tr>
+              <td><span className="badge blue">POST</span></td>
+              <td className="mono">/api/public/evaluations</td>
+              <td className="muted">创建服务端评估任务（异步，规则评估器）</td>
+            </tr>
+            <tr>
+              <td><span className="badge green">GET</span></td>
+              <td className="mono">/api/public/evaluations</td>
+              <td className="muted">查询评估任务（traceId/status 过滤）</td>
+            </tr>
           </tbody>
         </table>
+      </div>
+
+      <div className="section-title">查询与评估</div>
+      <div className="card">
+        <div className="muted" style={{ marginBottom: 8 }}>
+          查询 API 对齐 Langfuse 公开 API：Basic Auth 认证，列表返回{" "}
+          <span className="mono">{"{ data, meta: { limit, nextCursor, hasMore, totalCount } }"}</span>{" "}
+          信封；支持时间窗（from/to）、游标分页（limit/cursor）与字段选择（select=name,tags）。示例：
+        </div>
+        <pre className="code">
+{`# 查询近 7 天 Trace（只取部分字段）
+curl -u "${publicKey}:${secretKey}" \\
+  "http://localhost:${port}/api/public/traces?from=${new Date(Date.now() - 7 * 864e5).toISOString()}&select=id,name,tags"
+
+# 提交 annotation 评分
+curl -u "${publicKey}:${secretKey}" \\
+  -X POST http://localhost:${port}/api/public/scores \\
+  -H "Content-Type: application/json" \\
+  -d '{"traceId":"<traceId>","name":"helpfulness","value":0.95,"dataType":"NUMERIC"}'
+
+# 运行服务端评估（error 规则：trace 是否含 ERROR observation）
+curl -u "${publicKey}:${secretKey}" \\
+  -X POST http://localhost:${port}/api/public/evaluations \\
+  -H "Content-Type: application/json" \\
+  -d '{"traceId":"<traceId>","evaluatorType":"error"}'`}
+        </pre>
+        <div className="muted" style={{ marginTop: 8 }}>
+          内置评估器：<span className="mono">error</span> / <span className="mono">latency</span> /{" "}
+          <span className="mono">cost</span> / <span className="mono">token</span> / <span className="mono">tag</span>
+          （阈值经 config 传入，如 {"{ thresholdMs, thresholdUsd, thresholdTokens, tag }"}）；
+          评估结果异步写回 <span className="mono">source=EVALUATION</span> 的 Score。
+        </div>
       </div>
 
       <div className="muted" style={{ marginTop: "1rem" }}>

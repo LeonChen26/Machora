@@ -11,6 +11,8 @@ import {
   formatTokens,
   formatCost,
 } from "../../../lib/format";
+import { CopyButton } from "../../../components/CopyButton";
+import { JsonBlock } from "../../../components/JsonBlock";
 import { getCurrentProjectId } from "../../../server/project";
 import {
   ObservationDetailPanel,
@@ -24,10 +26,17 @@ export const dynamic = "force-dynamic";
 
 export default async function TraceDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { id } = await params;
+  const sp = await searchParams;
+  const str = (v: string | string[] | undefined) =>
+    Array.isArray(v) ? v[0] : v;
+  // 仅显示异常分支（ERROR/WARNING）过滤开关
+  const issuesOnly = str(sp.issues) === "1";
   const projectId = await getCurrentProjectId();
 
   // 用 findFirst + projectId 过滤，防止跨项目直接访问 trace 详情
@@ -72,8 +81,34 @@ export default async function TraceDetailPage({
   }
   const obsTree = buildObsTree(trace.observations);
 
+  // 仅异常模式：剪枝保留 ERROR/WARNING 节点及其祖先链（保留上下文）
+  function filterIssueTree(nodes: ObsNode[]): ObsNode[] {
+    return nodes
+      .map((n) => {
+        const children = filterIssueTree(n.children);
+        const isIssue = n.level === "ERROR" || n.level === "WARNING";
+        return isIssue || children.length > 0 ? { ...n, children } : null;
+      })
+      .filter((n): n is ObsNode => n != null);
+  }
+  const visibleTree = issuesOnly ? filterIssueTree(obsTree) : obsTree;
+
+  // 可见 obs id 集合（过滤后用于面板数据与计数）
+  const visibleIds = new Set<string>();
+  (function flatten(nodes: ObsNode[]) {
+    for (const n of nodes) {
+      visibleIds.add(n.id);
+      flatten(n.children);
+    }
+  })(visibleTree);
+  const issueCount = trace.observations.filter(
+    (o) => o.level === "ERROR" || o.level === "WARNING",
+  ).length;
+
   // 序列化后传给 client 面板（Date → ISO 字符串，RSC props 需 JSON 可序列化）
-  const obsViews: ObservationView[] = trace.observations.map((o) => ({
+  const obsViews: ObservationView[] = trace.observations
+    .filter((o) => visibleIds.has(o.id))
+    .map((o) => ({
     id: o.id,
     name: o.name,
     type: o.type,
@@ -142,8 +177,9 @@ export default async function TraceDetailPage({
           <td>
             <div style={{ paddingLeft: depth * 18 }}>
               <div>{o.name || <span className="mute2">（未命名）</span>}</div>
-              <div className="mono mute2" style={{ fontSize: 11 }}>
+              <div className="mono mute2" style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 4 }}>
                 {o.id}
+                <CopyButton text={o.id} />
               </div>
               <div style={{ marginTop: 2 }}>
                 <span className={`badge ${typeColor}`}>{o.type}</span>
@@ -277,7 +313,12 @@ export default async function TraceDetailPage({
       <div className="card" style={{ marginBottom: "1rem" }}>
         <dl className="kv">
           <dt>Trace ID</dt>
-          <dd className="mono">{trace.id}</dd>
+          <dd className="mono">
+            <span style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem" }}>
+              {trace.id}
+              <CopyButton text={trace.id} />
+            </span>
+          </dd>
           <dt>时间戳</dt>
           <dd className="mono">{formatDateTime(trace.timestamp)}</dd>
           <dt>环境</dt>
@@ -292,6 +333,30 @@ export default async function TraceDetailPage({
               <Link href={`/sessions/${encodeURIComponent(trace.sessionId)}`} prefetch={false}>
                 {trace.sessionId}
               </Link>
+            ) : (
+              <span className="mute2">—</span>
+            )}
+          </dd>
+          <dt>Agent</dt>
+          <dd>
+            {trace.agentName ? (
+              <span className="badge green">{trace.agentName}</span>
+            ) : (
+              <span className="mute2">—</span>
+            )}
+          </dd>
+          <dt>工作流</dt>
+          <dd>
+            {trace.workflowName ? (
+              <span className="badge purple">{trace.workflowName}</span>
+            ) : (
+              <span className="mute2">—</span>
+            )}
+          </dd>
+          <dt>Skill</dt>
+          <dd>
+            {trace.skillName ? (
+              <span className="badge">{trace.skillName}</span>
             ) : (
               <span className="mute2">—</span>
             )}
@@ -314,14 +379,45 @@ export default async function TraceDetailPage({
       </div>
 
       {/* Observations 时间轴 */}
-      <div className="section-title">
-        Observations <span className="count">{trace.observations.length}</span>
+      <div
+        className="section-title"
+        style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}
+      >
+        Observations{" "}
+        <span className="count">
+          {issuesOnly
+            ? `${visibleIds.size} / ${trace.observations.length}`
+            : trace.observations.length}
+        </span>
+        <span className="spacer" />
+        <span className="seg">
+          <Link
+            href={`/traces/${trace.id}`}
+            prefetch={false}
+            className={issuesOnly ? "seg-btn" : "seg-btn active"}
+          >
+            全部
+          </Link>
+          <Link
+            href={`/traces/${trace.id}?issues=1`}
+            prefetch={false}
+            className={issuesOnly ? "seg-btn active" : "seg-btn"}
+          >
+            仅异常
+            {issueCount > 0 && ` (${issueCount})`}
+          </Link>
+        </span>
       </div>
 
       {trace.observations.length === 0 ? (
         <div className="card empty">
           <div className="icon">⌁</div>
           该 Trace 下暂无 Observation。
+        </div>
+      ) : visibleTree.length === 0 ? (
+        <div className="card empty">
+          <div className="icon">⌁</div>
+          无 ERROR / WARNING 分支。
         </div>
       ) : (
         <div className="table-wrap">
@@ -337,14 +433,14 @@ export default async function TraceDetailPage({
                 <th>级别</th>
               </tr>
             </thead>
-            <tbody>{renderObsRows(obsTree, 0)}</tbody>
+            <tbody>{renderObsRows(visibleTree, 0)}</tbody>
           </table>
         </div>
       )}
 
       {/* Observations 输入输出（选中详览：点表格行或 ‹/› 切换） */}
       <div className="section-title">
-        Observation 详情 <span className="count">{trace.observations.length}</span>
+        Observation 详情 <span className="count">{obsViews.length}</span>
       </div>
       <ObservationDetailPanel observations={obsViews} />
 
@@ -419,28 +515,13 @@ export default async function TraceDetailPage({
           <div className="section-title">Trace 元数据</div>
           <div className="grid grid-3">
             {trace.input != null && (
-              <div className="card">
-                <div className="mute2" style={{ fontSize: 11, marginBottom: 4 }}>
-                  INPUT
-                </div>
-                <div className="json-view">{prettyJson(trace.input)}</div>
-              </div>
+              <JsonBlock title="INPUT" json={prettyJson(trace.input)} />
             )}
             {trace.output != null && (
-              <div className="card">
-                <div className="mute2" style={{ fontSize: 11, marginBottom: 4 }}>
-                  OUTPUT
-                </div>
-                <div className="json-view">{prettyJson(trace.output)}</div>
-              </div>
+              <JsonBlock title="OUTPUT" json={prettyJson(trace.output)} />
             )}
             {trace.metadata != null && (
-              <div className="card">
-                <div className="mute2" style={{ fontSize: 11, marginBottom: 4 }}>
-                  METADATA
-                </div>
-                <div className="json-view">{prettyJson(trace.metadata)}</div>
-              </div>
+              <JsonBlock title="METADATA" json={prettyJson(trace.metadata)} />
             )}
           </div>
         </>

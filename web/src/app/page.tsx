@@ -1,6 +1,12 @@
 import { Link } from "../components/NativeLink";
 import { prisma } from "@machora/shared";
-import { formatRelative, formatDateTime, formatDuration } from "../lib/format";
+import {
+  formatRelative,
+  formatDateTime,
+  formatDuration,
+  formatTokens,
+  formatCost,
+} from "../lib/format";
 import { BarChart } from "../components/BarChart";
 import { getCurrentProjectId } from "../server/project";
 
@@ -43,16 +49,22 @@ export default async function Home() {
     }),
     prisma.trace.findMany({
       where: { projectId, timestamp: { gte: trendSince } },
-      select: { timestamp: true },
+      select: { timestamp: true, environment: true },
     }),
     prisma.observation.findMany({
       where: {
         projectId,
         type: "GENERATION",
         startTime: { gte: trendSince },
-        endTime: { not: null },
       },
-      select: { startTime: true, endTime: true },
+      select: {
+        startTime: true,
+        endTime: true,
+        totalTokens: true,
+        totalCost: true,
+        level: true,
+        model: true,
+      },
     }),
   ]);
 
@@ -80,6 +92,33 @@ export default async function Home() {
   const latencyP95 = latencies.length
     ? latencies[Math.min(latencies.length - 1, Math.floor(latencies.length * 0.95))]
     : null;
+
+  // 近 7 天聚合：token / 成本 / 错误率
+  const totalTokens7d = gens7d.reduce((s, g) => s + (g.totalTokens ?? 0), 0);
+  const totalCost7d = gens7d.reduce((s, g) => s + (g.totalCost ?? 0), 0);
+  const errors7d = gens7d.filter((g) => g.level === "ERROR").length;
+  const errorRate7d = gens7d.length ? errors7d / gens7d.length : 0;
+
+  // 按模型分布（近 7 天 generation 调用数）
+  const modelCounts = new Map<string, number>();
+  for (const g of gens7d) {
+    const m = g.model ?? "unknown";
+    modelCounts.set(m, (modelCounts.get(m) ?? 0) + 1);
+  }
+  const modelDist = Array.from(modelCounts.entries())
+    .map(([label, value]) => ({ label: label.length > 14 ? `${label.slice(0, 14)}…` : label, value }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 8);
+
+  // 按环境分布（近 7 天 trace 数）
+  const envCounts = new Map<string, number>();
+  for (const t of trendTraces) {
+    const e = t.environment ?? "unknown";
+    envCounts.set(e, (envCounts.get(e) ?? 0) + 1);
+  }
+  const envDist = Array.from(envCounts.entries())
+    .map(([label, value]) => ({ label, value }))
+    .sort((a, b) => b.value - a.value);
 
   return (
     <>
@@ -115,6 +154,48 @@ export default async function Home() {
           <div className="label">Projects</div>
           <div className="value">{projectCount}</div>
           <div className="hint">{project?.name ?? "—"}</div>
+        </div>
+      </div>
+
+      <div className="section-title">近 {TREND_DAYS} 天聚合</div>
+      <div className="grid grid-4">
+        <div className="card">
+          <div className="label">Generation 调用</div>
+          <div className="value">{gens7d.length}</div>
+          <div className="hint">近 {TREND_DAYS} 天</div>
+        </div>
+        <div className="card">
+          <div className="label">Token 总量</div>
+          <div className="value" style={{ fontSize: 20 }}>
+            {formatTokens(totalTokens7d)}
+          </div>
+          <div className="hint">近 {TREND_DAYS} 天</div>
+        </div>
+        <div className="card">
+          <div className="label">总成本</div>
+          <div className="value" style={{ fontSize: 20, color: "var(--green)" }}>
+            {formatCost(totalCost7d)}
+          </div>
+          <div className="hint">近 {TREND_DAYS} 天</div>
+        </div>
+        <div className="card">
+          <div className="label">错误率</div>
+          <div className="value" style={{ color: "var(--red)" }}>
+            {(errorRate7d * 100).toFixed(1)}%
+          </div>
+          <div className="hint">{errors7d} ERROR · 近 {TREND_DAYS} 天</div>
+        </div>
+      </div>
+
+      <div className="section-title">近 {TREND_DAYS} 天分布</div>
+      <div className="grid grid-2">
+        <div className="card">
+          <div className="label">按模型（调用数）</div>
+          <BarChart data={modelDist} color="var(--purple)" />
+        </div>
+        <div className="card">
+          <div className="label">按环境（trace 数）</div>
+          <BarChart data={envDist} color="var(--accent)" />
         </div>
       </div>
 

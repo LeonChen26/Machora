@@ -393,6 +393,86 @@ pre.code .s {
   cursor: default;
 }
 
+/* ---------- Segmented control ---------- */
+.seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-elev-1);
+}
+.seg-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.3rem 0.8rem;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--text-mute);
+}
+.seg-btn:hover {
+  color: var(--text);
+  text-decoration: none;
+}
+.seg-btn.active {
+  background: var(--accent);
+  color: #fff;
+}
+.seg-btn.active:hover {
+  filter: brightness(1.1);
+}
+
+/* ---------- Timeline ---------- */
+.tl {
+  position: relative;
+  padding: 1rem 1.1rem 0.75rem 2.5rem;
+}
+.tl-item {
+  position: relative;
+  padding-bottom: 1.1rem;
+}
+.tl-item:last-child {
+  padding-bottom: 0.25rem;
+}
+.tl-item::before {
+  content: "";
+  position: absolute;
+  left: -1.35rem;
+  top: 0.5rem;
+  bottom: -0.15rem;
+  width: 2px;
+  background: var(--border);
+}
+.tl-item:last-child::before {
+  display: none;
+}
+.tl-node {
+  position: absolute;
+  left: -1.75rem;
+  top: 0.3rem;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-elev-1);
+  box-sizing: border-box;
+}
+.tl-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.tl-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.3rem;
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+
+
 /* 表格行选中详览 */
 .table-wrap tr[data-obs] {
   cursor: pointer;

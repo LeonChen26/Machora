@@ -3,12 +3,9 @@
 // 选中详览面板：点表格行（data-obs）选中一条 observation，面板只展示该条。
 // 调用链很长时不再把所有 observation 卡片平铺，避免详情区无限变长。
 import { useCallback, useEffect, useState } from "react";
-import {
-  formatCost,
-  formatDateTime,
-  formatTokens,
-  prettyJson,
-} from "../lib/format";
+import { formatCost, formatDateTime, formatTokens } from "../lib/format";
+import { JsonBlock } from "./JsonBlock";
+import { prettyJson } from "../lib/format";
 
 export type ObservationView = {
   id: string;
@@ -128,36 +125,16 @@ export function ObservationDetailPanel({
           </div>
         )}
         {o.input != null && (
-          <div style={{ marginBottom: 6 }}>
-            <div className="mute2" style={{ fontSize: 11, marginBottom: 2 }}>
-              INPUT
-            </div>
-            <div className="json-view">{prettyJson(o.input)}</div>
-          </div>
+          <JsonBlock title="INPUT" json={prettyJson(o.input)} bare />
         )}
         {o.output != null && (
-          <div style={{ marginBottom: 6 }}>
-            <div className="mute2" style={{ fontSize: 11, marginBottom: 2 }}>
-              OUTPUT
-            </div>
-            <div className="json-view">{prettyJson(o.output)}</div>
-          </div>
+          <JsonBlock title="OUTPUT" json={prettyJson(o.output)} bare />
         )}
         {o.usage != null && (
-          <div style={{ marginBottom: 6 }}>
-            <div className="mute2" style={{ fontSize: 11, marginBottom: 2 }}>
-              USAGE
-            </div>
-            <div className="json-view">{prettyJson(o.usage)}</div>
-          </div>
+          <JsonBlock title="USAGE" json={prettyJson(o.usage)} bare />
         )}
         {o.metadata != null && (
-          <div>
-            <div className="mute2" style={{ fontSize: 11, marginBottom: 2 }}>
-              METADATA
-            </div>
-            <div className="json-view">{prettyJson(o.metadata)}</div>
-          </div>
+          <JsonBlock title="METADATA" json={prettyJson(o.metadata)} bare />
         )}
         {o.input == null && o.output == null && o.usage == null && o.metadata == null && (
           <div className="mute2">无 input/output</div>
