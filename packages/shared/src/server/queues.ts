@@ -11,8 +11,16 @@ export const IngestionQueuePayloadSchema = z.object({
 
 export type IngestionQueuePayload = z.infer<typeof IngestionQueuePayloadSchema>;
 
+export const EvaluationQueuePayloadSchema = z.object({
+  projectId: z.string(),
+  evaluationId: z.string(),
+});
+
+export type EvaluationQueuePayload = z.infer<typeof EvaluationQueuePayloadSchema>;
+
 export const QUEUES = {
   ingestion: "ingestion",
+  evaluation: "evaluation",
 } as const;
 
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
