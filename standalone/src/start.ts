@@ -106,13 +106,14 @@ async function runPrismaMigrations(): Promise<void> {
     "schema.prisma",
   );
   // 直接用 prisma binary，避免 pnpm exec 的 deps check
+  // .bin 里 Windows 生成 prisma.CMD，Linux/macOS 生成无扩展名的 prisma
   const prismaBin = resolve(
     root,
     "packages",
     "shared",
     "node_modules",
     ".bin",
-    "prisma.CMD",
+    process.platform === "win32" ? "prisma.CMD" : "prisma",
   );
 
   // 用 async spawn：PGlite 在同进程，spawnSync 会阻塞事件循环导致
@@ -151,7 +152,7 @@ async function runPrismaGenerate(): Promise<void> {
     "shared",
     "node_modules",
     ".bin",
-    "prisma.CMD",
+    process.platform === "win32" ? "prisma.CMD" : "prisma",
   );
 
   console.log("[Prisma] 生成 client...");

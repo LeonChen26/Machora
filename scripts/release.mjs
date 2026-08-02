@@ -150,7 +150,7 @@ rmSync(zipPath, { force: true });
 // 触发 Windows Recent 目录写入（沙箱环境会拦截）
 const r = spawnSync(
   "tar",
-  ["-a", "-c", "-f", zipPath, "-C", staging, "."],
+  ["-a", "-c", "-f", `.release/${name}.zip`, "-C", `.release/${name}`, "."],
   { cwd: root, encoding: "utf8" },
 );
 if (r.status !== 0) {
@@ -164,7 +164,5 @@ console.log(`\n  发布包: ${zipPath}`);
 console.log(`  大小  : ${(statSync(zipPath).size / 1024 / 1024).toFixed(1)} MB`);
 console.log("");
 console.log("发布指引：");
-console.log("  1) 本地/内网分发：解压 zip → pnpm install --frozen-lockfile → start.cmd");
-console.log("  2) npm 发布（可选，需先登录 npm）:");
-console.log("     pnpm -F @machora/shared publish --access public   # 库包（OTel 解码/解析）");
-console.log("     # 完整应用 npm 包方案：见 design.md §9 发布与分发");
+console.log("  解压 zip → pnpm install --frozen-lockfile → start.cmd");
+console.log("  （发布形态仅完整应用发布包；npm/pip 发布已放弃，见 design.md §9）");

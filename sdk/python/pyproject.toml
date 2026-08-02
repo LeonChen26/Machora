@@ -6,13 +6,22 @@ build-backend = "hatchling.build"
 name = "machora-sdk"
 version = "0.1.0"
 description = "Machora observability Python SDK: ingest traces, observations and scores"
-readme = { text = "Machora Python SDK. See docs in machora/__init__.py.", content-type = "text/plain" }
+readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = "MIT"
+keywords = ["llm", "observability", "agent", "tracing", "opentelemetry", "langchain"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+]
 dependencies = [
   "httpx>=0.27",
   "pydantic>=2.7",
 ]
+urls = { Repository = "https://github.com/LeonChen26/Machroa" }
 
 [project.optional-dependencies]
 langchain = ["langchain-core>=0.3"]
