@@ -17,7 +17,7 @@
 - **批量注入 API**：`POST /api/public/ingestion`，Basic Auth（pk:sk）鉴权，单批 ≤1000 条、按收到顺序写入（同一批先建 trace 再挂 observation，满足外键依赖）；支持 `parentObservationId` 构建嵌套调用树
 - **Python SDK**（`sdk/python`，包名 `machora-sdk`）：原生注入客户端 + LangChain 回调（`MachoraCallbackHandler`）
 - **多租户**：Project 隔离 + API Key 管理（bcryptjs 校验）
-- **Web UI**：概览 / Traces / Generations / 模型分析 / Scores / Sessions / Users / Projects / API Keys / 接入文档（三态主题：亮色 / 暗色 / 跟随系统；异常行高亮、SVG 导航图标、统一过滤表单）
+- **Web UI**：Overview / Traces / Generations / Analytics / Scores / Sessions / Users / Projects / API Keys / Docs（三态主题：亮色 / 暗色 / 跟随系统；异常行高亮、SVG 导航图标、统一过滤表单、CSV 导出）
 
 ## 快速开始
 
@@ -34,7 +34,7 @@ pnpm standalone:start   # 生产模式，默认 http://localhost:3100
 
 | 项 | 值 |
 |---|---|
-| Project | `project-standalone` |
+| Project | `Machora Project`（id: `project-standalone`） |
 | Public Key | `pk-machora-dev-000000000000000000000` |
 | Secret Key | `sk-machora-dev-000000000000000000000` |
 | 管理员账号 | `admin@machora.local` / 由 `MACHORA_INIT_USER_PASSWORD` 指定（部署时建议显式设置） |
