@@ -41,6 +41,8 @@ export const ObservationCreateSchema = z.object({
   name: z.string().nullable().optional(),
   startTime: z.string().datetime(),
   endTime: z.string().datetime().nullable().optional(),
+  // 父 observation id（构建嵌套调用树；父须为同一 trace 内已存在的 observation）
+  parentObservationId: z.string().nullable().optional(),
   model: z.string().nullable().optional(),
   agentName: z.string().nullable().optional(),
   workflowName: z.string().nullable().optional(),

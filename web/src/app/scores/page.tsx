@@ -85,6 +85,35 @@ export default async function ScoresPage({
     })),
   }));
 
+  // 按名称 × 天的时间走势（仅 NUMERIC，日均值；全部时回退最近 30 天）
+  const trendStart = since ?? new Date(Date.now() - 30 * DAY_MS);
+  const byNameTrend = new Map<
+    string,
+    Map<string, { sum: number; count: number }>
+  >();
+  for (const s of aggScores) {
+    if (s.dataType !== "NUMERIC" || s.timestamp < trendStart) continue;
+    const dayStart = new Date(
+      Math.floor(s.timestamp.getTime() / DAY_MS) * DAY_MS,
+    );
+    const dayKey = `${dayStart.getMonth() + 1}/${dayStart.getDate()}`;
+    const m = byNameTrend.get(s.name) ?? new Map<string, { sum: number; count: number }>();
+    const e = m.get(dayKey) ?? { sum: 0, count: 0 };
+    e.sum += s.value;
+    e.count++;
+    m.set(dayKey, e);
+    byNameTrend.set(s.name, m);
+  }
+  const trends = Array.from(byNameTrend.entries()).map(([name, m]) => ({
+    name,
+    data: Array.from(m.entries())
+      .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+      .map(([dayKey, e]) => ({
+        label: dayKey,
+        value: Math.round((e.sum / e.count) * 1000) / 1000,
+      })),
+  }));
+
   function buildQuery(opts: { name?: string; days: number; cursor?: string }): string {
     const params = new URLSearchParams();
     if (opts.days > 0) params.set("days", String(opts.days));
@@ -175,6 +204,18 @@ export default async function ScoresPage({
               </div>
             ))}
           </div>
+
+          <div className="section-title">
+            时间走势 <span className="count">日均值 / 天</span>
+          </div>
+          <div className="grid grid-4">
+            {trends.map(({ name, data }) => (
+              <div className="card" key={name}>
+                <div className="label">{name}</div>
+                <BarChart data={data} height={110} color="var(--green)" emptyText="暂无走势数据" />
+              </div>
+            ))}
+          </div>
         </>
       )}
 
@@ -223,7 +264,7 @@ export default async function ScoresPage({
                           ? s.value
                             ? "✓"
                             : "✗"
-                          : String(s.value)}
+                          : (s.comment?.split("|")[0]?.trim() || "—")}
                     </span>
                   </td>
                   <td>

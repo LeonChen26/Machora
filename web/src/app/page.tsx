@@ -36,6 +36,7 @@ export default async function Home() {
     recentTraces,
     trendTraces,
     gens7d,
+    topTraces,
   ] = await Promise.all([
     projectId
       ? prisma.project.findUnique({ where: { id: projectId } })
@@ -68,6 +69,24 @@ export default async function Home() {
         level: true,
         model: true,
       },
+    }),
+    prisma.trace.findMany({
+      where: { projectId, timestamp: { gte: trendSince } },
+      take: 200,
+      select: {
+        id: true,
+        name: true,
+        observations: {
+          select: {
+            totalCost: true,
+            totalTokens: true,
+            startTime: true,
+            endTime: true,
+            level: true,
+          },
+        },
+      },
+      orderBy: { timestamp: "desc" },
     }),
   ]);
 
@@ -123,6 +142,27 @@ export default async function Home() {
     .map(([label, value]) => ({ label, value }))
     .sort((a, b) => b.value - a.value);
 
+  // Top N：近 7 天最贵 / 最慢 traces
+  const topStats = topTraces.map((t) => {
+    const cost = t.observations.reduce((s, o) => s + (o.totalCost ?? 0), 0);
+    const starts = t.observations.map((o) => o.startTime.getTime());
+    const ends = t.observations.map((o) =>
+      o.endTime ? o.endTime.getTime() : o.startTime.getTime(),
+    );
+    const latency = starts.length
+      ? Math.max(...ends) - Math.min(...starts)
+      : null;
+    return { t, cost, latency };
+  });
+  const topCost = topStats
+    .filter((x) => x.cost > 0)
+    .sort((a, b) => b.cost - a.cost)
+    .slice(0, 5);
+  const topLatency = topStats
+    .filter((x) => x.latency != null)
+    .sort((a, b) => (b.latency ?? 0) - (a.latency ?? 0))
+    .slice(0, 5);
+
   return (
     <>
       <div className="page-head">
@@ -138,7 +178,7 @@ export default async function Home() {
       </div>
 
       <div className="grid grid-4">
-        <div className="card">
+        <div className="card" style={{ borderLeft: "3px solid var(--accent)" }}>
           <div className="label">Traces</div>
           <div className="value">{traceCount}</div>
           <div className="hint">总记录数</div>
@@ -237,6 +277,60 @@ export default async function Home() {
             </div>
           </div>
           <div className="hint">基于 generation 类型 observation 的 endTime − startTime</div>
+        </div>
+      </div>
+
+      <div className="section-title">Top 5（近 {TREND_DAYS} 天）</div>
+      <div className="grid grid-2">
+        <div className="card">
+          <div className="label">最贵</div>
+          {topCost.length === 0 ? (
+            <div className="mute2" style={{ padding: "0.5rem 0" }}>
+              暂无成本数据
+            </div>
+          ) : (
+            topCost.map((x) => (
+              <div key={x.t.id} className="stat-list-item">
+                <Link href={`/traces/${x.t.id}`} prefetch={false}>
+                  {x.t.name || <span className="mute2">{x.t.id}</span>}
+                </Link>
+                <span className="mono" style={{ color: "var(--green)", fontSize: 12, whiteSpace: "nowrap" }}>
+                  {formatCost(x.cost)}
+                </span>
+              </div>
+            ))
+          )}
+        </div>
+        <div className="card">
+          <div className="label">最慢</div>
+          {topLatency.length === 0 ? (
+            <div className="mute2" style={{ padding: "0.5rem 0" }}>
+              暂无耗时数据
+            </div>
+          ) : (
+            topLatency.map((x) => (
+              <div key={x.t.id} className="stat-list-item">
+                <Link href={`/traces/${x.t.id}`} prefetch={false}>
+                  {x.t.name || <span className="mute2">{x.t.id}</span>}
+                </Link>
+                <span
+                  className="mono"
+                  style={{
+                    fontSize: 12,
+                    whiteSpace: "nowrap",
+                    color:
+                      (x.latency ?? 0) >= 8000
+                        ? "var(--red)"
+                        : (x.latency ?? 0) >= 2000
+                          ? "var(--amber)"
+                          : "var(--green)",
+                  }}
+                >
+                  {formatDuration(x.latency)}
+                </span>
+              </div>
+            ))
+          )}
         </div>
       </div>
 

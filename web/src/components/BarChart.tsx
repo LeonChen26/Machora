@@ -63,6 +63,7 @@ export function BarChart({
             }}
           >
             <div
+              className="barchart-bar"
               title={`${d.label}: ${d.value}`}
               style={{
                 width: "100%",
@@ -71,7 +72,7 @@ export function BarChart({
                 background: color,
                 borderRadius: "4px 4px 0 0",
                 opacity: d.value > 0 ? 1 : 0.15,
-                transition: "height 0.2s",
+                transition: "height 0.2s, opacity 0.15s ease, filter 0.15s ease",
               }}
             />
           </div>

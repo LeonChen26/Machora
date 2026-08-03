@@ -14,6 +14,7 @@ import {
 import { CopyButton } from "../../../components/CopyButton";
 import { requireUser } from "../../../server/session";
 import { JsonBlock } from "../../../components/JsonBlock";
+import ScoreForm from "../../../components/ScoreForm";
 import { getCurrentProjectId } from "../../../server/project";
 import {
   ObservationDetailPanel,
@@ -40,6 +41,13 @@ export default async function TraceDetailPage({
     Array.isArray(v) ? v[0] : v;
   // 仅显示异常分支（ERROR/WARNING）过滤开关
   const issuesOnly = str(sp.issues) === "1";
+  // Langfuse 式 tab：tree / chat / scores / metadata
+  const TAB_KEYS = ["tree", "chat", "scores", "metadata"] as const;
+  type TabKey = (typeof TAB_KEYS)[number];
+  const tabRaw = str(sp.tab)?.trim();
+  const tab: TabKey = TAB_KEYS.includes(tabRaw as TabKey)
+    ? (tabRaw as TabKey)
+    : "tree";
   const projectId = await getCurrentProjectId();
 
   // 用 findFirst + projectId 过滤，防止跨项目直接访问 trace 详情
@@ -108,6 +116,59 @@ export default async function TraceDetailPage({
     (o) => o.level === "ERROR" || o.level === "WARNING",
   ).length;
 
+  // 对话视图：从 GENERATION 的 input/output.messages 提取消息流（按时间序）
+  interface ChatMsg {
+    id: string;
+    role: string;
+    content: string;
+    model: string | null;
+    obsName: string | null;
+  }
+  const ROLE_LABEL: Record<string, string> = {
+    user: "用户",
+    assistant: "助手",
+    system: "系统",
+    tool: "工具",
+    function: "工具",
+  };
+  function collectChatMessages(observations: Observation[]): ChatMsg[] {
+    const out: ChatMsg[] = [];
+    for (const o of observations) {
+      if (o.type !== "GENERATION") continue;
+      let idx = 0;
+      for (const src of [o.input, o.output]) {
+        if (!src || typeof src !== "object" || Array.isArray(src)) continue;
+        const messages = (src as Record<string, unknown>).messages;
+        if (!Array.isArray(messages)) continue;
+        for (const item of messages) {
+          if (!item || typeof item !== "object") continue;
+          const it = item as Record<string, unknown>;
+          const role = typeof it.role === "string" ? it.role : "unknown";
+          let content: string;
+          if (typeof it.content === "string") content = it.content;
+          else if (it.content == null) content = "";
+          else content = prettyJson(it.content);
+          if (Array.isArray(it.tool_calls) && it.tool_calls.length > 0) {
+            content = (content ? content + "\n\n" : "") + "⚙ tool_calls: " + prettyJson(it.tool_calls);
+          }
+          out.push({
+            id: `${o.id}#${idx++}`,
+            role,
+            content,
+            model: o.model,
+            obsName: o.name,
+          });
+        }
+      }
+    }
+    return out;
+  }
+  const chatMessages = collectChatMessages(trace.observations);
+  const chatRoleClass = (role: string): string =>
+    role === "user" || role === "system" || role === "tool" || role === "function"
+      ? role === "function" ? "tool" : role
+      : "assistant";
+
   // 序列化后传给 client 面板（Date → ISO 字符串，RSC props 需 JSON 可序列化）
   const obsViews: ObservationView[] = trace.observations
     .filter((o) => visibleIds.has(o.id))
@@ -139,6 +200,15 @@ export default async function TraceDetailPage({
     0,
   );
   const costCount = trace.observations.filter((o) => o.totalCost != null).length;
+  // 异常计数与平均分（聚合指标卡）
+  const errorCount = trace.observations.filter((o) => o.level === "ERROR").length;
+  const warningCount = trace.observations.filter(
+    (o) => o.level === "WARNING",
+  ).length;
+  const numericScores = trace.scores.filter((s) => s.dataType === "NUMERIC");
+  const avgScore = numericScores.length
+    ? numericScores.reduce((s, sc) => s + sc.value, 0) / numericScores.length
+    : null;
 
   function barPos(start: Date, end: Date | null): { left: number; width: number } {
     const s = start.getTime();
@@ -170,7 +240,6 @@ export default async function TraceDetailPage({
               : o.type === "SPAN"
                 ? "var(--accent)"
                 : "var(--amber)";
-      const showLabel = pos.width > 18;
       const barTip =
         `${o.name || o.id}\n` +
         `${formatDateTime(o.startTime)} → ${o.endTime ? formatDateTime(o.endTime) : "—"}\n` +
@@ -178,48 +247,25 @@ export default async function TraceDetailPage({
       const row = (
         <tr key={o.id} data-obs={o.id}>
           <td>
-            <div style={{ paddingLeft: depth * 18 }}>
-              <div>{o.name || <span className="mute2">（未命名）</span>}</div>
-              <div className="mono mute2" style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 4 }}>
-                {o.id}
+            <div style={{ paddingLeft: depth * 18, display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+              <span>{o.name || <span className="mute2">（未命名）</span>}</span>
+              <span className={`badge ${typeColor}`}>{o.type}</span>
+              {o.model && (
+                <span className="mono mute2" style={{ fontSize: 11 }}>{o.model}</span>
+              )}
+              <span className="mono mute2" style={{ fontSize: 11, display: "inline-flex", alignItems: "center", gap: 2 }} title={o.id}>
+                {o.id.slice(0, 8)}
                 <CopyButton text={o.id} />
-              </div>
-              <div style={{ marginTop: 2 }}>
-                <span className={`badge ${typeColor}`}>{o.type}</span>
-              </div>
+              </span>
             </div>
           </td>
-          <td>
-            {o.model ? (
-              <span className="badge purple">{o.model}</span>
-            ) : (
-              <span className="mute2">—</span>
-            )}
-          </td>
-          <td className="mono muted" style={{ fontSize: 11 }}>
-            {formatDateTime(o.startTime)}
-          </td>
           <td className="mono">{formatDuration(dur)}</td>
-          <td>
-            {o.totalTokens != null && o.totalTokens > 0 ? (
-              <>
-                <div className="mono" style={{ fontSize: 12 }}>
-                  {formatTokens(o.totalTokens)}
-                </div>
-                <div className="mono" style={{ fontSize: 11, color: "var(--green)" }}>
-                  {formatCost(o.totalCost)}
-                </div>
-              </>
-            ) : (
-              <span className="mute2">—</span>
-            )}
-          </td>
           <td>
             <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
               <div
                 style={{
                   position: "relative",
-                  height: 16,
+                  height: 14,
                   background: "var(--bg-elev-2)",
                   borderRadius: 4,
                 }}
@@ -235,25 +281,8 @@ export default async function TraceDetailPage({
                     background: barColor,
                     borderRadius: 4,
                     opacity: 0.75,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    overflow: "hidden",
                   }}
-                >
-                  {showLabel && (
-                    <span
-                      style={{
-                        fontSize: 9,
-                        color: "#fff",
-                        whiteSpace: "nowrap",
-                        fontFamily: "var(--mono)",
-                      }}
-                    >
-                      {formatDuration(dur)}
-                    </span>
-                  )}
-                </div>
+                />
               </div>
               {/* 相对时间刻度：0 / 50% / 总耗时 */}
               <div style={{ position: "relative", height: 11 }}>
@@ -312,75 +341,117 @@ export default async function TraceDetailPage({
         </Link>
       </div>
 
-      {/* 基本信息 */}
-      <div className="card" style={{ marginBottom: "1rem" }}>
-        <dl className="kv">
-          <dt>Trace ID</dt>
-          <dd className="mono">
-            <span style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem" }}>
-              {trace.id}
-              <CopyButton text={trace.id} />
-            </span>
-          </dd>
-          <dt>时间戳</dt>
-          <dd className="mono">{formatDateTime(trace.timestamp)}</dd>
-          <dt>环境</dt>
-          <dd>
-            <span className="badge">{trace.environment}</span>
-          </dd>
-          <dt>用户</dt>
-          <dd className="mono">{trace.userId || <span className="mute2">—</span>}</dd>
-          <dt>会话</dt>
-          <dd className="mono">
-            {trace.sessionId ? (
-              <Link href={`/sessions/${encodeURIComponent(trace.sessionId)}`} prefetch={false}>
-                {trace.sessionId}
-              </Link>
-            ) : (
-              <span className="mute2">—</span>
-            )}
-          </dd>
-          <dt>Agent</dt>
-          <dd>
-            {trace.agentName ? (
-              <span className="badge green">{trace.agentName}</span>
-            ) : (
-              <span className="mute2">—</span>
-            )}
-          </dd>
-          <dt>工作流</dt>
-          <dd>
-            {trace.workflowName ? (
-              <span className="badge purple">{trace.workflowName}</span>
-            ) : (
-              <span className="mute2">—</span>
-            )}
-          </dd>
-          <dt>Skill</dt>
-          <dd>
-            {trace.skillName ? (
-              <span className="badge">{trace.skillName}</span>
-            ) : (
-              <span className="mute2">—</span>
-            )}
-          </dd>
-          <dt>标签</dt>
-          <dd>
-            {trace.tags.length > 0 ? (
-              trace.tags.map((t) => (
-                <span key={t} className="badge" style={{ marginRight: 4 }}>
-                  {t}
-                </span>
-              ))
-            ) : (
-              <span className="mute2">—</span>
-            )}
-          </dd>
-          <dt>总跨度</dt>
-          <dd className="mono">{formatDuration(traceEnd - traceStart)}</dd>
-        </dl>
+      {/* 聚合指标卡 */}
+      <div
+        style={{
+          display: "flex",
+          gap: "0.75rem",
+          flexWrap: "wrap",
+          marginBottom: "1rem",
+        }}
+      >
+        <div className="card" style={{ flex: "1 1 150px" }}>
+          <div className="label">总耗时</div>
+          <div className="value" style={{ fontSize: 18 }}>
+            {formatDuration(traceEnd - traceStart)}
+          </div>
+          <div className="hint">trace 时间跨度</div>
+        </div>
+        <div className="card" style={{ flex: "1 1 150px" }}>
+          <div className="label">总 Token</div>
+          <div className="value" style={{ fontSize: 18 }}>
+            {formatTokens(totalTokens)}
+          </div>
+          <div className="hint">{trace.observations.length} obs 合计</div>
+        </div>
+        <div className="card" style={{ flex: "1 1 150px" }}>
+          <div className="label">总成本</div>
+          <div className="value" style={{ fontSize: 18, color: "var(--green)" }}>
+            {formatCost(totalCost)}
+          </div>
+          <div className="hint">{costCount} 个 obs 含成本</div>
+        </div>
+        <div
+          className="card"
+          style={{
+            flex: "1 1 150px",
+            borderColor: errorCount > 0 ? "var(--red)" : undefined,
+            boxShadow: errorCount > 0 ? "0 0 0 1px var(--red) inset" : undefined,
+          }}
+        >
+          <div className="label">异常</div>
+          <div
+            className="value"
+            style={{ fontSize: 18, color: errorCount > 0 ? "var(--red)" : undefined }}
+          >
+            {errorCount > 0 ? `${errorCount} ERROR` : "0 ERROR"}
+          </div>
+          <div className="hint">{warningCount} WARNING</div>
+        </div>
+        <div className="card" style={{ flex: "1 1 150px" }}>
+          <div className="label">平均分</div>
+          <div
+            className="value"
+            style={{
+              fontSize: 18,
+              color:
+                avgScore == null
+                  ? undefined
+                  : avgScore >= 0.8
+                    ? "var(--green)"
+                    : avgScore >= 0.5
+                      ? "var(--amber)"
+                      : "var(--red)",
+            }}
+          >
+            {avgScore != null ? avgScore.toFixed(3) : "—"}
+          </div>
+          <div className="hint">
+            {numericScores.length} 个 NUMERIC 评分
+          </div>
+        </div>
       </div>
 
+      {/* Langfuse 式 Tab 分区 */}
+      <div className="detail-tabs">
+        <Link
+          href={`/traces/${id}${issuesOnly ? "?issues=1" : ""}`}
+          prefetch={false}
+          className={tab === "tree" ? "tab active" : "tab"}
+        >
+          调用树
+          <span className="count">{trace.observations.length}</span>
+        </Link>
+        <Link
+          href={`/traces/${id}?tab=chat`}
+          prefetch={false}
+          className={tab === "chat" ? "tab active" : "tab"}
+        >
+          对话
+          <span className="count">{chatMessages.length}</span>
+        </Link>
+        <Link
+          href={`/traces/${id}?tab=scores`}
+          prefetch={false}
+          className={tab === "scores" ? "tab active" : "tab"}
+        >
+          评分
+          <span className="count">{trace.scores.length}</span>
+        </Link>
+        <Link
+          href={`/traces/${id}?tab=metadata`}
+          prefetch={false}
+          className={tab === "metadata" ? "tab active" : "tab"}
+        >
+          元数据
+        </Link>
+      </div>
+
+      {/* tab=tree：左树右详情（Langfuse 式） */}
+      {tab === "tree" && (
+        <>
+        <div className="tree-layout">
+          <div className="tree-col">
       {/* Observations 时间轴 */}
       <div
         className="section-title"
@@ -427,12 +498,9 @@ export default async function TraceDetailPage({
           <table>
             <thead>
               <tr>
-                <th style={{ width: 200 }}>名称 / 类型</th>
-                <th>模型</th>
-                <th>开始</th>
+                <th>名称 / 类型</th>
                 <th>耗时</th>
-                <th>Token / 成本</th>
-                <th style={{ width: "30%" }}>时间轴</th>
+                <th style={{ width: "32%" }}>时间轴</th>
                 <th>级别</th>
               </tr>
             </thead>
@@ -440,17 +508,28 @@ export default async function TraceDetailPage({
           </table>
         </div>
       )}
+          </div>
+          <div className="panel-col">
+            <ObservationDetailPanel observations={obsViews} />
+          </div>
+        </div>
+        </>
+      )}
 
-      {/* Observations 输入输出（选中详览：点表格行或 ‹/› 切换） */}
-      <div className="section-title">
-        Observation 详情 <span className="count">{obsViews.length}</span>
-      </div>
-      <ObservationDetailPanel observations={obsViews} />
-
+      {/* tab=scores：评分 */}
+      {tab === "scores" && (
+        <>
       {/* Scores */}
       <div className="section-title">
         Scores <span className="count">{trace.scores.length}</span>
       </div>
+      <ScoreForm
+        traceId={trace.id}
+        observations={trace.observations.map((o) => ({
+          id: o.id,
+          name: o.name ?? o.id,
+        }))}
+      />
       {trace.scores.length === 0 ? (
         <div className="card empty">
           <div className="icon">★</div>
@@ -492,7 +571,7 @@ export default async function TraceDetailPage({
                           ? s.value
                             ? "✓"
                             : "✗"
-                          : String(s.value)}
+                          : (s.comment?.split("|")[0]?.trim() || "—")}
                     </span>
                   </td>
                   <td>
@@ -511,24 +590,148 @@ export default async function TraceDetailPage({
           </table>
         </div>
       )}
-
-      {/* Trace input/output/metadata */}
-      {(trace.input != null || trace.output != null || trace.metadata != null) && (
-        <>
-          <div className="section-title">Trace 元数据</div>
-          <div className="grid grid-3">
-            {trace.input != null && (
-              <JsonBlock title="INPUT" json={prettyJson(trace.input)} />
-            )}
-            {trace.output != null && (
-              <JsonBlock title="OUTPUT" json={prettyJson(trace.output)} />
-            )}
-            {trace.metadata != null && (
-              <JsonBlock title="METADATA" json={prettyJson(trace.metadata)} />
-            )}
-          </div>
         </>
       )}
+
+      {/* tab=chat：对话视图（Langfuse 式独立 Tab） */}
+      {tab === "chat" && (
+        <>
+      <div className="section-title">
+        对话 <span className="count">{chatMessages.length}</span>
+      </div>
+      {chatMessages.length === 0 ? (
+        <div className="card empty">
+          <div className="icon">◉</div>
+          该 Trace 无对话消息（GENERATION 需带 input/output.messages）。
+        </div>
+      ) : (
+        <div className="card chat-view" style={{ maxHeight: "none" }}>
+          {chatMessages.map((m) => (
+            <div key={m.id} className={`chat-msg chat-${chatRoleClass(m.role)}`}>
+              <div className="chat-head">
+                <span className="badge">{ROLE_LABEL[m.role] ?? m.role}</span>
+                {m.model && <span className="badge purple">{m.model}</span>}
+                {m.obsName && <span className="chat-obs">{m.obsName}</span>}
+              </div>
+              <div className="chat-content">
+                {m.content || <span className="mute2">（空）</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+        </>
+      )}
+
+      {/* tab=metadata：元数据（Trace 属性 + input/output/metadata） */}
+      {tab === "metadata" && (
+        <>
+      <div className="section-title">元数据</div>
+      <div className="card" style={{ marginBottom: "1rem" }}>
+        <dl className="kv">
+          <dt>Trace ID</dt>
+          <dd className="mono">
+            <span style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem" }}>
+              {trace.id}
+              <CopyButton text={trace.id} />
+            </span>
+          </dd>
+          <dt>时间戳</dt>
+          <dd className="mono">{formatDateTime(trace.timestamp)}</dd>
+          <dt>环境</dt>
+          <dd>
+            <Link href={`/traces?env=${encodeURIComponent(trace.environment)}`} prefetch={false}>
+              <span className="badge">{trace.environment}</span>
+            </Link>
+          </dd>
+          <dt>用户</dt>
+          <dd className="mono">
+            {trace.userId ? (
+              <Link href={`/traces?user=${encodeURIComponent(trace.userId)}`} prefetch={false}>
+                {trace.userId}
+              </Link>
+            ) : (
+              <span className="mute2">—</span>
+            )}
+          </dd>
+          <dt>会话</dt>
+          <dd className="mono">
+            {trace.sessionId ? (
+              <Link href={`/sessions/${encodeURIComponent(trace.sessionId)}`} prefetch={false}>
+                {trace.sessionId}
+              </Link>
+            ) : (
+              <span className="mute2">—</span>
+            )}
+          </dd>
+          <dt>Agent</dt>
+          <dd>
+            {trace.agentName ? (
+              <Link href={`/traces?agent=${encodeURIComponent(trace.agentName)}`} prefetch={false}>
+                <span className="badge green">{trace.agentName}</span>
+              </Link>
+            ) : (
+              <span className="mute2">—</span>
+            )}
+          </dd>
+          <dt>工作流</dt>
+          <dd>
+            {trace.workflowName ? (
+              <span className="badge purple">{trace.workflowName}</span>
+            ) : (
+              <span className="mute2">—</span>
+            )}
+          </dd>
+          <dt>Skill</dt>
+          <dd>
+            {trace.skillName ? (
+              <span className="badge">{trace.skillName}</span>
+            ) : (
+              <span className="mute2">—</span>
+            )}
+          </dd>
+          <dt>标签</dt>
+          <dd>
+            {trace.tags.length > 0 ? (
+              trace.tags.map((t) => (
+                <Link
+                  key={t}
+                  href={`/traces?tag=${encodeURIComponent(t)}`}
+                  prefetch={false}
+                  style={{ marginRight: 4 }}
+                >
+                  <span className="badge">{t}</span>
+                </Link>
+              ))
+            ) : (
+              <span className="mute2">—</span>
+            )}
+          </dd>
+          <dt>总跨度</dt>
+          <dd className="mono">{formatDuration(traceEnd - traceStart)}</dd>
+        </dl>
+      </div>
+      {(trace.input != null || trace.output != null || trace.metadata != null) ? (
+        <div className="grid grid-3">
+          {trace.input != null && (
+            <JsonBlock title="TRACE INPUT" json={prettyJson(trace.input)} />
+          )}
+          {trace.output != null && (
+            <JsonBlock title="TRACE OUTPUT" json={prettyJson(trace.output)} />
+          )}
+          {trace.metadata != null && (
+            <JsonBlock title="TRACE METADATA" json={prettyJson(trace.metadata)} />
+          )}
+        </div>
+      ) : (
+        <div className="card empty">
+          <div className="icon">⌁</div>
+          该 Trace 无 input / output / metadata。
+        </div>
+      )}
+        </>
+      )}
+
     </>
   );
 }

@@ -69,6 +69,7 @@ export async function POST(req: Request) {
             projectId,
             type: event.body.type,
             name: event.body.name ?? null,
+            parentObservationId: event.body.parentObservationId ?? null,
             startTime: new Date(event.body.startTime),
             endTime: event.body.endTime ? new Date(event.body.endTime) : null,
             model: event.body.model ?? null,

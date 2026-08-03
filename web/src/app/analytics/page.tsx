@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { prisma } from "@machora/shared";
 import { formatDuration, formatTokens, formatCost } from "../../lib/format";
 import { StackedBarChart } from "../../components/StackedBarChart";
+import { BarChart } from "../../components/BarChart";
 import { getCurrentProjectId } from "../../server/project";
 import { requireUser } from "../../server/session";
 
@@ -14,6 +15,7 @@ const METRICS = [
   { key: "count", label: "调用量" },
   { key: "tokens", label: "Token" },
   { key: "cost", label: "成本" },
+  { key: "latency", label: "延迟(avg)" },
 ] as const;
 type MetricKey = (typeof METRICS)[number]["key"];
 
@@ -124,6 +126,7 @@ export default async function AnalyticsPage({
       const dayMap = perDay.get(key) ?? new Map<string, ModelStat>();
       const ds = dayMap.get(model) ?? emptyStat();
       ds.count++;
+      if (g.endTime) ds.latencies.push(g.endTime.getTime() - g.startTime.getTime());
       ds.tokens += g.totalTokens ?? 0;
       ds.cost += g.totalCost ?? 0;
       dayMap.set(model, ds);
@@ -247,10 +250,35 @@ export default async function AnalyticsPage({
               ? s.count
               : metric === "tokens"
                 ? s.tokens
-                : s.cost,
+                : metric === "latency"
+                  ? s.latencies.length
+                    ? Math.round(
+                        s.latencies.reduce((x, y) => x + y, 0) /
+                          s.latencies.length,
+                      )
+                    : 0
+                  : s.cost,
         }))
         .filter((x) => x.value > 0),
     };
+  });
+
+  // 延迟直方图（当前窗口，分桶）
+  const LATENCY_BUCKETS: { label: string; max: number }[] = [
+    { label: "<100ms", max: 100 },
+    { label: "<250ms", max: 250 },
+    { label: "<500ms", max: 500 },
+    { label: "<1s", max: 1000 },
+    { label: "<2s", max: 2000 },
+    { label: "<5s", max: 5000 },
+    { label: "≥5s", max: Infinity },
+  ];
+  const histData = LATENCY_BUCKETS.map((b, i) => {
+    const prevMax = i === 0 ? 0 : LATENCY_BUCKETS[i - 1].max;
+    const count = totalLatencies.filter(
+      (l) => l > prevMax && l <= b.max,
+    ).length;
+    return { label: b.label, value: count };
   });
 
   const metricLabel = METRICS.find((m) => m.key === metric)?.label ?? "调用量";
@@ -392,6 +420,13 @@ export default async function AnalyticsPage({
       </div>
       <div className="card">
         <StackedBarChart data={trend} emptyText={`近 ${days} 天暂无 generation 调用`} />
+      </div>
+
+      <div className="section-title">
+        延迟分布 <span className="count">当前窗口 · {totalLatencies.length} 次调用</span>
+      </div>
+      <div className="card">
+        <BarChart data={histData} color="var(--purple)" emptyText="暂无延迟数据" />
       </div>
 
       <div className="section-title">
