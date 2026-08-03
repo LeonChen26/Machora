@@ -728,3 +728,134 @@ pre.code .s {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--border);
 }
+
+/* ---------------------------------------------------------------------------
+ * 移动端适配（手机/窄屏）：sidebar 折叠为顶部横条，表格横向滚动
+ * ------------------------------------------------------------------------- */
+@media (max-width: 768px) {
+  .shell {
+    display: block;
+  }
+
+  .sidebar {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    height: auto;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.5rem 0.6rem;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-right: none;
+    border-bottom: 1px solid var(--border-soft);
+    flex-wrap: nowrap;
+  }
+  .sidebar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .brand {
+    flex-shrink: 0;
+    margin: 0;
+    padding: 0 0.4rem 0 0;
+    border-bottom: none;
+  }
+  .brand .name {
+    display: none;
+  }
+  .brand .logo-img {
+    width: 24px;
+    height: 24px;
+  }
+
+  .project-switcher {
+    flex-shrink: 0;
+    margin: 0;
+    padding: 0;
+    border-bottom: none;
+  }
+  .project-select {
+    width: auto;
+    max-width: 120px;
+    font-size: 12px;
+    padding: 0.3rem 0.4rem;
+  }
+
+  .nav-section {
+    display: none;
+  }
+
+  .nav-link {
+    flex-shrink: 0;
+    white-space: nowrap;
+    font-size: 12px;
+    padding: 0.4rem 0.5rem;
+  }
+
+  .sidebar-user {
+    flex-shrink: 0;
+    margin: 0;
+    padding: 0.3rem 0.4rem;
+    border: none;
+    background: transparent;
+  }
+  .sidebar-user .user-mail {
+    display: none;
+  }
+  .sidebar-user .user-name {
+    font-size: 12px;
+  }
+  .logout-btn {
+    font-size: 13px;
+  }
+
+  .theme-toggle {
+    width: auto;
+    margin: 0;
+    flex-shrink: 0;
+    font-size: 12px;
+    padding: 0.4rem 0.5rem;
+  }
+
+  .main {
+    padding: 0.85rem 0.75rem 3.5rem;
+  }
+
+  .page-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.6rem;
+  }
+  .page-head .actions,
+  .page-head > div:last-child {
+    width: 100%;
+  }
+
+  .grid-2 {
+    grid-template-columns: 1fr;
+  }
+
+  /* 表格：允许横向滚动，避免列被裁剪 */
+  .table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .seg {
+    flex-wrap: wrap;
+  }
+
+  .card {
+    padding: 0.85rem 0.9rem;
+  }
+
+  .kv {
+    grid-template-columns: 1fr;
+    gap: 0.15rem 0;
+  }
+  .kv dt {
+    margin-top: 0.4rem;
+  }
+}
