@@ -12,6 +12,7 @@ import {
   formatCost,
 } from "../../../lib/format";
 import { CopyButton } from "../../../components/CopyButton";
+import { requireUser } from "../../../server/session";
 import { JsonBlock } from "../../../components/JsonBlock";
 import { getCurrentProjectId } from "../../../server/project";
 import {
@@ -31,6 +32,8 @@ export default async function TraceDetailPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  await requireUser();
+
   const { id } = await params;
   const sp = await searchParams;
   const str = (v: string | string[] | undefined) =>

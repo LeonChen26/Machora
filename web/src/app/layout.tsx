@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Link } from "../components/NativeLink";
 import { getProjectContext } from "../server/project";
+import { getSessionUser } from "../server/session";
 import { ProjectSwitcher } from "../components/ProjectSwitcher";
 import { ThemeToggle } from "../components/ThemeToggle";
 import "./globals.css";
@@ -61,6 +62,7 @@ export default async function RootLayout({
   children: React.ReactNode;
 }) {
   const { projects, currentId } = await getProjectContext();
+  const user = await getSessionUser();
 
   return (
     <html lang="zh-CN" suppressHydrationWarning>
@@ -85,6 +87,19 @@ export default async function RootLayout({
             <NavItem href="/api-keys" label="API Keys" icon="⚿" />
             <div className="nav-section">接入</div>
             <NavItem href="/docs" label="接入文档" icon="?" />
+            {user && (
+              <div className="sidebar-user">
+                <div className="user-meta">
+                  <div className="user-name">{user.name ?? "Admin"}</div>
+                  <div className="user-mail">{user.email}</div>
+                </div>
+                <form action="/api/auth/logout" method="post">
+                  <button type="submit" className="logout-btn" title="退出登录">
+                    ⏻
+                  </button>
+                </form>
+              </div>
+            )}
             <ThemeToggle />
           </aside>
           <main className="main">{children}</main>

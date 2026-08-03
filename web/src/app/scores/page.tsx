@@ -3,6 +3,7 @@ import { prisma } from "@machora/shared";
 import { formatRelative, formatDateTime } from "../../lib/format";
 import { BarChart } from "../../components/BarChart";
 import { getCurrentProjectId } from "../../server/project";
+import { requireUser } from "../../server/session";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +26,8 @@ export default async function ScoresPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  await requireUser();
+
   const sp = await searchParams;
   const str = (v: string | string[] | undefined) =>
     Array.isArray(v) ? v[0] : v;

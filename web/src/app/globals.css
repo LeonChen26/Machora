@@ -160,6 +160,117 @@ a:hover {
   border-color: var(--border);
 }
 
+/* ---------- Sidebar user / logout ---------- */
+.sidebar-user {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  margin-top: 1rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  background: var(--bg-elev-2);
+}
+.sidebar-user .user-meta {
+  flex: 1;
+  min-width: 0;
+}
+.sidebar-user .user-name {
+  font-size: 13px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sidebar-user .user-mail {
+  font-size: 11px;
+  color: var(--text-mute);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.logout-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-mute);
+  font-size: 15px;
+  cursor: pointer;
+  padding: 0.25rem 0.35rem;
+  border-radius: 5px;
+  line-height: 1;
+}
+.logout-btn:hover {
+  color: var(--red);
+  background: rgba(248, 113, 113, 0.1);
+}
+
+/* ---------- Login page ---------- */
+.login-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(1200px 600px at 50% -10%, var(--accent-soft), transparent),
+    var(--bg);
+}
+.login-card {
+  width: min(360px, calc(100vw - 3rem));
+  padding: 2rem 1.75rem;
+}
+.login-brand {
+  text-align: center;
+  margin-bottom: 1.5rem;
+}
+.login-brand .logo-img {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  margin-bottom: 0.5rem;
+}
+.login-title {
+  font-size: 20px;
+  font-weight: 600;
+}
+.login-card .field {
+  display: block;
+  margin-bottom: 0.9rem;
+}
+.login-card .field span {
+  display: block;
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 0.3rem;
+}
+.login-card input {
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-elev);
+  color: var(--text);
+  font: inherit;
+}
+.login-card input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.login-error {
+  margin: 0.6rem 0 0.9rem;
+  padding: 0.45rem 0.65rem;
+  border-radius: 6px;
+  background: rgba(248, 113, 113, 0.12);
+  color: var(--red);
+  font-size: 13px;
+}
+.login-card .btn {
+  width: 100%;
+  margin-top: 0.3rem;
+}
+
 .nav-link {
   display: flex;
   align-items: center;

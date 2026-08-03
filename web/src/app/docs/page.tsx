@@ -1,8 +1,10 @@
 import { Link } from "../../components/NativeLink";
+import { requireUser } from "../../server/session";
 
 export const dynamic = "force-dynamic";
 
-export default function DocsPage() {
+export default async function DocsPage() {
+  await requireUser();
   const port = process.env.PORT ?? "3000";
   const publicKey = process.env.MACHORA_INIT_PROJECT_PUBLIC_KEY ?? "pk-machora-dev-000000000000000000000";
   const secretKey = process.env.MACHORA_INIT_PROJECT_SECRET_KEY ?? "sk-machora-dev-000000000000000000000";

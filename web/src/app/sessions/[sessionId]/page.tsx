@@ -8,6 +8,7 @@ import {
   formatCost,
 } from "../../../lib/format";
 import { getCurrentProjectId } from "../../../server/project";
+import { requireUser } from "../../../server/session";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,8 @@ export default async function SessionDetailPage({
 }: {
   params: Promise<{ sessionId: string }>;
 }) {
+  await requireUser();
+
   const { sessionId } = await params;
   const projectId = await getCurrentProjectId();
 

@@ -4,12 +4,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@machora/shared";
+import { getApiUser } from "../../../server/session";
 
 const CreateSchema = z.object({
   name: z.string().trim().min(1, "请输入项目名称").max(60),
 });
 
 export async function POST(req: NextRequest) {
+  if (!(await getApiUser())) {
+    return NextResponse.json({ error: "未登录" }, { status: 401 });
+  }
+
   let body: unknown;
   try {
     body = await req.json();
@@ -32,6 +37,10 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  if (!(await getApiUser())) {
+    return NextResponse.json({ error: "未登录" }, { status: 401 });
+  }
+
   const id = new URL(req.url).searchParams.get("id");
   if (!id) {
     return NextResponse.json({ error: "缺少 id" }, { status: 400 });

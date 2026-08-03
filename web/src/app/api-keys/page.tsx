@@ -3,10 +3,12 @@ import { formatDateTime } from "../../lib/format";
 import { CopyButton } from "../../components/CopyButton";
 import { CreateApiKeyForm } from "./CreateApiKeyForm";
 import { DeleteApiKeyButton } from "./DeleteApiKeyButton";
+import { requireUser } from "../../server/session";
 
 export const dynamic = "force-dynamic";
 
 export default async function ApiKeysPage() {
+  await requireUser();
   const [keys, projects] = await Promise.all([
     prisma.apiKey.findMany({
       orderBy: { createdAt: "desc" },

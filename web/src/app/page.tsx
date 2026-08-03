@@ -9,6 +9,7 @@ import {
 } from "../lib/format";
 import { BarChart } from "../components/BarChart";
 import { getCurrentProjectId } from "../server/project";
+import { requireUser } from "../server/session";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const TREND_DAYS = 7;
 
 export default async function Home() {
+  await requireUser();
+
   const port = process.env.PORT ?? "3000";
   const projectId = await getCurrentProjectId();
 

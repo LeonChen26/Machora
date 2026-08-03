@@ -2,6 +2,7 @@ import { Link } from "../../components/NativeLink";
 import { prisma } from "@machora/shared";
 import { formatDateTime, formatRelative } from "../../lib/format";
 import { getCurrentProjectId } from "../../server/project";
+import { requireUser } from "../../server/session";
 import { CreateProjectForm } from "./CreateProjectForm";
 import { DeleteProjectButton } from "./DeleteProjectButton";
 import { EnterProjectButton } from "./EnterProjectButton";
@@ -9,6 +10,7 @@ import { EnterProjectButton } from "./EnterProjectButton";
 export const dynamic = "force-dynamic";
 
 export default async function ProjectsPage() {
+  await requireUser();
   const [projects, currentId, obsGroups, scoreGroups] = await Promise.all([
     prisma.project.findMany({
       orderBy: { createdAt: "desc" },

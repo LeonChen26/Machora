@@ -10,6 +10,7 @@ import {
   formatCost,
 } from "../../../lib/format";
 import { getCurrentProjectId } from "../../../server/project";
+import { requireUser } from "../../../server/session";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,8 @@ export default async function AgentDrilldownPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  await requireUser();
+
   const sp = await searchParams;
   const str = (v: string | string[] | undefined) =>
     Array.isArray(v) ? v[0] : v;

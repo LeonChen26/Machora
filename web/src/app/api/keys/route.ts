@@ -7,6 +7,7 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "@machora/shared";
 import { generateApiKey } from "../../../server/apiKeys";
+import { getApiUser } from "../../../server/session";
 
 const CreateBodySchema = z.object({
   name: z.string().trim().max(60).optional().or(z.literal("")),
@@ -14,6 +15,10 @@ const CreateBodySchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  if (!(await getApiUser())) {
+    return NextResponse.json({ error: "未登录" }, { status: 401 });
+  }
+
   let body: unknown;
   try {
     body = await req.json();
@@ -53,6 +58,10 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  if (!(await getApiUser())) {
+    return NextResponse.json({ error: "未登录" }, { status: 401 });
+  }
+
   const id = new URL(req.url).searchParams.get("id");
   if (!id) {
     return NextResponse.json({ error: "缺少 id" }, { status: 400 });

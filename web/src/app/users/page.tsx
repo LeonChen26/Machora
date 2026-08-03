@@ -7,10 +7,12 @@ import {
   formatCost,
 } from "../../lib/format";
 import { getCurrentProjectId } from "../../server/project";
+import { requireUser } from "../../server/session";
 
 export const dynamic = "force-dynamic";
 
 export default async function UsersPage() {
+  await requireUser();
   const projectId = await getCurrentProjectId();
   const traces = await prisma.trace.findMany({
     where: { projectId, userId: { not: null } },
