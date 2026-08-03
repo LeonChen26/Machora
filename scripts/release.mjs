@@ -146,10 +146,15 @@ writeFileSync(
 // ---------------------------------------------------------------------------
 step("3/4 打包 zip");
 rmSync(zipPath, { force: true });
-// 用系统 tar（libarchive，Windows 10+ 自带）打 zip；避免 PowerShell Compress-Archive
-// 触发 Windows Recent 目录写入（沙箱环境会拦截）
+// 用系统 tar（libarchive，Windows 10+ 自带 System32\tar.exe）打 zip；避免 PowerShell
+// Compress-Archive 触发 Windows Recent 目录写入（沙箱环境会拦截）。
+// 注意：必须显式指定 System32 tar —— PATH 里的 tar 可能是 Git 的 GNU tar（不支持 -a zip）。
+const tarBin =
+  process.platform === "win32"
+    ? resolve(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe")
+    : "tar";
 const r = spawnSync(
-  "tar",
+  tarBin,
   ["-a", "-c", "-f", `.release/${name}.zip`, "-C", `.release/${name}`, "."],
   { cwd: root, encoding: "utf8" },
 );
