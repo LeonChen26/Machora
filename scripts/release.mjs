@@ -63,6 +63,7 @@ copy("package.json");
 copy("pnpm-workspace.yaml");
 copy("pnpm-lock.yaml");
 copy("turbo.json");
+copy(".env.example"); // 目标机配置参考（.env 需自行创建）
 
 // workspace 包：源码 + dist + prisma schema（start.ts 运行时会 db push）
 copy("packages/shared/package.json", "packages/shared/package.json");
@@ -134,6 +135,9 @@ writeFileSync(
     "  PORT    Web 端口，默认 3100",
     "  PG_PORT PGlite 端口，默认 5434",
     "  DATA_DIR 数据目录，默认 standalone/.machora-data",
+    "",
+    "管理员凭据：应用根目录存在 .env 时自动加载（可参考 .env.example 复制改名）。",
+    "  MACHORA_INIT_USER_PASSWORD 管理员初始密码，建议设置；未设置时首次启动随机生成并打印在日志",
     "",
     "开发模式（热重载）：",
     "  pnpm dev",

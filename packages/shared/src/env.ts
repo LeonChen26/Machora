@@ -13,7 +13,8 @@ export const envSchema = z.object({
   MACHORA_INIT_PROJECT_PUBLIC_KEY: z.string(),
   MACHORA_INIT_PROJECT_SECRET_KEY: z.string(),
   MACHORA_INIT_USER_EMAIL: z.string().default("admin@machora.local"),
-  MACHORA_INIT_USER_PASSWORD: z.string().default("admin123"),
+  // 不设默认值：standalone 从 .env 读取；未配置时 seed 随机生成并打印
+  MACHORA_INIT_USER_PASSWORD: z.string().optional(),
   MACHORA_INIT_USER_NAME: z.string().default("Admin"),
 
   NEXTAUTH_URL: z.string().default("http://localhost:3000"),

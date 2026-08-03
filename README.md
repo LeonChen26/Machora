@@ -33,7 +33,7 @@ pnpm standalone:start   # 生产模式，默认 http://localhost:3100
 | Project | `project-standalone` |
 | Public Key | `pk-machora-dev-000000000000000000000` |
 | Secret Key | `sk-machora-dev-000000000000000000000` |
-| 管理员账号 | `admin@machora.local` / `admin123` |
+| 管理员账号 | `admin@machora.local` / 由 `MACHORA_INIT_USER_PASSWORD` 指定（部署时建议显式设置） |
 
 常用环境变量（可选）：
 
@@ -42,6 +42,9 @@ pnpm standalone:start   # 生产模式，默认 http://localhost:3100
 | `PORT` | `3100` | Web 端口 |
 | `PG_PORT` | `5434` | PGlite 端口 |
 | `DATA_DIR` | `./.machora-data` | 数据目录（删除即清空） |
+| `MACHORA_INIT_USER_PASSWORD` | 无 | 管理员初始密码（建议在应用目录 `.env` 中设置；未设置时首次启动随机生成并打印在日志） |
+
+应用根目录（`start.cmd` / `node standalone/dist/start.js` 所在目录）存在 `.env` 文件时自动加载，可参考 `.env.example` 复制改名。`MACHORA_SESSION_SECRET` 不设置时自动持久化到 `DATA_DIR/session-secret`。
 
 ## 上报示例
 

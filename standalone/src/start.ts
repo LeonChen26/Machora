@@ -9,13 +9,18 @@
 
 import { spawn } from "node:child_process";
 import { resolve } from "node:path";
-import { cpSync, existsSync, mkdirSync, readdirSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 import { createRequire } from "node:module";
 import { createServer, type Server } from "node:http";
 
 // ---------------------------------------------------------------------------
 // 配置
 // ---------------------------------------------------------------------------
+
+// 模块加载即读 .env（函数声明提升，可提前调用）：确保下方 DATA_DIR/PG_PORT/
+// PORT 计算及后续 setupEnvironment 都能拿到 .env 中的值。
+loadDotEnv();
 
 const DATA_DIR = process.env.DATA_DIR ?? "./.machora-data";
 // 端口说明：本机 .wslconfig 启用了 networkingMode=mirrored，WSL 与 Windows 共享
@@ -29,6 +34,35 @@ const WEB_PORT = parseInt(process.env.PORT ?? "3100", 10);
 // 环境变量注入
 // ---------------------------------------------------------------------------
 
+// 从应用根目录（cwd）读取 .env 文件。手写轻量解析：KEY=VALUE、# 注释、
+// 单双引号、空行忽略；已存在的进程环境变量优先，不覆盖。
+function loadDotEnv(): void {
+  const envPath = resolve(process.cwd(), ".env");
+  if (!existsSync(envPath)) return;
+  let raw: string;
+  try {
+    raw = readFileSync(envPath, "utf8");
+  } catch {
+    return;
+  }
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eq = trimmed.indexOf("=");
+    if (eq <= 0) continue;
+    const key = trimmed.slice(0, eq).trim();
+    let value = trimmed.slice(eq + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    if (key && process.env[key] === undefined) process.env[key] = value;
+  }
+  console.log(`[env] 已加载 ${envPath}`);
+}
+
 function setupEnvironment(): void {
   const defaults: Record<string, string> = {
     DATABASE_URL: `postgresql://postgres:postgres@127.0.0.1:${PG_PORT}/postgres?sslmode=disable&connection_limit=5`,
@@ -36,12 +70,12 @@ function setupEnvironment(): void {
     NEXTAUTH_SECRET: "machora-standalone-dev-secret-do-not-use-in-production",
     PORT: String(WEB_PORT),
     NODE_ENV: "development",
-    // seed 凭据
+    // seed 凭据（MACHORA_INIT_USER_PASSWORD 不设默认值：优先读 .env，
+    // 未配置时 seed 随机生成，见 seedStandaloneData）
     MACHORA_INIT_PROJECT_NAME: "Machora Project",
     MACHORA_INIT_PROJECT_PUBLIC_KEY: "pk-machora-dev-000000000000000000000",
     MACHORA_INIT_PROJECT_SECRET_KEY: "sk-machora-dev-000000000000000000000",
     MACHORA_INIT_USER_EMAIL: "admin@machora.local",
-    MACHORA_INIT_USER_PASSWORD: "admin123",
     MACHORA_INIT_USER_NAME: "Admin",
     // prisma engine 镜像（避开 npmjs 网络问题）
     PRISMA_ENGINES_MIRROR: "https://registry.npmmirror.com/-/binary/prisma",
@@ -220,6 +254,13 @@ async function ensureNextPrismaClientCopy(): Promise<void> {
 // Seed 默认数据
 // ---------------------------------------------------------------------------
 
+// 生成随机强密码（字母+数字，避免 shell/env 转义问题）
+function generateRandomPassword(length = 16): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+  const bytes = randomBytes(length);
+  return Array.from(bytes, (b) => chars[b % chars.length]).join("");
+}
+
 async function seedStandaloneData(): Promise<void> {
   const bcryptjs = (await import("bcryptjs")).default;
   const { prisma } = await import("@machora/shared");
@@ -228,8 +269,8 @@ async function seedStandaloneData(): Promise<void> {
   const publicKey = process.env.MACHORA_INIT_PROJECT_PUBLIC_KEY!;
   const secretKey = process.env.MACHORA_INIT_PROJECT_SECRET_KEY!;
   const email = process.env.MACHORA_INIT_USER_EMAIL!;
-  const password = process.env.MACHORA_INIT_USER_PASSWORD!;
   const userName = process.env.MACHORA_INIT_USER_NAME!;
+  const password = process.env.MACHORA_INIT_USER_PASSWORD;
 
   // 1. Project
   const project = await prisma.project.upsert({
@@ -252,15 +293,31 @@ async function seedStandaloneData(): Promise<void> {
   }
 
   // 3. User
-  let user = await prisma.user.findUnique({ where: { email } });
-  if (!user) {
-    const passwordHash = await bcryptjs.hash(password, 12);
-    user = await prisma.user.create({
-      data: { email, passwordHash, name: userName },
-    });
-    console.log("[Seed] User 已创建:", email);
+  // - 配置了 MACHORA_INIT_USER_PASSWORD：upsert 同步密码（部署后凭据与配置一致）
+  // - 未配置：仅首次创建时生成随机密码并打印（已存在用户保持原密码不变）
+  const effectivePassword =
+    password ?? generateRandomPassword(16);
+  const passwordHash = await bcryptjs.hash(effectivePassword, 12);
+  const isNewUser =
+    (await prisma.user.findUnique({ where: { email } })) === null;
+  let user = await prisma.user.upsert({
+    where: { email },
+    update: password
+      ? { passwordHash, name: userName }
+      : { name: userName },
+    create: { email, passwordHash, name: userName },
+  });
+  console.log("[Seed] User 已就绪:", email);
+  if (password) {
+    console.log("[Seed] 管理员密码来自 MACHORA_INIT_USER_PASSWORD（.env）");
+  } else if (isNewUser) {
+    console.warn(
+      `[Seed] 未配置 MACHORA_INIT_USER_PASSWORD，已生成随机管理员密码（仅本次打印，请立即保存并在 .env 中固定）：\n      ${effectivePassword}`,
+    );
   } else {
-    console.log("[Seed] User 已存在:", email);
+    console.warn(
+      "[Seed] 未配置 MACHORA_INIT_USER_PASSWORD，已存在用户保留原密码；建议在 .env 中设置以固定凭据",
+    );
   }
 
   console.log("[Seed] 完成");
