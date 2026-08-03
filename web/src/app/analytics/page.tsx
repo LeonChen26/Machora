@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { prisma } from "@machora/shared";
 import { formatDuration, formatTokens, formatCost } from "../../lib/format";
 import { StackedBarChart } from "../../components/StackedBarChart";
+import { EmptyIcon } from "../../components/EmptyIcon";
 import { BarChart } from "../../components/BarChart";
 import { getCurrentProjectId } from "../../server/project";
 import { requireUser } from "../../server/session";
@@ -307,10 +308,10 @@ export default async function AnalyticsPage({
     <>
       <div className="page-head">
         <div>
-          <h1>模型分析</h1>
+          <h1>Analytics</h1>
           <div className="sub">
             近 {days} 天 · {total} 次 generation 调用 · {models.length} 个模型 ·{" "}
-            {formatTokens(totalTokens)} tokens · <span style={{ color: "var(--green)" }}>{formatCost(totalCost)}</span>
+            {formatTokens(totalTokens)} tokens · <span className="cost">{formatCost(totalCost)}</span>
           </div>
         </div>
       </div>
@@ -323,6 +324,7 @@ export default async function AnalyticsPage({
             href={`/analytics?${buildQuery(d, metric)}`}
             prefetch={false}
             className={d === days ? "seg-btn active" : "seg-btn"}
+            aria-current={d === days ? "true" : undefined}
           >
             {d} 天
           </Link>
@@ -330,13 +332,14 @@ export default async function AnalyticsPage({
       </div>
 
       {/* 趋势维度切换 */}
-      <div className="seg" style={{ marginTop: "0.5rem" }}>
+      <div className="seg mt-1">
         {METRICS.map((m) => (
           <Link
             key={m.key}
             href={`/analytics?${buildQuery(days, m.key)}`}
             prefetch={false}
             className={m.key === metric ? "seg-btn active" : "seg-btn"}
+            aria-current={m.key === metric ? "true" : undefined}
           >
             {m.label}
           </Link>
@@ -345,15 +348,12 @@ export default async function AnalyticsPage({
 
       {/* 异常告警 */}
       {anomalies.size > 0 && (
-        <div
-          className="card"
-          style={{ marginTop: "1rem", borderColor: "var(--red)" }}
-        >
-          <div className="label" style={{ color: "var(--red)" }}>
+        <div className="card alert-danger mt-3">
+          <div className="label text-danger">
             异常检测（对比前 {days} 天）
           </div>
           {Array.from(anomalies.entries()).map(([name, flags]) => (
-            <div key={name} style={{ marginTop: 6, fontSize: 13 }}>
+            <div key={name} className="text-md mt-1">
               <span className="badge purple">{name}</span>{" "}
               {flags.map((f) => (
                 <span key={f} className="badge red" style={{ marginLeft: 6 }}>
@@ -373,21 +373,21 @@ export default async function AnalyticsPage({
         </div>
         <div className="card">
           <div className="label">平均延迟</div>
-          <div className="value" style={{ fontSize: 20 }}>
+          <div className="value value-md">
             {formatDuration(totalAvg)}
           </div>
           <div className="hint">endTime − startTime</div>
         </div>
         <div className="card">
           <div className="label">P95 延迟</div>
-          <div className="value" style={{ fontSize: 20 }}>
+          <div className="value value-md">
             {formatDuration(totalP95)}
           </div>
           <div className="hint">95% 调用在此之内</div>
         </div>
         <div className="card">
           <div className="label">错误率</div>
-          <div className="value" style={{ color: "var(--red)" }}>
+          <div className="value text-danger">
             {(totalErrorRate * 100).toFixed(1)}%
           </div>
           <div className="hint">
@@ -399,14 +399,14 @@ export default async function AnalyticsPage({
       <div className="grid grid-2">
         <div className="card">
           <div className="label">Token 用量</div>
-          <div className="value" style={{ fontSize: 20 }}>
+          <div className="value value-md">
             {formatTokens(totalTokens)}
           </div>
           <div className="hint">近 {days} 天 generation 输入 + 输出</div>
         </div>
         <div className="card">
           <div className="label">总成本</div>
-          <div className="value" style={{ fontSize: 20, color: "var(--green)" }}>
+          <div className="value value-md cost">
             {formatCost(totalCost)}
           </div>
           <div className="hint">
@@ -434,7 +434,7 @@ export default async function AnalyticsPage({
       </div>
       {models.length === 0 ? (
         <div className="card empty">
-          <div className="icon">▦</div>
+          <EmptyIcon type="grid" />
           暂无数据。
         </div>
       ) : (
@@ -442,19 +442,19 @@ export default async function AnalyticsPage({
           <table>
             <thead>
               <tr>
-                <th>模型</th>
-                <th>调用数</th>
-                <th>变化</th>
-                <th>Token</th>
-                <th>成本</th>
-                <th>成本变化</th>
-                <th>平均延迟</th>
-                <th>P95</th>
-                <th>P95 变化</th>
-                <th>ERROR</th>
-                <th>WARNING</th>
-                <th>错误率</th>
-                <th>错误率变化</th>
+                <th scope="col">模型</th>
+                <th scope="col">调用数</th>
+                <th scope="col">变化</th>
+                <th scope="col">Token</th>
+                <th scope="col">成本</th>
+                <th scope="col">成本变化</th>
+                <th scope="col">平均延迟</th>
+                <th scope="col">P95</th>
+                <th scope="col">P95 变化</th>
+                <th scope="col">ERROR</th>
+                <th scope="col">WARNING</th>
+                <th scope="col">错误率</th>
+                <th scope="col">错误率变化</th>
               </tr>
             </thead>
             <tbody>
@@ -476,7 +476,7 @@ export default async function AnalyticsPage({
                     <td className="mono">{m.count}</td>
                     <td>{deltaCell(m.count, p?.count ?? null)}</td>
                     <td className="mono">{formatTokens(m.tokens)}</td>
-                    <td className="mono" style={{ color: m.cost > 0 ? "var(--green)" : undefined }}>
+                    <td className={m.cost > 0 ? "mono cost" : "mono"}>
                       {formatCost(m.cost)}
                     </td>
                     <td>{deltaCell(m.cost, p?.cost ?? null)}</td>
@@ -520,12 +520,12 @@ export default async function AnalyticsPage({
           </table>
         </div>
       )}
-      <div className="section-title" style={{ marginTop: "1.5rem" }}>
+      <div className="section-title">
         按 Agent 汇总 <span className="count">gen_ai.agent.name 维度 · 空值归 unknown</span>
       </div>
       {agents.length === 0 ? (
         <div className="card empty">
-          <div className="icon">▦</div>
+          <EmptyIcon type="grid" />
           暂无数据。
         </div>
       ) : (
@@ -533,17 +533,17 @@ export default async function AnalyticsPage({
           <table>
             <thead>
               <tr>
-                <th>Agent</th>
-                <th>调用数</th>
-                <th>变化</th>
-                <th>Token</th>
-                <th>成本</th>
-                <th>成本变化</th>
-                <th>平均延迟</th>
-                <th>ERROR</th>
-                <th>WARNING</th>
-                <th>错误率</th>
-                <th>错误率变化</th>
+                <th scope="col">Agent</th>
+                <th scope="col">调用数</th>
+                <th scope="col">变化</th>
+                <th scope="col">Token</th>
+                <th scope="col">成本</th>
+                <th scope="col">成本变化</th>
+                <th scope="col">平均延迟</th>
+                <th scope="col">ERROR</th>
+                <th scope="col">WARNING</th>
+                <th scope="col">错误率</th>
+                <th scope="col">错误率变化</th>
               </tr>
             </thead>
             <tbody>
@@ -563,7 +563,7 @@ export default async function AnalyticsPage({
                     <td className="mono">{a.count}</td>
                     <td>{deltaCell(a.count, p?.count ?? null)}</td>
                     <td className="mono">{formatTokens(a.tokens)}</td>
-                    <td className="mono" style={{ color: a.cost > 0 ? "var(--green)" : undefined }}>
+                    <td className={a.cost > 0 ? "mono cost" : "mono"}>
                       {formatCost(a.cost)}
                     </td>
                     <td>{deltaCell(a.cost, p?.cost ?? null)}</td>

@@ -1,4 +1,5 @@
 import { Link } from "../../components/NativeLink";
+import { EmptyIcon } from "../../components/EmptyIcon";
 import { prisma } from "@machora/shared";
 import {
   formatDateTime,
@@ -118,13 +119,14 @@ export default async function SessionsPage({
       </div>
 
       {/* 时间窗筛选：仅统计近 N 天有活动的会话 */}
-      <div className="seg" style={{ marginBottom: "1rem" }}>
+      <div className="seg mb-3">
         {DAY_OPTIONS.map((d) => (
           <Link
             key={d}
             href={d === 0 ? "/sessions" : `/sessions?days=${d}`}
             prefetch={false}
             className={d === days ? "seg-btn active" : "seg-btn"}
+            aria-current={d === days ? "true" : undefined}
           >
             {d === 0 ? "全部" : `${d} 天`}
           </Link>
@@ -133,7 +135,7 @@ export default async function SessionsPage({
 
       {sessions.length === 0 ? (
         <div className="card empty">
-          <div className="icon">◔</div>
+          <EmptyIcon type="clock" />
           暂无会话数据。注入 trace 时带上 sessionId 即可聚合。
         </div>
       ) : (
@@ -141,14 +143,14 @@ export default async function SessionsPage({
           <table>
             <thead>
               <tr>
-                <th>Session</th>
-                <th>Traces</th>
-                <th>时间范围</th>
-                <th>跨度</th>
-                <th>Token</th>
-                <th>成本</th>
-                <th>ERROR</th>
-                <th>最近活动</th>
+                <th scope="col">Session</th>
+                <th scope="col">Traces</th>
+                <th scope="col">时间范围</th>
+                <th scope="col">跨度</th>
+                <th scope="col">Token</th>
+                <th scope="col">成本</th>
+                <th scope="col">ERROR</th>
+                <th scope="col">最近活动</th>
               </tr>
             </thead>
             <tbody>
@@ -162,14 +164,14 @@ export default async function SessionsPage({
                   <td>
                     <span className="badge blue">{s.traceCount}</span>
                   </td>
-                  <td className="mono muted" style={{ fontSize: 11 }}>
+                  <td className="mono muted text-xs">
                     {formatDateTime(s.first)}
                     <br />
                     {formatDateTime(s.last)}
                   </td>
                   <td className="mono">{formatDuration(s.spanMs)}</td>
                   <td className="mono">{formatTokens(s.tokens)}</td>
-                  <td className="mono" style={{ color: s.cost > 0 ? "var(--green)" : undefined }}>
+                  <td className={s.cost > 0 ? "mono cost" : "mono"}>
                     {formatCost(s.cost)}
                   </td>
                   <td>

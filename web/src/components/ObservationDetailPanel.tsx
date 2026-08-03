@@ -57,6 +57,25 @@ export function ObservationDetailPanel({
     return () => document.removeEventListener("click", onDocClick);
   }, [observations]);
 
+  // 键盘选中：聚焦的行上按 Enter/Space 触发选中（与点击等价）
+  useEffect(() => {
+    const onDocKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      const el = (e.target as HTMLElement).closest<HTMLElement>("[data-obs]");
+      if (!el) return;
+      // 避免拦截按钮/链接自身的 Enter/Space
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === "BUTTON" || tag === "A" || tag === "INPUT") return;
+      e.preventDefault();
+      const i = observations.findIndex((o) => o.id === el.dataset.obs);
+      if (i < 0) return;
+      syncRowHighlight(observations[i].id);
+      setIdx(i);
+    };
+    document.addEventListener("keydown", onDocKeyDown);
+    return () => document.removeEventListener("keydown", onDocKeyDown);
+  }, [observations]);
+
   // 挂载后默认高亮第一条
   useEffect(() => {
     syncRowHighlight(observations[0]?.id ?? null);
@@ -72,7 +91,17 @@ export function ObservationDetailPanel({
   );
 
   if (observations.length === 0) {
-    return <div className="card empty">该 Trace 下暂无 Observation。</div>;
+    return (
+      <div className="obs-detail-panel">
+        <div className="obs-panel-head">
+          <span className="mute2">0 / 0</span>
+          <span className="spacer" />
+        </div>
+        <div className="obs-detail-card">
+          <div className="mute2" style={{ padding: "1rem 0" }}>暂无 Observation 详情。</div>
+        </div>
+      </div>
+    );
   }
   const o = observations[idx];
 
@@ -100,26 +129,26 @@ export function ObservationDetailPanel({
           下一个 ›
         </button>
       </div>
-      <div className="card obs-detail-card">
+      <div className="obs-detail-card">
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
           <strong>{o.name || o.id}</strong>
           <span
             className={`badge ${o.type === "GENERATION" ? "purple" : o.type === "SPAN" ? "blue" : "amber"}`}
           >
-            {o.type}
+            {o.type === "GENERATION" ? "GEN" : o.type}
           </span>
         </div>
-        <div className="mono mute2" style={{ fontSize: 11, marginBottom: 8 }}>
+        <div className="mono mute2 text-xs" style={{ marginBottom: 6 }}>
           {o.model ? `${o.model} · ` : ""}
           {formatDateTime(o.startTime)}
           {o.endTime ? ` → ${formatDateTime(o.endTime)}` : ""}
         </div>
         {o.totalTokens != null && o.totalTokens > 0 && (
-          <div style={{ marginBottom: 6, fontSize: 12 }}>
+          <div className="text-sm" style={{ marginBottom: 6 }}>
             <span className="mono">
               {formatTokens(o.inputTokens)} in / {formatTokens(o.outputTokens)} out
             </span>
-            <span className="mono" style={{ color: "var(--green)", marginLeft: 8 }}>
+            <span className="mono cost" style={{ marginLeft: 8 }}>
               {formatCost(o.totalCost)}
             </span>
           </div>

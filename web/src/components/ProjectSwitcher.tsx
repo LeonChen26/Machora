@@ -20,7 +20,7 @@ export function ProjectSwitcher({
 
   return (
     <div className="project-switcher">
-      <div className="mute2" style={{ fontSize: 11, padding: "0 0.25rem 0.3rem" }}>
+      <div className="mute2 text-xs" style={{ padding: "0 0.25rem 0.3rem" }}>
         项目
       </div>
       <select

@@ -1,6 +1,7 @@
 import { prisma } from "@machora/shared";
 import { formatDateTime } from "../../lib/format";
 import { CopyButton } from "../../components/CopyButton";
+import { EmptyIcon } from "../../components/EmptyIcon";
 import { CreateApiKeyForm } from "./CreateApiKeyForm";
 import { DeleteApiKeyButton } from "./DeleteApiKeyButton";
 import { requireUser } from "../../server/session";
@@ -45,7 +46,7 @@ export default async function ApiKeysPage() {
 
       {keys.length === 0 ? (
         <div className="card empty">
-          <div className="icon">⚿</div>
+          <EmptyIcon type="key" />
           暂无 API Key，先创建一个。
         </div>
       ) : (
@@ -53,11 +54,11 @@ export default async function ApiKeysPage() {
           <table>
             <thead>
               <tr>
-                <th>名称</th>
-                <th>Public Key</th>
-                <th>项目</th>
-                <th>创建时间</th>
-                <th style={{ width: 80 }}>操作</th>
+                <th scope="col">名称</th>
+                <th scope="col">Public Key</th>
+                <th scope="col">项目</th>
+                <th scope="col">创建时间</th>
+                <th scope="col" className="col-action">操作</th>
               </tr>
             </thead>
             <tbody>
@@ -65,7 +66,7 @@ export default async function ApiKeysPage() {
                 <tr key={k.id}>
                   <td>{k.name || <span className="mute2">（未命名）</span>}</td>
                   <td>
-                    <div style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
+                    <div className="key-row">
                       <span className="mono">{k.publicKey}</span>
                       <CopyButton text={k.publicKey} />
                     </div>
@@ -73,7 +74,7 @@ export default async function ApiKeysPage() {
                   <td>
                     <span className="badge blue">{k.project.name}</span>
                   </td>
-                  <td className="mono muted" style={{ fontSize: 11 }}>
+                  <td className="mono muted text-xs">
                     {formatDateTime(k.createdAt)}
                   </td>
                   <td>

@@ -1,4 +1,6 @@
 import { Link } from "../../components/NativeLink";
+import { EmptyIcon } from "../../components/EmptyIcon";
+import { Pager } from "../../components/Pager";
 import { prisma } from "@machora/shared";
 import type { ReactNode } from "react";
 import {
@@ -122,16 +124,18 @@ export default async function TracesPage({
   function sortTh(label: string, sortFor: string): ReactNode {
     const active = sortKey === sortFor;
     return (
-      <th>
+      <th scope="col">
         <Link
           href={sortHref(sortFor)}
           prefetch={false}
+          className="sort-th"
           style={{
             color: active ? "var(--accent)" : "inherit",
             fontWeight: active ? 600 : 500,
           }}
         >
-          {label} {active ? (sortDir === "desc" ? "↓" : "↑") : ""}
+          {label}{" "}
+          {active ? (sortDir === "desc" ? "↓" : "↑") : <span className="sort-hint">↕</span>}
         </Link>
       </th>
     );
@@ -169,7 +173,7 @@ export default async function TracesPage({
             时间窗 {formatDateTime(from)} → {formatDateTime(to)} · 共 {total} 条
           </div>
         </div>
-        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+        <div className="btn-group">
           <Link
             className="btn"
             href={`/api/export/traces?${buildQuery({
@@ -196,16 +200,8 @@ export default async function TracesPage({
       </div>
 
       {/* 快捷时间窗 seg（点击重置其他筛选，仅设 from/to） */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "0.5rem",
-          marginBottom: "0.6rem",
-          flexWrap: "wrap",
-        }}
-      >
-        <span className="mute2" style={{ fontSize: 12 }}>
+      <div className="form-inline mb-2">
+        <span className="mute2 text-sm">
           快捷时间窗
         </span>
         <span className="seg">
@@ -219,6 +215,7 @@ export default async function TracesPage({
               })}`}
               prefetch={false}
               className={activeRange?.key === r.key ? "seg-btn active" : "seg-btn"}
+              aria-current={activeRange?.key === r.key ? "true" : undefined}
             >
               {r.label}
             </Link>
@@ -227,7 +224,7 @@ export default async function TracesPage({
       </div>
 
       {/* 过滤表单（GET 提交，纯服务端） */}
-      <form className="card filter-bar" style={{ marginBottom: "1rem" }}>
+      <form className="card filter-bar mb-3">
         <label>
           <span>名称搜索</span>
           <input name="q" defaultValue={q ?? ""} placeholder="trace 名称..." />
@@ -291,7 +288,7 @@ export default async function TracesPage({
 
       {shown.length === 0 ? (
         <div className="card empty">
-          <div className="icon">≡</div>
+          <EmptyIcon type="list" />
           该时间窗内没有 Trace。试试放宽时间范围，或先注入一条数据。
         </div>
       ) : (
@@ -299,18 +296,18 @@ export default async function TracesPage({
           <table>
             <thead>
               <tr>
-                <th>名称</th>
-                <th>Agent</th>
-                <th>Trace ID</th>
+                <th scope="col">名称</th>
+                <th scope="col">Agent</th>
+                <th scope="col">Trace ID</th>
                 {sortTh("时间", "time")}
-                <th>用户</th>
-                <th>模型</th>
+                <th scope="col">用户</th>
+                <th scope="col">模型</th>
                 {sortTh("耗时", "latency")}
                 {sortTh("Token", "token")}
                 {sortTh("成本", "cost")}
-                <th>Obs</th>
-                <th>Score</th>
-                <th>环境</th>
+                <th scope="col">Obs</th>
+                <th scope="col">Score</th>
+                <th scope="col">环境</th>
               </tr>
             </thead>
             <tbody>
@@ -338,7 +335,8 @@ export default async function TracesPage({
                       <Link href={`/traces/${t.id}`} prefetch={false}>
                         {hasError && (
                           <span
-                            style={{ color: "var(--red)", marginRight: 4 }}
+                            className="text-danger"
+                            style={{ marginRight: 4 }}
                             title="该 trace 含 ERROR observation"
                           >
                             ●
@@ -346,7 +344,8 @@ export default async function TracesPage({
                         )}
                         {!hasError && hasWarn && (
                           <span
-                            style={{ color: "var(--amber)", marginRight: 4 }}
+                            className="text-warn"
+                            style={{ marginRight: 4 }}
                             title="该 trace 含 WARNING observation"
                           >
                             ●
@@ -397,14 +396,13 @@ export default async function TracesPage({
                     <td className="mono">
                       {latency != null ? (
                         <span
-                          style={{
-                            color:
-                              latency < 2000
-                                ? "var(--green)"
-                                : latency < 8000
-                                  ? "var(--amber)"
-                                  : "var(--red)",
-                          }}
+                          className={
+                            latency < 2000
+                              ? "latency-low"
+                              : latency < 8000
+                                ? "latency-mid"
+                                : "latency-high"
+                          }
                         >
                           {fmtMs(latency)}
                         </span>
@@ -417,7 +415,7 @@ export default async function TracesPage({
                         t.observations.reduce((s, o) => s + (o.totalTokens ?? 0), 0),
                       )}
                     </td>
-                    <td className="mono" style={{ color: "var(--green)" }}>
+                    <td className="mono cost">
                       {formatCost(
                         t.observations.reduce((s, o) => s + (o.totalCost ?? 0), 0),
                       )}
@@ -456,17 +454,15 @@ export default async function TracesPage({
         </div>
       )}
 
-      <div className="pager">
-        <span className="info">
-          {shown.length === 0
+      <Pager
+        info={
+          shown.length === 0
             ? `0 / ${total} 条 · 第 ${page}/${totalPages} 页`
-            : `显示 ${(page - 1) * PAGE_SIZE + 1}–${(page - 1) * PAGE_SIZE + shown.length} / ${total} 条 · 第 ${page}/${totalPages} 页`}
-        </span>
-        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-          {page > 1 && (
-            <Link
-              className="btn"
-              href={`/traces?${buildQuery({
+            : `显示 ${(page - 1) * PAGE_SIZE + 1}–${(page - 1) * PAGE_SIZE + shown.length} / ${total} 条 · 第 ${page}/${totalPages} 页`
+        }
+        prevHref={
+          page > 1
+            ? `/traces?${buildQuery({
                 from,
                 to,
                 q,
@@ -480,55 +476,12 @@ export default async function TracesPage({
                 sort: sortKey,
                 dir: sortDir,
                 page: page - 1,
-              })}`}
-              prefetch={false}
-            >
-              ← 上一页
-            </Link>
-          )}
-          {/* 跳页（GET 表单保留全部筛选与排序） */}
-          <form
-            action="/traces"
-            method="get"
-            style={{ display: "flex", gap: "0.35rem", alignItems: "center" }}
-          >
-            <input type="hidden" name="from" value={from.toISOString()} />
-            <input type="hidden" name="to" value={to.toISOString()} />
-            {q ? <input type="hidden" name="q" value={q} /> : null}
-            {userId ? <input type="hidden" name="user" value={userId} /> : null}
-            {sessionId ? <input type="hidden" name="session" value={sessionId} /> : null}
-            {model ? <input type="hidden" name="model" value={model} /> : null}
-            {tags.length > 0 ? <input type="hidden" name="tag" value={tags.join(",")} /> : null}
-            {level ? <input type="hidden" name="level" value={level} /> : null}
-            {env ? <input type="hidden" name="env" value={env} /> : null}
-            {agent ? <input type="hidden" name="agent" value={agent} /> : null}
-            {sortKey !== "time" ? <input type="hidden" name="sort" value={sortKey} /> : null}
-            {sortDir !== "desc" ? <input type="hidden" name="dir" value={sortDir} /> : null}
-            <input
-              type="number"
-              name="page"
-              min={1}
-              max={totalPages}
-              defaultValue={page}
-              style={{
-                background: "var(--bg-elev-2)",
-                border: "1px solid var(--border)",
-                borderRadius: 6,
-                padding: "0.35rem 0.5rem",
-                color: "var(--text)",
-                fontSize: 13,
-                width: 64,
-              }}
-              aria-label="跳转到页码"
-            />
-            <button type="submit" className="btn-sm">
-              跳转
-            </button>
-          </form>
-          {page < totalPages && (
-            <Link
-              className="btn primary"
-              href={`/traces?${buildQuery({
+              })}`
+            : undefined
+        }
+        nextHref={
+          page < totalPages
+            ? `/traces?${buildQuery({
                 from,
                 to,
                 q,
@@ -542,14 +495,31 @@ export default async function TracesPage({
                 sort: sortKey,
                 dir: sortDir,
                 page: page + 1,
-              })}`}
-              prefetch={false}
-            >
-              下一页 →
-            </Link>
-          )}
-        </div>
-      </div>
+              })}`
+            : undefined
+        }
+        jump={{
+          action: "/traces",
+          page,
+          totalPages,
+          hidden: (
+            <>
+              <input type="hidden" name="from" value={from.toISOString()} />
+              <input type="hidden" name="to" value={to.toISOString()} />
+              {q ? <input type="hidden" name="q" value={q} /> : null}
+              {userId ? <input type="hidden" name="user" value={userId} /> : null}
+              {sessionId ? <input type="hidden" name="session" value={sessionId} /> : null}
+              {model ? <input type="hidden" name="model" value={model} /> : null}
+              {tags.length > 0 ? <input type="hidden" name="tag" value={tags.join(",")} /> : null}
+              {level ? <input type="hidden" name="level" value={level} /> : null}
+              {env ? <input type="hidden" name="env" value={env} /> : null}
+              {agent ? <input type="hidden" name="agent" value={agent} /> : null}
+              {sortKey !== "time" ? <input type="hidden" name="sort" value={sortKey} /> : null}
+              {sortDir !== "desc" ? <input type="hidden" name="dir" value={sortDir} /> : null}
+            </>
+          ),
+        }}
+      />
     </>
   );
 }

@@ -1,4 +1,5 @@
 import { Link } from "../components/NativeLink";
+import { EmptyIcon } from "../components/EmptyIcon";
 import { prisma } from "@machora/shared";
 import {
   formatRelative,
@@ -167,7 +168,7 @@ export default async function Home() {
     <>
       <div className="page-head">
         <div>
-          <h1>概览</h1>
+          <h1>Overview</h1>
           <div className="sub">
             {project ? `项目：${project.name}` : "未配置项目"} · standalone 模式
           </div>
@@ -209,21 +210,21 @@ export default async function Home() {
         </div>
         <div className="card">
           <div className="label">Token 总量</div>
-          <div className="value" style={{ fontSize: 20 }}>
+          <div className="value value-md">
             {formatTokens(totalTokens7d)}
           </div>
           <div className="hint">近 {TREND_DAYS} 天</div>
         </div>
         <div className="card">
           <div className="label">总成本</div>
-          <div className="value" style={{ fontSize: 20, color: "var(--green)" }}>
+          <div className="value value-md text-success">
             {formatCost(totalCost7d)}
           </div>
           <div className="hint">近 {TREND_DAYS} 天</div>
         </div>
         <div className="card">
           <div className="label">错误率</div>
-          <div className="value" style={{ color: "var(--red)" }}>
+          <div className="value text-danger">
             {(errorRate7d * 100).toFixed(1)}%
           </div>
           <div className="hint">{errors7d} ERROR · 近 {TREND_DAYS} 天</div>
@@ -250,28 +251,28 @@ export default async function Home() {
         </div>
         <div className="card">
           <div className="label">Generation 延迟（近 {TREND_DAYS} 天 · {gens7d.length} 次调用）</div>
-          <div className="grid grid-3" style={{ marginTop: 8 }}>
+          <div className="grid grid-3 mt-1">
             <div>
-              <div className="mute2" style={{ fontSize: 11 }}>
+              <div className="mute2 text-xs">
                 平均
               </div>
-              <div className="value" style={{ fontSize: 18 }}>
+              <div className="value value-sm">
                 {formatDuration(latencyAvg)}
               </div>
             </div>
             <div>
-              <div className="mute2" style={{ fontSize: 11 }}>
+              <div className="mute2 text-xs">
                 P95
               </div>
-              <div className="value" style={{ fontSize: 18 }}>
+              <div className="value value-sm">
                 {formatDuration(latencyP95)}
               </div>
             </div>
             <div>
-              <div className="mute2" style={{ fontSize: 11 }}>
+              <div className="mute2 text-xs">
                 最高
               </div>
-              <div className="value" style={{ fontSize: 18 }}>
+              <div className="value value-sm">
                 {formatDuration(latencies.length ? latencies[latencies.length - 1] : null)}
               </div>
             </div>
@@ -294,7 +295,7 @@ export default async function Home() {
                 <Link href={`/traces/${x.t.id}`} prefetch={false}>
                   {x.t.name || <span className="mute2">{x.t.id}</span>}
                 </Link>
-                <span className="mono" style={{ color: "var(--green)", fontSize: 12, whiteSpace: "nowrap" }}>
+                <span className="mono cost" style={{ whiteSpace: "nowrap" }}>
                   {formatCost(x.cost)}
                 </span>
               </div>
@@ -314,17 +315,14 @@ export default async function Home() {
                   {x.t.name || <span className="mute2">{x.t.id}</span>}
                 </Link>
                 <span
-                  className="mono"
-                  style={{
-                    fontSize: 12,
-                    whiteSpace: "nowrap",
-                    color:
-                      (x.latency ?? 0) >= 8000
-                        ? "var(--red)"
-                        : (x.latency ?? 0) >= 2000
-                          ? "var(--amber)"
-                          : "var(--green)",
-                  }}
+                  className={`mono ${
+                    (x.latency ?? 0) >= 8000
+                      ? "latency-high"
+                      : (x.latency ?? 0) >= 2000
+                        ? "latency-mid"
+                        : "latency-low"
+                  }`}
+                  style={{ whiteSpace: "nowrap" }}
                 >
                   {formatDuration(x.latency)}
                 </span>
@@ -340,7 +338,7 @@ export default async function Home() {
 
       {recentTraces.length === 0 ? (
         <div className="card empty">
-          <div className="icon">≡</div>
+          <EmptyIcon type="list" />
           暂无 Trace 数据，先用下方命令注入一条试试。
         </div>
       ) : (
@@ -348,12 +346,12 @@ export default async function Home() {
           <table>
             <thead>
               <tr>
-                <th>名称</th>
-                <th>Trace ID</th>
-                <th>时间</th>
-                <th>Obs</th>
-                <th>Score</th>
-                <th>环境</th>
+                <th scope="col">名称</th>
+                <th scope="col">Trace ID</th>
+                <th scope="col">时间</th>
+                <th scope="col">Obs</th>
+                <th scope="col">Score</th>
+                <th scope="col">环境</th>
               </tr>
             </thead>
             <tbody>
@@ -390,7 +388,7 @@ export default async function Home() {
 
       <div className="section-title">快速接入</div>
       <div className="card">
-        <div className="muted" style={{ marginBottom: "0.5rem" }}>
+        <div className="muted mb-1">
           向 ingestion 端点批量推送事件，Basic Auth 用 public key : secret key：
         </div>
         <pre className="code">

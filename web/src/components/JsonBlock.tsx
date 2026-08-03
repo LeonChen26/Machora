@@ -21,8 +21,8 @@ export function JsonBlock({
   const visible = expanded ? json : collapsible ? json.split("\n").slice(0, COLLAPSE_LINES).join("\n") : json;
 
   const header = (
-    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: 4 }}>
-      <span className="mute2" style={{ fontSize: 11 }}>
+    <div className="json-head">
+      <span className="mute2 text-xs">
         {title}
       </span>
       <span className="spacer" />
@@ -41,24 +41,19 @@ export function JsonBlock({
 
   const body = (
     <pre
-      className="json-view"
-      style={{
-        margin: 0,
-        maxHeight: expanded ? undefined : 320,
-        overflow: expanded ? "auto" : "hidden",
-        position: "relative",
-      }}
+      className={expanded ? "json-view" : "json-view collapsed"}
+      style={{ margin: 0 }}
     >
       {visible}
       {collapsible && !expanded && (
         <span
+          className="text-sm"
           style={{
             display: "block",
             position: "sticky",
             bottom: 0,
             textAlign: "center",
             color: "var(--accent)",
-            fontSize: 12,
             padding: "4px 0",
             background: "var(--bg-elev-2)",
             cursor: "pointer",

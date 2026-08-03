@@ -1,4 +1,6 @@
 import { Link } from "../../components/NativeLink";
+import { EmptyIcon } from "../../components/EmptyIcon";
+import { Pager } from "../../components/Pager";
 import { prisma } from "@machora/shared";
 import type { ReactNode } from "react";
 import {
@@ -9,6 +11,7 @@ import {
   formatTokens,
   formatCost,
 } from "../../lib/format";
+import { levelBadge } from "../../lib/levelBadge";
 import { getCurrentProjectId } from "../../server/project";
 import { requireUser } from "../../server/session";
 import {
@@ -19,13 +22,6 @@ import {
 export const dynamic = "force-dynamic";
 
 const PAGE_SIZE = 25;
-
-function levelBadge(level: string): string {
-  if (level === "ERROR") return "red";
-  if (level === "WARNING") return "amber";
-  if (level === "DEBUG") return "blue";
-  return "green";
-}
 
 export default async function GenerationsPage({
   searchParams,
@@ -122,16 +118,18 @@ export default async function GenerationsPage({
   function sortTh(label: string, sortFor: string): ReactNode {
     const active = sortKey === sortFor;
     return (
-      <th>
+      <th scope="col">
         <Link
           href={sortHref(sortFor)}
           prefetch={false}
+          className="sort-th"
           style={{
             color: active ? "var(--accent)" : "inherit",
             fontWeight: active ? 600 : 500,
           }}
         >
-          {label} {active ? (sortDir === "desc" ? "↓" : "↑") : ""}
+          {label}{" "}
+          {active ? (sortDir === "desc" ? "↓" : "↑") : <span className="sort-hint">↕</span>}
         </Link>
       </th>
     );
@@ -155,16 +153,8 @@ export default async function GenerationsPage({
       </div>
 
       {/* 快捷时间窗 seg（保留 model/level 筛选） */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "0.5rem",
-          marginBottom: "0.6rem",
-          flexWrap: "wrap",
-        }}
-      >
-        <span className="mute2" style={{ fontSize: 12 }}>
+      <div className="form-inline mb-2">
+        <span className="mute2 text-sm">
           快捷时间窗
         </span>
         <span className="seg">
@@ -185,6 +175,7 @@ export default async function GenerationsPage({
                 href={qs(1, { days: String(daysVal) })}
                 prefetch={false}
                 className={active ? "seg-btn active" : "seg-btn"}
+                aria-current={active ? "true" : undefined}
               >
                 {r.label}
               </Link>
@@ -194,7 +185,7 @@ export default async function GenerationsPage({
       </div>
 
       {/* 过滤表单（GET 提交，纯服务端） */}
-      <form className="card filter-bar" style={{ marginBottom: "1rem" }}>
+      <form className="card filter-bar mb-3">
         <label>
           <span>模型</span>
           <select name="model" defaultValue={model ?? ""}>
@@ -226,7 +217,7 @@ export default async function GenerationsPage({
 
       {items.length === 0 ? (
         <div className="card empty">
-          <div className="icon">◆</div>
+          <EmptyIcon type="list" />
           该条件下没有 GENERATION 调用。试试放宽筛选，或先注入一条数据。
         </div>
       ) : (
@@ -235,19 +226,19 @@ export default async function GenerationsPage({
             <thead>
               <tr>
                 {sortTh("时间", "time")}
-                <th>Trace</th>
-                <th>名称</th>
-                <th>模型</th>
+                <th scope="col">Trace</th>
+                <th scope="col">名称</th>
+                <th scope="col">模型</th>
                 {sortTh("耗时", "latency")}
                 {sortTh("Token", "token")}
                 {sortTh("成本", "cost")}
-                <th>级别</th>
+                <th scope="col">级别</th>
               </tr>
             </thead>
             <tbody>
               {sortedShown.map((o) => (
                 <tr key={o.id} data-level={o.level === "ERROR" || o.level === "WARNING" ? o.level : undefined}>
-                  <td className="mono muted" style={{ fontSize: 11, whiteSpace: "nowrap" }}>
+                  <td className="mono muted text-xs" style={{ whiteSpace: "nowrap" }}>
                     {formatRelative(o.startTime)}
                   </td>
                   <td>
@@ -263,15 +254,15 @@ export default async function GenerationsPage({
                       <span className="mute2">—</span>
                     )}
                   </td>
-                  <td className="mono muted" style={{ fontSize: 11 }}>
+                  <td className="mono muted text-xs">
                     {o.endTime
                       ? formatDuration(durationMs(o.startTime, o.endTime))
                       : "—"}
                   </td>
-                  <td className="mono" style={{ fontSize: 12 }}>
+                  <td className="mono text-sm">
                     {o.totalTokens != null ? formatTokens(o.totalTokens) : "—"}
                   </td>
-                  <td className="mono" style={{ fontSize: 12 }}>
+                  <td className="mono text-sm">
                     {o.totalCost != null ? formatCost(o.totalCost) : "—"}
                   </td>
                   <td>
@@ -284,58 +275,25 @@ export default async function GenerationsPage({
         </div>
       )}
 
-      <div className="pager">
-        <span className="info">
-          {formatDateTime(since ?? new Date(0))} 起 · 第 {page} / {totalPages} 页 · 共{" "}
-          {total} 条
-        </span>
-        <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          {page > 1 ? (
-            <Link className="btn-sm" href={qs(page - 1)} prefetch={false}>
-              ← 上一页
-            </Link>
-          ) : (
-            <span className="btn-sm" style={{ opacity: 0.35 }}>
-              ← 上一页
-            </span>
-          )}
-          {/* 跳页（GET 表单保留筛选与排序） */}
-          <form
-            action="/generations"
-            method="get"
-            style={{ display: "flex", gap: 4, alignItems: "center" }}
-          >
-            <input type="hidden" name="days" value={String(days)} />
-            {model ? <input type="hidden" name="model" value={model} /> : null}
-            {level ? <input type="hidden" name="level" value={level} /> : null}
-            {sortKey !== "time" ? <input type="hidden" name="sort" value={sortKey} /> : null}
-            {sortDir !== "desc" ? <input type="hidden" name="dir" value={sortDir} /> : null}
-            <input
-              type="number"
-              name="page"
-              min={1}
-              max={totalPages}
-              defaultValue={page}
-              style={{
-                background: "var(--bg-elev-2)",
-                border: "1px solid var(--border)",
-                borderRadius: 6,
-                padding: "0.35rem 0.5rem",
-                color: "var(--text)",
-                fontSize: 13,
-                width: 60,
-              }}
-              aria-label="跳转到页码"
-            />
-            <button type="submit" className="btn-sm">
-              跳转
-            </button>
-          </form>
-          <Link className="btn-sm" href={qs(page + 1)} prefetch={false}>
-            下一页 →
-          </Link>
-        </span>
-      </div>
+      <Pager
+        info={`${formatDateTime(since ?? new Date(0))} 起 · 第 ${page} / ${totalPages} 页 · 共 ${total} 条`}
+        prevHref={page > 1 ? qs(page - 1) : undefined}
+        nextHref={page < totalPages ? qs(page + 1) : undefined}
+        jump={{
+          action: "/generations",
+          page,
+          totalPages,
+          hidden: (
+            <>
+              <input type="hidden" name="days" value={String(days)} />
+              {model ? <input type="hidden" name="model" value={model} /> : null}
+              {level ? <input type="hidden" name="level" value={level} /> : null}
+              {sortKey !== "time" ? <input type="hidden" name="sort" value={sortKey} /> : null}
+              {sortDir !== "desc" ? <input type="hidden" name="dir" value={sortDir} /> : null}
+            </>
+          ),
+        }}
+      />
     </>
   );
 }

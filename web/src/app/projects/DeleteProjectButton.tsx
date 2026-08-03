@@ -43,16 +43,10 @@ export function DeleteProjectButton({
   return (
     <button
       type="button"
-      className="btn"
+      className="btn btn-danger"
       onClick={onDelete}
       disabled={pending}
-      style={{
-        color: "var(--red)",
-        borderColor: "var(--red)",
-        opacity: pending ? 0.6 : 1,
-        padding: "0.2rem 0.6rem",
-        fontSize: 12,
-      }}
+      style={{ opacity: pending ? 0.6 : 1 }}
     >
       {pending ? "删除中…" : "删除"}
     </button>

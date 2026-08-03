@@ -1,4 +1,5 @@
 import { Link } from "../../components/NativeLink";
+import { EmptyIcon } from "../../components/EmptyIcon";
 import { prisma } from "@machora/shared";
 import { formatDateTime, formatRelative } from "../../lib/format";
 import { getCurrentProjectId } from "../../server/project";
@@ -47,7 +48,7 @@ export default async function ProjectsPage() {
 
       {projects.length === 0 ? (
         <div className="card empty">
-          <div className="icon">▤</div>
+          <EmptyIcon type="folder" />
           暂无项目，用上方表单创建一个。
         </div>
       ) : (
@@ -56,18 +57,17 @@ export default async function ProjectsPage() {
             const isCurrent = p.id === currentId;
             return (
               <div
-                className="card"
+                className={isCurrent ? "card card-active" : "card"}
                 key={p.id}
-                style={isCurrent ? { borderColor: "var(--accent)" } : undefined}
               >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                  <strong style={{ fontSize: 16 }}>{p.name}</strong>
+                <div className="card-head">
+                  <span className="card-title">{p.name}</span>
                   <span>
                     {isCurrent && <span className="badge blue" style={{ marginRight: 6 }}>当前</span>}
                     <span className="badge">{p._count.traces} traces</span>
                   </span>
                 </div>
-                <div className="mono mute2" style={{ fontSize: 11, marginTop: 4, marginBottom: 12 }}>
+                <div className="mono mute2 text-xs" style={{ marginTop: 4, marginBottom: 12 }}>
                   {p.id}
                 </div>
                 <dl className="kv">
@@ -85,24 +85,16 @@ export default async function ProjectsPage() {
                   <dd>{p._count.apiKeys}</dd>
                 </dl>
                 {p.apiKeys.length > 0 && (
-                  <div style={{ marginTop: 12 }}>
-                    <div className="mute2" style={{ fontSize: 11, marginBottom: 4 }}>
+                  <div className="mt-2">
+                    <div className="mute2 text-xs mb-1">
                       PUBLIC KEY
                     </div>
-                    <div className="mono" style={{ fontSize: 12, wordBreak: "break-all" }}>
+                    <div className="mono text-sm" style={{ wordBreak: "break-all" }}>
                       {p.apiKeys[0].publicKey}
                     </div>
                   </div>
                 )}
-                <div
-                  style={{
-                    marginTop: 12,
-                    display: "flex",
-                    gap: "0.5rem",
-                    alignItems: "center",
-                    flexWrap: "wrap",
-                  }}
-                >
+                <div className="btn-group mt-2">
                   <EnterProjectButton id={p.id} />
                   {canDelete && <DeleteProjectButton id={p.id} name={p.name} isCurrent={isCurrent} />}
                   <Link className="btn" href="/api-keys" prefetch={false}>

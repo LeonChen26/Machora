@@ -13,12 +13,12 @@ export default async function DocsPage() {
     <>
       <div className="page-head">
         <div>
-          <h1>接入文档</h1>
+          <h1>Docs</h1>
           <div className="sub">通过 REST API 注入 trace / observation / score</div>
         </div>
       </div>
 
-      <div className="card" style={{ marginBottom: "1rem" }}>
+      <div className="card mb-3">
         <div className="label" style={{ marginBottom: 6 }}>端点</div>
         <pre className="code">
 {`POST http://localhost:${port}/api/public/ingestion`}
@@ -54,9 +54,9 @@ export default async function DocsPage() {
         <table>
           <thead>
             <tr>
-              <th>type</th>
-              <th>关键字段</th>
-              <th>说明</th>
+              <th scope="col">type</th>
+              <th scope="col">关键字段</th>
+              <th scope="col">说明</th>
             </tr>
           </thead>
           <tbody>
@@ -147,9 +147,9 @@ export default async function DocsPage() {
         <table>
           <thead>
             <tr>
-              <th>方法</th>
-              <th>路径</th>
-              <th>说明</th>
+              <th scope="col">方法</th>
+              <th scope="col">路径</th>
+              <th scope="col">说明</th>
             </tr>
           </thead>
           <tbody>

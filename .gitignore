@@ -16,3 +16,6 @@ scripts/npm/
 .venv*/
 __pycache__/
 *.egg-info/
+
+# TRAE IDE 工作目录
+.trae/

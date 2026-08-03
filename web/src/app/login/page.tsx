@@ -37,41 +37,45 @@ export default function LoginPage() {
 
   return (
     <div className="login-overlay">
-      <form className="card login-card" onSubmit={onSubmit}>
+      <form className="card login-card" onSubmit={onSubmit} aria-label="登录表单">
         <div className="login-brand">
-          <img src="/icon.jpg" alt="Machora" className="logo-img" />
+          <img src="/icon.jpg" alt="" className="logo-img" />
           <div className="login-title">Machora</div>
           <div className="muted">AI Agent 可观测平台</div>
         </div>
 
-        <label className="field">
-          <span>邮箱</span>
+        <label className="field" htmlFor="login-email">
+          <span className="field-label">邮箱</span>
           <input
+            id="login-email"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="admin@machora.local"
             autoComplete="username"
             required
-            autoFocus
+            aria-invalid={!!error}
           />
         </label>
 
-        <label className="field">
-          <span>密码</span>
+        <label className="field" htmlFor="login-password">
+          <span className="field-label">密码</span>
           <input
+            id="login-password"
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="••••••••"
             autoComplete="current-password"
             required
+            aria-invalid={!!error}
           />
         </label>
 
-        {error && <div className="login-error">{error}</div>}
+        {error && <div className="login-error" role="alert">{error}</div>}
 
-        <button className="btn primary" type="submit" disabled={loading}>
+        <button className="btn primary" type="submit" disabled={loading} aria-busy={loading}>
+          {loading && <span className="spinner" aria-hidden="true" />}
           {loading ? "登录中…" : "登录"}
         </button>
       </form>

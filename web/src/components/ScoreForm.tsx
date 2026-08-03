@@ -8,15 +8,6 @@ export interface ScoreTarget {
   name: string;
 }
 
-const inputStyle: React.CSSProperties = {
-  background: "var(--bg-elev-2)",
-  border: "1px solid var(--border)",
-  borderRadius: 6,
-  color: "var(--text)",
-  fontSize: 13,
-  padding: "0.4rem 0.5rem",
-};
-
 export default function ScoreForm({
   traceId,
   observations,
@@ -93,30 +84,17 @@ export default function ScoreForm({
   }
 
   return (
-    <form
-      onSubmit={submit}
-      className="card"
-      style={{ marginBottom: "0.75rem" }}
-    >
-      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: "0.5rem" }}>
+    <form onSubmit={submit} className="card mb-2">
+      <div className="form-title">
         标注评分（ANNOTATION）
       </div>
-      <div
-        style={{
-          display: "flex",
-          gap: "0.6rem",
-          alignItems: "flex-end",
-          flexWrap: "wrap",
-        }}
-      >
-        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span className="mute2" style={{ fontSize: 12 }}>
-            目标
-          </span>
+      <div className="form-row">
+        <label className="field">
+          <span className="field-label">目标</span>
           <select
             value={target}
             onChange={(e) => setTarget(e.target.value)}
-            style={inputStyle}
+            className="select"
           >
             <option value="trace">当前 Trace</option>
             {observations.map((o) => (
@@ -126,27 +104,23 @@ export default function ScoreForm({
             ))}
           </select>
         </label>
-        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span className="mute2" style={{ fontSize: 12 }}>
-            名称
-          </span>
+        <label className="field">
+          <span className="field-label">名称</span>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="如 satisfaction"
-            style={inputStyle}
+            className="input"
           />
         </label>
-        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span className="mute2" style={{ fontSize: 12 }}>
-            类型
-          </span>
+        <label className="field">
+          <span className="field-label">类型</span>
           <select
             value={dataType}
             onChange={(e) =>
               setDataType(e.target.value as typeof dataType)
             }
-            style={inputStyle}
+            className="select"
           >
             <option value="NUMERIC">NUMERIC</option>
             <option value="CATEGORICAL">CATEGORICAL</option>
@@ -154,75 +128,56 @@ export default function ScoreForm({
           </select>
         </label>
         {dataType === "NUMERIC" && (
-          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span className="mute2" style={{ fontSize: 12 }}>
-              数值
-            </span>
+          <label className="field">
+            <span className="field-label">数值</span>
             <input
               type="number"
               step="any"
               value={numValue}
               onChange={(e) => setNumValue(e.target.value)}
-              style={{ ...inputStyle, width: 90 }}
+              className="input"
+              style={{ width: 90 }}
             />
           </label>
         )}
         {dataType === "CATEGORICAL" && (
-          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span className="mute2" style={{ fontSize: 12 }}>
-              类别值
-            </span>
+          <label className="field">
+            <span className="field-label">类别值</span>
             <input
               value={catValue}
               onChange={(e) => setCatValue(e.target.value)}
               placeholder="如 good / bad"
-              style={inputStyle}
+              className="input"
             />
           </label>
         )}
         {dataType === "BOOLEAN" && (
-          <label
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              paddingBottom: "0.4rem",
-            }}
-          >
+          <label className="form-inline" style={{ alignItems: "center", gap: 6, paddingBottom: "0.4rem" }}>
             <input
               type="checkbox"
               checked={boolValue}
               onChange={(e) => setBoolValue(e.target.checked)}
               style={{ width: 16, height: 16 }}
             />
-            <span style={{ fontSize: 13 }}>{boolValue ? "通过 ✓" : "不通过 ✗"}</span>
+            <span className="text-md">{boolValue ? "通过 ✓" : "不通过 ✗"}</span>
           </label>
         )}
-        <label style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1 }}>
-          <span className="mute2" style={{ fontSize: 12 }}>
-            备注
-          </span>
+        <label className="field" style={{ flex: 1 }}>
+          <span className="field-label">备注</span>
           <input
             value={comment}
             onChange={(e) => setComment(e.target.value)}
             placeholder="可选"
-            style={inputStyle}
+            className="input"
           />
         </label>
-        <button type="submit" className="btn primary" disabled={busy}>
+        <button type="submit" className="btn primary" disabled={busy} aria-busy={busy}>
+          {busy && <span className="spinner" aria-hidden="true" />}
           {busy ? "提交中..." : "打分"}
         </button>
       </div>
       {error && (
-        <div
-          style={{
-            marginTop: "0.5rem",
-            color: "var(--red)",
-            fontSize: 12,
-          }}
-        >
-          {error}
-        </div>
+        <div className="form-error text-sm" role="alert">{error}</div>
       )}
     </form>
   );

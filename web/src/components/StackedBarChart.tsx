@@ -7,9 +7,9 @@ const PALETTE = [
   "var(--green)",
   "var(--amber)",
   "var(--red)",
-  "#38bdf8",
-  "#fb7185",
-  "#94a3b8",
+  "var(--sky)",
+  "var(--rose)",
+  "var(--slate)",
 ];
 
 export function StackedBarChart({

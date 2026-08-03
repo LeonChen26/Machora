@@ -83,7 +83,7 @@ export default async function SessionDetailPage({
 
       <div className="page-head">
         <div>
-          <h1 className="mono" style={{ fontSize: 20 }}>{sessionId}</h1>
+          <h1 className="mono">{sessionId}</h1>
           <div className="sub">
             {traces.length} traces · {obsCount} obs · {formatDateTime(first)} → {formatDateTime(last)}
           </div>
@@ -92,22 +92,22 @@ export default async function SessionDetailPage({
       </div>
 
       {/* 会话总览 */}
-      <div className="grid grid-4" style={{ marginBottom: "1rem" }}>
+      <div className="grid grid-4 mb-3">
         <div className="card">
           <div className="label">Traces</div>
           <div className="value">{traces.length}</div>
         </div>
         <div className="card">
           <div className="label">会话跨度</div>
-          <div className="value" style={{ fontSize: 20 }}>{formatDuration(spanMs)}</div>
+          <div className="value value-md">{formatDuration(spanMs)}</div>
         </div>
         <div className="card">
           <div className="label">Token 用量</div>
-          <div className="value" style={{ fontSize: 20 }}>{formatTokens(totalTokens)}</div>
+          <div className="value value-md">{formatTokens(totalTokens)}</div>
         </div>
         <div className="card">
           <div className="label">总成本</div>
-          <div className="value" style={{ fontSize: 20, color: "var(--green)" }}>
+          <div className="value value-md cost">
             {formatCost(totalCost)}
           </div>
         </div>
@@ -124,12 +124,11 @@ export default async function SessionDetailPage({
           return (
             <div className="tl-item" key={t.id}>
               <div
-                className="tl-node"
-                style={hasError ? { background: "var(--red)", borderColor: "var(--red)" } : undefined}
+                className={hasError ? "tl-node danger" : "tl-node"}
               />
               <div className="tl-body">
                 <div className="tl-head">
-                  <span className="mono muted" style={{ fontSize: 11 }}>
+                  <span className="mono muted text-xs">
                     {formatDateTime(t.timestamp)}
                   </span>
                   <Link href={`/traces/${t.id}`} prefetch={false}>
@@ -138,7 +137,7 @@ export default async function SessionDetailPage({
                   {hasError && <span className="badge red">ERROR</span>}
                 </div>
                 <div className="tl-meta">
-                  <span className="mono" style={{ color: dur != null ? "var(--text)" : "var(--text-dim)" }}>
+                  <span className={dur != null ? "mono" : "mono muted"}>
                     耗时 {formatDuration(dur)}
                   </span>
                   <span className="badge blue">{t.observations.length} obs</span>
@@ -146,11 +145,11 @@ export default async function SessionDetailPage({
                     <span className="badge amber">{t._count.scores} score</span>
                   )}
                   <span className="mono">{formatTokens(tokens)}</span>
-                  <span className="mono" style={{ color: cost > 0 ? "var(--green)" : "var(--text-dim)" }}>
+                  <span className={cost > 0 ? "mono cost" : "mono muted"}>
                     {formatCost(cost)}
                   </span>
                   {gapMs != null && (
-                    <span className="mute2" style={{ fontSize: 11 }}>
+                    <span className="mute2 text-xs">
                       距上一条 +{formatDuration(gapMs)}
                     </span>
                   )}
@@ -162,7 +161,7 @@ export default async function SessionDetailPage({
       </div>
 
       {errorCount > 0 && (
-        <div className="card" style={{ marginTop: "1rem", borderColor: "var(--red)" }}>
+        <div className="card alert-danger mt-3">
           该会话包含 <span className="badge red">{errorCount}</span> 个 ERROR observation。
         </div>
       )}

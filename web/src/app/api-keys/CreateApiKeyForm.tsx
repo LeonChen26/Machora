@@ -10,16 +10,6 @@ export interface CreatedKey {
   secretKey: string;
 }
 
-const inputStyle: React.CSSProperties = {
-  background: "var(--bg)",
-  border: "1px solid var(--border)",
-  borderRadius: 6,
-  color: "var(--text)",
-  padding: "0.4rem 0.6rem",
-  fontSize: 13,
-  fontFamily: "inherit",
-};
-
 export function CreateApiKeyForm({
   projects,
 }: {
@@ -57,18 +47,19 @@ export function CreateApiKeyForm({
   }
 
   return (
-    <div className="card" style={{ marginBottom: "1rem" }}>
-      <div className="label" style={{ marginBottom: 8 }}>
+    <div className="card mb-3">
+      <div className="label mb-1">
         创建 API Key
       </div>
-      <form onSubmit={onSubmit} style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+      <form onSubmit={onSubmit} className="form-inline">
         <input
           name="name"
           placeholder="名称（可选），如：生产环境"
           maxLength={60}
-          style={{ ...inputStyle, flex: 1, minWidth: 180 }}
+          className="input"
+          style={{ flex: 1, minWidth: 180 }}
         />
-        <select name="projectId" required style={inputStyle} defaultValue="">
+        <select name="projectId" required className="select" defaultValue="">
           <option value="" disabled>
             选择项目…
           </option>
@@ -78,41 +69,35 @@ export function CreateApiKeyForm({
             </option>
           ))}
         </select>
-        <button type="submit" className="btn primary" disabled={pending}>
+        <button type="submit" className="btn primary" disabled={pending} aria-busy={pending}>
+          {pending && <span className="spinner" aria-hidden="true" />}
           {pending ? "创建中…" : "创建"}
         </button>
       </form>
 
       {error && (
-        <div style={{ color: "var(--red)", marginTop: 8, fontSize: 13 }}>{error}</div>
+        <div className="form-error" role="alert">{error}</div>
       )}
 
       {created && (
-        <div
-          className="card"
-          style={{
-            marginTop: 12,
-            borderColor: "var(--green)",
-            background: "rgba(52, 211, 153, 0.06)",
-          }}
-        >
-          <div style={{ color: "var(--green)", fontWeight: 600, marginBottom: 4 }}>
+        <div className="card alert-success mt-3">
+          <div className="form-success">
             创建成功 — Secret Key 仅显示这一次，请立即保存
           </div>
-          <div style={{ marginBottom: 6 }}>
-            <span className="mute2" style={{ fontSize: 12 }}>
+          <div className="mb-1">
+            <span className="mute2 text-sm">
               PUBLIC KEY
             </span>
-            <div style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
+            <div className="key-row">
               <code className="mono">{created.publicKey}</code>
               <CopyButton text={created.publicKey} />
             </div>
           </div>
           <div>
-            <span className="mute2" style={{ fontSize: 12 }}>
+            <span className="mute2 text-sm">
               SECRET KEY（不再展示）
             </span>
-            <div style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
+            <div className="key-row">
               <code className="mono">{created.secretKey}</code>
               <CopyButton text={created.secretKey} />
             </div>

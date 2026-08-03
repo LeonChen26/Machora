@@ -102,18 +102,19 @@ export default async function RootLayout({
     <html lang="zh-CN" suppressHydrationWarning>
       <body>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+        <a href="#main-content" className="skip-link">跳到主内容</a>
         <div className="shell">
           <aside className="sidebar">
             <div className="brand">
-              <img src="/icon.jpg" alt="Machora" className="logo-img" />
+              <img src="/icon.jpg" alt="" className="logo-img" />
               <span className="name">Machora</span>
             </div>
             <ProjectSwitcher projects={projects} currentId={currentId} />
             <div className="nav-section">监控</div>
-            <NavItem href="/" label="概览" icon="dashboard" />
+            <NavItem href="/" label="Overview" icon="dashboard" />
             <NavItem href="/traces" label="Traces" icon="traces" />
             <NavItem href="/generations" label="Generations" icon="generations" />
-            <NavItem href="/analytics" label="模型分析" icon="models" />
+            <NavItem href="/analytics" label="Analytics" icon="models" />
             <NavItem href="/scores" label="Scores" icon="scores" />
             <NavItem href="/sessions" label="Sessions" icon="sessions" />
             <NavItem href="/users" label="Users" icon="users" />
@@ -121,7 +122,7 @@ export default async function RootLayout({
             <NavItem href="/projects" label="Projects" icon="projects" />
             <NavItem href="/api-keys" label="API Keys" icon="keys" />
             <div className="nav-section">接入</div>
-            <NavItem href="/docs" label="接入文档" icon="docs" />
+            <NavItem href="/docs" label="Docs" icon="docs" />
             {user && (
               <div className="sidebar-user">
                 <div className="user-meta">
@@ -129,7 +130,7 @@ export default async function RootLayout({
                   <div className="user-mail">{user.email}</div>
                 </div>
                 <form action="/api/auth/logout" method="post">
-                  <button type="submit" className="logout-btn" title="退出登录">
+                  <button type="submit" className="logout-btn" aria-label="退出登录" title="退出登录">
                     ⏻
                   </button>
                 </form>
@@ -137,7 +138,7 @@ export default async function RootLayout({
             )}
             <ThemeToggle />
           </aside>
-          <main className="main">{children}</main>
+          <main className="main" id="main-content">{children}</main>
         </div>
       </body>
     </html>

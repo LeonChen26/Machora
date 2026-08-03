@@ -3,16 +3,6 @@
 import { useTransition, useState } from "react";
 import { useRouter } from "next/navigation";
 
-const inputStyle: React.CSSProperties = {
-  background: "var(--bg)",
-  border: "1px solid var(--border)",
-  borderRadius: 6,
-  color: "var(--text)",
-  padding: "0.4rem 0.6rem",
-  fontSize: 13,
-  fontFamily: "inherit",
-};
-
 export function CreateProjectForm() {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -42,24 +32,27 @@ export function CreateProjectForm() {
   }
 
   return (
-    <div className="card" style={{ marginBottom: "1rem" }}>
-      <div className="label" style={{ marginBottom: 8 }}>
+    <div className="card mb-3">
+      <div className="label mb-1">
         创建项目
       </div>
-      <form onSubmit={onSubmit} style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+      <form onSubmit={onSubmit} className="form-inline">
         <input
+          id="new-project-name"
           name="name"
           placeholder="项目名称，如：生产环境"
           maxLength={60}
           required
-          style={{ ...inputStyle, flex: 1, minWidth: 200 }}
+          className="input"
+          style={{ flex: 1, minWidth: 200 }}
         />
-        <button type="submit" className="btn primary" disabled={pending}>
+        <button type="submit" className="btn primary" disabled={pending} aria-busy={pending}>
+          {pending && <span className="spinner" aria-hidden="true" />}
           {pending ? "创建中…" : "创建"}
         </button>
       </form>
       {error && (
-        <div style={{ color: "var(--red)", marginTop: 8, fontSize: 13 }}>{error}</div>
+        <div className="form-error" role="alert">{error}</div>
       )}
     </div>
   );

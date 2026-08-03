@@ -12,6 +12,7 @@ import {
   formatCost,
 } from "../../../lib/format";
 import { CopyButton } from "../../../components/CopyButton";
+import { EmptyIcon } from "../../../components/EmptyIcon";
 import { requireUser } from "../../../server/session";
 import { JsonBlock } from "../../../components/JsonBlock";
 import ScoreForm from "../../../components/ScoreForm";
@@ -41,8 +42,8 @@ export default async function TraceDetailPage({
     Array.isArray(v) ? v[0] : v;
   // 仅显示异常分支（ERROR/WARNING）过滤开关
   const issuesOnly = str(sp.issues) === "1";
-  // Langfuse 式 tab：tree / chat / scores / metadata
-  const TAB_KEYS = ["tree", "chat", "scores", "metadata"] as const;
+  // Langfuse 式 tab：tree（调用树）/ chat（对话）/ scores（评分）/ details（详情 Trace kv + trace 级 IO + metadata）
+  const TAB_KEYS = ["tree", "chat", "scores", "details"] as const;
   type TabKey = (typeof TAB_KEYS)[number];
   const tabRaw = str(sp.tab)?.trim();
   const tab: TabKey = TAB_KEYS.includes(tabRaw as TabKey)
@@ -218,6 +219,12 @@ export default async function TraceDetailPage({
     return { left: Math.max(left, 0), width: Math.min(width, 100 - left) };
   }
 
+  // Observation type 显示缩写：GENERATION→GEN，其余保持原名
+  function typeLabel(t: string): string {
+    if (t === "GENERATION") return "GEN";
+    return t;
+  }
+
   // 树形渲染：当前节点行 + 递归子节点（depth 控制名称缩进）
   function renderObsRows(nodes: ObsNode[], depth: number): ReactNode[] {
     return nodes.flatMap((o) => {
@@ -229,7 +236,6 @@ export default async function TraceDetailPage({
           : o.type === "SPAN"
             ? "blue"
             : "amber";
-      // 条颜色：ERROR/WARNING 用警示色覆盖类型色，突出异常
       const barColor =
         o.level === "ERROR"
           ? "var(--red)"
@@ -245,68 +251,44 @@ export default async function TraceDetailPage({
         `${formatDateTime(o.startTime)} → ${o.endTime ? formatDateTime(o.endTime) : "—"}\n` +
         `耗时 ${formatDuration(dur)}`;
       const row = (
-        <tr key={o.id} data-obs={o.id}>
+        <tr key={o.id} data-obs={o.id} data-level={o.level ?? undefined} tabIndex={0}>
           <td>
-            <div style={{ paddingLeft: depth * 18, display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
-              <span>{o.name || <span className="mute2">（未命名）</span>}</span>
-              <span className={`badge ${typeColor}`}>{o.type}</span>
-              {o.model && (
-                <span className="mono mute2" style={{ fontSize: 11 }}>{o.model}</span>
+            <div style={{ paddingLeft: depth * 14, display: "flex", alignItems: "center", gap: "0.35rem", flexWrap: "wrap" }}>
+              {(o.level === "ERROR" || o.level === "WARNING") && (
+                <span
+                  className={`status-dot ${o.level === "ERROR" ? "danger" : "warn"}`}
+                  title={o.level}
+                  aria-label={`级别 ${o.level}`}
+                />
               )}
-              <span className="mono mute2" style={{ fontSize: 11, display: "inline-flex", alignItems: "center", gap: 2 }} title={o.id}>
+              <span className="obs-name">{o.name || <span className="mute2">（未命名）</span>}</span>
+              <span className={`badge ${typeColor}`}>{typeLabel(o.type)}</span>
+              {o.model && (
+                <span className="mono mute2 text-xs">{o.model}</span>
+              )}
+              <span className="mono mute2 text-xs" style={{ display: "inline-flex", alignItems: "center", gap: 2 }} title={o.id}>
                 {o.id.slice(0, 8)}
-                <CopyButton text={o.id} />
+                <span className="copy-btn-inline">
+                  <CopyButton text={o.id} />
+                </span>
               </span>
             </div>
           </td>
-          <td className="mono">{formatDuration(dur)}</td>
           <td>
-            <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-              <div
-                style={{
-                  position: "relative",
-                  height: 14,
-                  background: "var(--bg-elev-2)",
-                  borderRadius: 4,
-                }}
-                title={barTip}
-              >
+            <div className="gantt-col">
+              <div className="gantt-track" title={barTip}>
                 <div
+                  className="gantt-bar"
                   style={{
-                    position: "absolute",
                     left: `${pos.left}%`,
                     width: `${pos.width}%`,
-                    top: 0,
-                    bottom: 0,
                     background: barColor,
-                    borderRadius: 4,
-                    opacity: 0.75,
                   }}
                 />
               </div>
-              {/* 相对时间刻度：0 / 50% / 总耗时 */}
-              <div style={{ position: "relative", height: 11 }}>
-                {[0, 50, 100].map((p) => (
-                  <span
-                    key={p}
-                    style={{
-                      position: "absolute",
-                      left: `${p}%`,
-                      transform: "translateX(-50%)",
-                      fontSize: 9,
-                      color: "var(--text-mute)",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {p === 0 ? "0" : p === 50 ? "50%" : formatDuration(span)}
-                  </span>
-                ))}
-              </div>
             </div>
           </td>
-          <td>
-            <LevelBadge level={o.level} />
-          </td>
+          <td className="mono">{formatDuration(dur)}</td>
         </tr>
       );
       return [row, ...renderObsRows(o.children, depth + 1)];
@@ -331,7 +313,7 @@ export default async function TraceDetailPage({
             {costCount > 0 && (
               <>
                 {" "}
-                · <span style={{ color: "var(--green)" }}>{formatCost(totalCost)}</span>
+                · <span className="cost">{formatCost(totalCost)}</span>
               </>
             )}
           </div>
@@ -342,67 +324,47 @@ export default async function TraceDetailPage({
       </div>
 
       {/* 聚合指标卡 */}
-      <div
-        style={{
-          display: "flex",
-          gap: "0.75rem",
-          flexWrap: "wrap",
-          marginBottom: "1rem",
-        }}
-      >
-        <div className="card" style={{ flex: "1 1 150px" }}>
+      <div className="grid grid-4 mb-3">
+        <div className="card">
           <div className="label">总耗时</div>
-          <div className="value" style={{ fontSize: 18 }}>
+          <div className="value value-sm">
             {formatDuration(traceEnd - traceStart)}
           </div>
           <div className="hint">trace 时间跨度</div>
         </div>
-        <div className="card" style={{ flex: "1 1 150px" }}>
+        <div className="card">
           <div className="label">总 Token</div>
-          <div className="value" style={{ fontSize: 18 }}>
+          <div className="value value-sm">
             {formatTokens(totalTokens)}
           </div>
           <div className="hint">{trace.observations.length} obs 合计</div>
         </div>
-        <div className="card" style={{ flex: "1 1 150px" }}>
+        <div className="card">
           <div className="label">总成本</div>
-          <div className="value" style={{ fontSize: 18, color: "var(--green)" }}>
+          <div className="value value-sm cost">
             {formatCost(totalCost)}
           </div>
           <div className="hint">{costCount} 个 obs 含成本</div>
         </div>
-        <div
-          className="card"
-          style={{
-            flex: "1 1 150px",
-            borderColor: errorCount > 0 ? "var(--red)" : undefined,
-            boxShadow: errorCount > 0 ? "0 0 0 1px var(--red) inset" : undefined,
-          }}
-        >
+        <div className={errorCount > 0 ? "card card-error" : "card"}>
           <div className="label">异常</div>
-          <div
-            className="value"
-            style={{ fontSize: 18, color: errorCount > 0 ? "var(--red)" : undefined }}
-          >
+          <div className={errorCount > 0 ? "value value-sm text-danger" : "value value-sm"}>
             {errorCount > 0 ? `${errorCount} ERROR` : "0 ERROR"}
           </div>
           <div className="hint">{warningCount} WARNING</div>
         </div>
-        <div className="card" style={{ flex: "1 1 150px" }}>
+        <div className="card">
           <div className="label">平均分</div>
           <div
-            className="value"
-            style={{
-              fontSize: 18,
-              color:
-                avgScore == null
-                  ? undefined
-                  : avgScore >= 0.8
-                    ? "var(--green)"
-                    : avgScore >= 0.5
-                      ? "var(--amber)"
-                      : "var(--red)",
-            }}
+            className={
+              avgScore == null
+                ? "value value-sm"
+                : avgScore >= 0.8
+                  ? "value value-sm text-success"
+                  : avgScore >= 0.5
+                    ? "value value-sm text-warn"
+                    : "value value-sm text-danger"
+            }
           >
             {avgScore != null ? avgScore.toFixed(3) : "—"}
           </div>
@@ -413,11 +375,13 @@ export default async function TraceDetailPage({
       </div>
 
       {/* Langfuse 式 Tab 分区 */}
-      <div className="detail-tabs">
+      <div className="detail-tabs" role="tablist">
         <Link
           href={`/traces/${id}${issuesOnly ? "?issues=1" : ""}`}
           prefetch={false}
           className={tab === "tree" ? "tab active" : "tab"}
+          role="tab"
+          aria-selected={tab === "tree"}
         >
           调用树
           <span className="count">{trace.observations.length}</span>
@@ -426,6 +390,8 @@ export default async function TraceDetailPage({
           href={`/traces/${id}?tab=chat`}
           prefetch={false}
           className={tab === "chat" ? "tab active" : "tab"}
+          role="tab"
+          aria-selected={tab === "chat"}
         >
           对话
           <span className="count">{chatMessages.length}</span>
@@ -434,16 +400,20 @@ export default async function TraceDetailPage({
           href={`/traces/${id}?tab=scores`}
           prefetch={false}
           className={tab === "scores" ? "tab active" : "tab"}
+          role="tab"
+          aria-selected={tab === "scores"}
         >
           评分
           <span className="count">{trace.scores.length}</span>
         </Link>
         <Link
-          href={`/traces/${id}?tab=metadata`}
+          href={`/traces/${id}?tab=details`}
           prefetch={false}
-          className={tab === "metadata" ? "tab active" : "tab"}
+          className={tab === "details" ? "tab active" : "tab"}
+          role="tab"
+          aria-selected={tab === "details"}
         >
-          元数据
+          详情
         </Link>
       </div>
 
@@ -453,10 +423,7 @@ export default async function TraceDetailPage({
         <div className="tree-layout">
           <div className="tree-col">
       {/* Observations 时间轴 */}
-      <div
-        className="section-title"
-        style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}
-      >
+      <div className="section-title">
         Observations{" "}
         <span className="count">
           {issuesOnly
@@ -469,6 +436,7 @@ export default async function TraceDetailPage({
             href={`/traces/${trace.id}`}
             prefetch={false}
             className={issuesOnly ? "seg-btn" : "seg-btn active"}
+            aria-current={!issuesOnly ? "true" : undefined}
           >
             全部
           </Link>
@@ -476,6 +444,7 @@ export default async function TraceDetailPage({
             href={`/traces/${trace.id}?issues=1`}
             prefetch={false}
             className={issuesOnly ? "seg-btn active" : "seg-btn"}
+            aria-current={issuesOnly ? "true" : undefined}
           >
             仅异常
             {issueCount > 0 && ` (${issueCount})`}
@@ -485,12 +454,12 @@ export default async function TraceDetailPage({
 
       {trace.observations.length === 0 ? (
         <div className="card empty">
-          <div className="icon">⌁</div>
+          <EmptyIcon type="bolt" />
           该 Trace 下暂无 Observation。
         </div>
       ) : visibleTree.length === 0 ? (
         <div className="card empty">
-          <div className="icon">⌁</div>
+          <EmptyIcon type="bolt" />
           无 ERROR / WARNING 分支。
         </div>
       ) : (
@@ -498,10 +467,23 @@ export default async function TraceDetailPage({
           <table>
             <thead>
               <tr>
-                <th>名称 / 类型</th>
-                <th>耗时</th>
-                <th style={{ width: "32%" }}>时间轴</th>
-                <th>级别</th>
+                <th scope="col">名称 / 类型</th>
+                <th scope="col" className="col-gantt">时间轴</th>
+                <th scope="col" className="col-dur">耗时</th>
+              </tr>
+              {/* 统一刻度：只在表头显示一次，对齐时间轴列 */}
+              <tr className="gantt-scale-row" aria-hidden="true">
+                <td></td>
+                <td>
+                  <div className="gantt-scale">
+                    {[0, 50, 100].map((p) => (
+                      <span key={p} style={{ left: `${p}%` }}>
+                        {p === 0 ? "0" : p === 50 ? "50%" : formatDuration(span)}
+                      </span>
+                    ))}
+                  </div>
+                </td>
+                <td></td>
               </tr>
             </thead>
             <tbody>{renderObsRows(visibleTree, 0)}</tbody>
@@ -532,7 +514,7 @@ export default async function TraceDetailPage({
       />
       {trace.scores.length === 0 ? (
         <div className="card empty">
-          <div className="icon">★</div>
+          <EmptyIcon type="star" />
           该 Trace 暂无评分。
         </div>
       ) : (
@@ -540,12 +522,12 @@ export default async function TraceDetailPage({
           <table>
             <thead>
               <tr>
-                <th>名称</th>
-                <th>值</th>
-                <th>类型</th>
-                <th>来源</th>
-                <th>时间</th>
-                <th>备注</th>
+                <th scope="col">名称</th>
+                <th scope="col">值</th>
+                <th scope="col">类型</th>
+                <th scope="col">来源</th>
+                <th scope="col">时间</th>
+                <th scope="col">备注</th>
               </tr>
             </thead>
             <tbody>
@@ -554,16 +536,11 @@ export default async function TraceDetailPage({
                   <td>{s.name}</td>
                   <td>
                     <span
-                      className="badge"
-                      style={{
-                        color:
-                          s.value >= 0.8
-                            ? "var(--green)"
-                            : s.value >= 0.5
-                              ? "var(--amber)"
-                              : "var(--red)",
-                        borderColor: "transparent",
-                      }}
+                      className="badge score-value"
+                      data-grade={
+                        s.value >= 0.8 ? "good" : s.value >= 0.5 ? "mid" : "bad"
+                      }
+                      style={{ borderColor: "transparent" }}
                     >
                       {s.dataType === "NUMERIC"
                         ? s.value.toFixed(3)
@@ -580,7 +557,7 @@ export default async function TraceDetailPage({
                   <td>
                     <span className="badge blue">{s.source}</span>
                   </td>
-                  <td className="mono muted" style={{ fontSize: 11 }}>
+                  <td className="mono muted text-xs">
                     {formatDateTime(s.timestamp)}
                   </td>
                   <td className="muted">{s.comment || <span className="mute2">—</span>}</td>
@@ -601,7 +578,7 @@ export default async function TraceDetailPage({
       </div>
       {chatMessages.length === 0 ? (
         <div className="card empty">
-          <div className="icon">◉</div>
+          <EmptyIcon type="target" />
           该 Trace 无对话消息（GENERATION 需带 input/output.messages）。
         </div>
       ) : (
@@ -623,15 +600,15 @@ export default async function TraceDetailPage({
         </>
       )}
 
-      {/* tab=metadata：元数据（Trace 属性 + input/output/metadata） */}
-      {tab === "metadata" && (
+      {/* tab=details：Trace 详情（Langfuse 式 Details Tab）= 上半段 kv 属性 + 下半段 trace 级 Input / Output / Metadata */}
+      {tab === "details" && (
         <>
-      <div className="section-title">元数据</div>
-      <div className="card" style={{ marginBottom: "1rem" }}>
+      <div className="section-title">属性</div>
+      <div className="card mb-3">
         <dl className="kv">
           <dt>Trace ID</dt>
           <dd className="mono">
-            <span style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem" }}>
+            <span className="key-row">
               {trace.id}
               <CopyButton text={trace.id} />
             </span>
@@ -711,6 +688,8 @@ export default async function TraceDetailPage({
           <dd className="mono">{formatDuration(traceEnd - traceStart)}</dd>
         </dl>
       </div>
+
+      <div className="section-title">输入 / 输出 / 元数据</div>
       {(trace.input != null || trace.output != null || trace.metadata != null) ? (
         <div className="grid grid-3">
           {trace.input != null && (
@@ -725,7 +704,7 @@ export default async function TraceDetailPage({
         </div>
       ) : (
         <div className="card empty">
-          <div className="icon">⌁</div>
+          <EmptyIcon type="bolt" />
           该 Trace 无 input / output / metadata。
         </div>
       )}
@@ -734,15 +713,4 @@ export default async function TraceDetailPage({
 
     </>
   );
-}
-
-function LevelBadge({ level }: { level: string }) {
-  const map: Record<string, string> = {
-    DEBUG: "",
-    DEFAULT: "",
-    WARNING: "amber",
-    ERROR: "red",
-  };
-  const cls = map[level] ?? "";
-  return <span className={`badge ${cls}`}>{level}</span>;
 }

@@ -1,4 +1,5 @@
 import { Link } from "../../components/NativeLink";
+import { EmptyIcon } from "../../components/EmptyIcon";
 import { prisma } from "@machora/shared";
 import {
   formatRelative,
@@ -82,7 +83,7 @@ export default async function UsersPage() {
 
       {users.length === 0 ? (
         <div className="card empty">
-          <div className="icon">◉</div>
+          <EmptyIcon type="target" />
           暂无用户数据。注入 trace 时带上 userId 即可聚合。
         </div>
       ) : (
@@ -90,13 +91,13 @@ export default async function UsersPage() {
           <table>
             <thead>
               <tr>
-                <th>User</th>
-                <th>Traces</th>
-                <th>Obs</th>
-                <th>Token</th>
-                <th>成本</th>
-                <th>ERROR</th>
-                <th>最近活动</th>
+                <th scope="col">User</th>
+                <th scope="col">Traces</th>
+                <th scope="col">Obs</th>
+                <th scope="col">Token</th>
+                <th scope="col">成本</th>
+                <th scope="col">ERROR</th>
+                <th scope="col">最近活动</th>
               </tr>
             </thead>
             <tbody>
@@ -114,12 +115,11 @@ export default async function UsersPage() {
                     <span className="badge blue">{u.traceCount}</span>
                   </td>
                   <td>
-                    <span className="badge">{u.obsCount}</span>
+                    <span className="badge blue">{u.obsCount}</span>
                   </td>
                   <td className="mono">{formatTokens(u.tokens)}</td>
                   <td
-                    className="mono"
-                    style={{ color: u.cost > 0 ? "var(--green)" : undefined }}
+                    className={u.cost > 0 ? "mono cost" : "mono"}
                   >
                     {formatCost(u.cost)}
                   </td>

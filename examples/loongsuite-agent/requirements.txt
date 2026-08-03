@@ -1,6 +1,7 @@
 # LoongSuite GenAI Util（ExtendedTelemetryHandler 手动埋点）
 # PyPI 包名：loongsuite-otel-util-genai；Python import 仍为 opentelemetry.util.genai
-loongsuite-otel-util-genai>=1.0
+# 注意：部分镜像源最高只到 0.8.x，勿写 >=1.0 以免装不上
+loongsuite-otel-util-genai>=0.8
 
 # 标准 OTel SDK + OTLP HTTP exporter（把 span 导出到 Machora）
 opentelemetry-sdk>=1.24
