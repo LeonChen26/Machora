@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 export default async function DocsPage() {
   await requireUser();
-  const port = process.env.PORT ?? "3000";
+  const port = process.env.PORT ?? "3100";
   const publicKey = process.env.MACHORA_INIT_PROJECT_PUBLIC_KEY ?? "pk-machora-dev-000000000000000000000";
   const secretKey = process.env.MACHORA_INIT_PROJECT_SECRET_KEY ?? "sk-machora-dev-000000000000000000000";
 
@@ -68,7 +68,7 @@ export default async function DocsPage() {
             <tr>
               <td><span className="badge purple">observation-create</span></td>
               <td className="mono">id, traceId, type, startTime</td>
-              <td className="muted">type ∈ span / generation / event</td>
+              <td className="muted">type ∈ SPAN / GENERATION / EVENT（大小写敏感）</td>
             </tr>
             <tr>
               <td><span className="badge amber">score-create</span></td>
@@ -102,7 +102,7 @@ export default async function DocsPage() {
         "body": {
           "id": "obs-1",
           "traceId": "trace-1",
-          "type": "generation",
+          "type": "GENERATION",
           "name": "llm-call",
           "startTime": "${new Date().toISOString()}",
           "model": "gpt-4o-mini",
@@ -118,7 +118,7 @@ export default async function DocsPage() {
           "name": "helpfulness",
           "value": 0.95,
           "dataType": "NUMERIC",
-          "source": "HUMAN",
+          "source": "API",
           "comment": "回答切题"
         }
       }

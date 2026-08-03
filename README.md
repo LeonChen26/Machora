@@ -9,10 +9,10 @@
 ## 核心能力
 
 - **Traces / Observations / Scores**：SPAN、GENERATION、EVENT 三种观测类型，支持父子调用树（`parentObservationId` 嵌套层级）与详情选中详览
-- **Trace 详情 4 Tab**：Langfuse 式分区——调用树（左树右详情）、对话（从 GENERATION input/output.messages 提取气泡视图）、评分（ScoreForm + 评分表）、元数据（kv 基本信息 + Trace input/output/metadata）
+- **Trace 详情 4 Tab**：Langfuse 式分区——调用树（左树右详情）、对话（从 GENERATION input/output.messages 提取气泡视图）、评分（ScoreForm + 评分表）、详情（kv 基本信息 + Trace input/output/metadata）
 - **Generations 页**：独立 LLM 调用列表，支持按模型/级别/时间窗筛选与排序（时间/耗时/Token/成本）
 - **CSV 导出**：`GET /api/export/traces`、`GET /api/export/generations`，按当前筛选条件导出
-- **Scores API**：`GET/POST /api/scores`，支持人工/自动评分写入与查询
+- **Scores API**：UI 标注 `POST /api/scores`（session 鉴权）；公开查询/写入 `GET/POST /api/public/scores`（Basic Auth），支持人工/自动评分写入与查询
 - **OTLP 接入**：`POST /api/public/otel/v1/traces` 接收 OpenTelemetry 数据（JSON + protobuf 双通道），任意 OTLP exporter 可直接上报（示例见 `scripts/connect-openclaw.sh`、`sdk/python/examples/langgraph_demo.py`）
 - **批量注入 API**：`POST /api/public/ingestion`，Basic Auth（pk:sk）鉴权，单批 ≤1000 条、按收到顺序写入（同一批先建 trace 再挂 observation，满足外键依赖）；支持 `parentObservationId` 构建嵌套调用树
 - **Python SDK**（`sdk/python`，包名 `machora-sdk`）：原生注入客户端 + LangChain 回调（`MachoraCallbackHandler`）
