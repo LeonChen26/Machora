@@ -130,7 +130,7 @@ export function ObservationDetailPanel({
         </button>
       </div>
       <div className="obs-detail-card">
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem", flexWrap: "wrap", marginBottom: 6 }}>
           <strong>{o.name || o.id}</strong>
           <span
             className={`badge ${o.type === "GENERATION" ? "purple" : o.type === "SPAN" ? "blue" : "amber"}`}

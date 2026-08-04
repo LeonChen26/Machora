@@ -361,6 +361,10 @@ a:hover {
   margin: 0;
   font-size: 20px;
   font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.page-head > div:first-child {
+  min-width: 0;
 }
 .page-head .sub {
   color: var(--text-dim);
@@ -839,6 +843,8 @@ pre.code .s {
   display: flex;
   gap: 0.4rem;
   align-items: center;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 /* 单行截断 */
@@ -1662,6 +1668,8 @@ pre.code,
   border-top: 1px solid var(--border-soft);
   /* 覆盖 .card 的 1rem padding，让内部标题与左侧表格表头对齐 */
   padding: 4px 12px 12px;
+  /* 超长 name/model/JSON 单行可换行，避免撑破面板出现横向滚动（anywhere 会参与 flex 收缩计算） */
+  overflow-wrap: anywhere;
 }
 
 /* ---------------------------------------------------------------------------
