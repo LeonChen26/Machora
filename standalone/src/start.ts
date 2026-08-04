@@ -281,10 +281,11 @@ async function seedStandaloneData(): Promise<void> {
   const effectivePassword =
     password ?? generateRandomPassword(16);
   const passwordHash = await bcryptjs.hash(effectivePassword, 12);
+  // drizzle findFirst 无匹配返回 undefined（Prisma 返回 null），必须用 == null 判断
   const isNewUser =
     (await db.query.user.findFirst({
       where: eq(userTable.email, email),
-    })) === null;
+    })) == null;
   await db
     .insert(userTable)
     .values({ email, passwordHash, name: userName })
