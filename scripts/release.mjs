@@ -85,7 +85,25 @@ function resolveBuildPrismaBin() {
 
 // ---------------------------------------------------------------------------
 step(withDeps ? "1/5 全量构建（pnpm build）" : "1/4 全量构建（pnpm build）");
-execSync("pnpm build", { cwd: root, stdio: "inherit" });
+// Next.js production build 会加载全部 server 路由（含 prisma 连接的 api 路由），为避免
+// 构建阶段模块顶层副作用触发 DB 连接，这里给占位 env。运行时真实值由 start.ts 设置。
+const prev = {};
+for (const [k, v] of Object.entries({
+  DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/postgres?sslmode=disable",
+  NEXTAUTH_URL: "http://localhost",
+  NEXTAUTH_SECRET: "build-stub-secret-only",
+  SKIP_ENV_VALIDATION: "1",
+})) {
+  prev[k] = process.env[k];
+  process.env[k] = v;
+}
+try {
+  execSync("pnpm build", { cwd: root, stdio: "inherit" });
+} finally {
+  for (const k of Object.keys(prev)) {
+    if (prev[k] === undefined) delete process.env[k]; else process.env[k] = prev[k];
+  }
+}
 
 // ---------------------------------------------------------------------------
 step(withDeps ? "2/5 组装发布目录" : "2/4 组装发布目录");
