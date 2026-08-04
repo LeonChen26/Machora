@@ -329,6 +329,13 @@ async function registerQueueProcessors(): Promise<void> {
 
 let nextServer: Server | null = null;
 
+// main() 动态加载 @machora/shared 后缓存 self 相关 API，供 startNextJs 的
+// HTTP 统计中间件与周期资源采集使用（shared 必须在 setupEnvironment 后加载）
+let selfApi: {
+  selfMetrics: (typeof import("@machora/shared"))["selfMetrics"];
+  collectSystemMetrics: (typeof import("@machora/shared"))["collectSystemMetrics"];
+} | null = null;
+
 async function startNextJs(): Promise<void> {
   const root = resolve(import.meta.dirname, "..", "..");
   const webDir = resolve(root, "web");
@@ -356,6 +363,17 @@ async function startNextJs(): Promise<void> {
   await nextApp.prepare();
 
   const server = createServer((req, res) => {
+    // 自运维 HTTP 全量统计：请求数按状态码分类，耗时 observe（machora.http.*）
+    const startHr = process.hrtime.bigint();
+    res.on("finish", () => {
+      const api = selfApi;
+      if (!api) return;
+      const ms = Number(process.hrtime.bigint() - startHr) / 1e6;
+      const code = res.statusCode;
+      const status = code >= 500 ? "5xx" : code >= 400 ? "4xx" : "2xx";
+      api.selfMetrics.inc("machora.http.requests", 1, { status });
+      api.selfMetrics.observe("machora.http.duration_ms", ms, { status });
+    });
     handler(req, res).catch((err: Error) => {
       console.error("[Next.js] 请求处理错误:", err);
       res.statusCode = 500;
@@ -393,18 +411,25 @@ async function main() {
   // 延迟加载 @machora/shared：db.ts 的 Pg Pool 在模块加载时读取 DATABASE_URL，
   // 必须先 setupEnvironment() 注入 env 再 import（否则连接串为 undefined，
   // pg 默认连 localhost:5432 → ECONNREFUSED）。
-  const { markSelfStarted, ensureSystemProject, startSelfMetrics } =
-    await import("@machora/shared");
+  const shared = await import("@machora/shared");
+  const { markSelfStarted, ensureSystemProject, startSelfMetrics } = shared;
+  selfApi = {
+    selfMetrics: shared.selfMetrics,
+    collectSystemMetrics: shared.collectSystemMetrics,
+  };
 
   const pglite = await startPgliteServer();
 
   await applySchemaSql(pglite.db);
   await seedStandaloneData();
 
-  // 自观测：确保 system 项目存在并启动周期落库（60s），队列/请求指标由此采集
+  // 自观测：确保 system 项目存在并启动周期落库（60s），队列/请求指标由此采集；
+  // collectSystemMetrics 每次 tick 先采样进程/主机资源（CPU/内存/磁盘/事件循环）再落库
   markSelfStarted();
   await ensureSystemProject();
-  startSelfMetrics();
+  startSelfMetrics(60_000, () =>
+    selfApi?.collectSystemMetrics(resolve(process.cwd(), DATA_DIR)),
+  );
   console.log("[Self] 自观测已启动（周期落库 MetricSample → machora-system）");
 
   await registerQueueProcessors();

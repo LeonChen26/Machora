@@ -49,7 +49,7 @@ export interface MetricAgg {
   latest: { value: number | null; ts: number } | null;
   count: number;
   total: number;
-  buckets: Map<number, number>;
+  buckets: Map<number, { sum: number; count: number }>;
 }
 
 /** 按指标名聚合一组采样（最新值 / 样本数 / 总 sum / chart 桶 sum） */
@@ -65,7 +65,7 @@ export function aggregate(
       latest: null,
       count: 0,
       total: 0,
-      buckets: new Map<number, number>(),
+      buckets: new Map<number, { sum: number; count: number }>(),
     };
     const ts = s.timestamp.getTime();
     if (!e.latest || ts > e.latest.ts) {
@@ -74,7 +74,11 @@ export function aggregate(
     e.count++;
     e.total += s.value ?? 0;
     const key = Math.floor(ts / bucketMs) * bucketMs;
-    e.buckets.set(key, (e.buckets.get(key) ?? 0) + (s.value ?? 0));
+    const b = e.buckets.get(key);
+    e.buckets.set(key, {
+      sum: (b?.sum ?? 0) + (s.value ?? 0),
+      count: (b?.count ?? 0) + 1,
+    });
     byName.set(s.name, e);
   }
   return byName;
@@ -94,12 +98,17 @@ export function MetricCardGrid({
   return (
     <div className="grid grid-4">
       {names.map(([name, e]) => {
+        const isGauge = e.kind === "GAUGE";
+        // GAUGE 为瞬间值：趋势图取桶内均值；SUM 为窗口累计：桶内求和
         const avg = e.count > 0 ? e.total / e.count : null;
         const chartData = Array.from(e.buckets.entries())
           .sort((a, b) => a[0] - b[0])
           .map(([ts, v]) => ({
             label: bucketLabel(new Date(ts), range),
-            value: Math.round(v * 100) / 100,
+            value:
+              isGauge && v.count > 0
+                ? Math.round((v.sum / v.count) * 100) / 100
+                : Math.round(v.sum * 100) / 100,
           }));
         return (
           <div className="card" key={name}>
@@ -111,7 +120,7 @@ export function MetricCardGrid({
               {e.unit ? <span className="hint"> {e.unit}</span> : null}
             </div>
             <div className="hint">
-              n={e.count}
+              {isGauge ? "GAUGE" : `n=${e.count}`}
               {avg != null ? ` · 均值 ${fmtNum(avg)}` : ""}
             </div>
             <BarChart data={chartData} height={90} emptyText="该窗口无采样" />

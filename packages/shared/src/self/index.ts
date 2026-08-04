@@ -11,6 +11,9 @@
 import { lt } from "drizzle-orm";
 import { db } from "../db.ts";
 import { metricSample, project } from "../drizzle/schema.ts";
+import { freemem, loadavg, totalmem } from "node:os";
+import { readdir, stat } from "node:fs/promises";
+import { join } from "node:path";
 
 export const SYSTEM_PROJECT_ID = "machora-system";
 export const SELF_METRICS_INTERVAL_MS = 60_000;
@@ -19,6 +22,7 @@ const RETENTION_MS = 7 * 24 * 60 * 60 * 1000; // 指标保留 7 天
 interface CounterState {
   count: number;
   sum: number;
+  kind: "SUM" | "GAUGE";
 }
 
 export interface SelfMetricEntry {
@@ -26,6 +30,7 @@ export interface SelfMetricEntry {
   count: number;
   sum: number;
   attrs: Record<string, unknown>;
+  kind: "SUM" | "GAUGE";
 }
 
 class SelfMetrics {
@@ -46,7 +51,7 @@ class SelfMetrics {
       c.count += 1;
       c.sum += value;
     } else {
-      this.counters.set(k, { count: 1, sum: value });
+      this.counters.set(k, { count: 1, sum: value, kind: "SUM" });
       this.attrs.set(k, attrs);
     }
   }
@@ -54,6 +59,13 @@ class SelfMetrics {
   /** 观测采样值（等价 inc：count+1、sum+=value） */
   observe(name: string, value: number, attrs: Record<string, unknown> = {}): void {
     this.inc(name, value, attrs);
+  }
+
+  /** GAUGE 采样：瞬间值，同窗口内重复采样直接覆盖为最新（count=1） */
+  gauge(name: string, value: number, attrs: Record<string, unknown> = {}): void {
+    const k = this.key(name, attrs);
+    this.counters.set(k, { count: 1, sum: value, kind: "GAUGE" });
+    this.attrs.set(k, attrs);
   }
 
   /** 取出全部计数并重置（drain） */
@@ -65,6 +77,7 @@ class SelfMetrics {
         count: c.count,
         sum: c.sum,
         attrs: this.attrs.get(k) ?? {},
+        kind: c.kind,
       });
     }
     this.counters.clear();
@@ -103,11 +116,17 @@ export function getSelfStartedAt(): number | null {
 
 let timer: NodeJS.Timeout | null = null;
 
-/** 启动周期落库（默认 60s），返回停止函数 */
-export function startSelfMetrics(intervalMs = SELF_METRICS_INTERVAL_MS): () => void {
+/** 启动周期落库（默认 60s），collect 为可选采集回调（如进程资源采样），返回停止函数 */
+export function startSelfMetrics(
+  intervalMs = SELF_METRICS_INTERVAL_MS,
+  collect?: () => Promise<void> | void,
+): () => void {
   if (timer) return () => stopSelfMetrics();
   timer = setInterval(() => {
-    flushSelfMetrics().catch((e) =>
+    (async () => {
+      if (collect) await collect();
+      await flushSelfMetrics();
+    })().catch((e) =>
       console.error("[self] flush failed:", e),
     );
   }, intervalMs);
@@ -140,7 +159,7 @@ export async function flushSelfMetrics(): Promise<void> {
       projectId: SYSTEM_PROJECT_ID,
       name: e.name,
       unit: null,
-      kind: "SUM",
+      kind: e.kind,
       attributes: e.attrs as unknown as typeof metricSample.$inferInsert["attributes"],
       timestamp: now,
       value: e.sum,
@@ -154,4 +173,96 @@ export async function pruneOldMetrics(): Promise<void> {
   await db
     .delete(metricSample)
     .where(lt(metricSample.timestamp, new Date(Date.now() - RETENTION_MS)));
+}
+
+// ---------------------------------------------------------------------------
+// 进程/主机资源采集（GAUGE）：CPU%、内存、负载、事件循环延迟、数据目录大小
+// ---------------------------------------------------------------------------
+
+let lastCpuUsage: { user: number; system: number } | null = null;
+let lastCpuWall = 0n;
+
+/** 事件循环延迟：多次 setImmediate 轮询取平均（ms） */
+export async function measureEventLoopDelay(samples = 5): Promise<number> {
+  let sum = 0;
+  let n = 0;
+  for (let i = 0; i < samples; i++) {
+    const t0 = process.hrtime.bigint();
+    await new Promise<void>((r) => setImmediate(r));
+    sum += Number(process.hrtime.bigint() - t0) / 1e6;
+    n++;
+  }
+  return n > 0 ? sum / n : 0;
+}
+
+/** 递归统计目录总字节数（PGlite 数据目录 MB 级，60s 一次开销可忽略） */
+export async function dirSizeBytes(dir: string): Promise<number> {
+  let total = 0;
+  async function walk(d: string): Promise<void> {
+    let entries;
+    try {
+      entries = await readdir(d, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      const full = join(d, e.name);
+      if (e.isDirectory()) {
+        await walk(full);
+      } else if (e.isFile()) {
+        try {
+          total += (await stat(full)).size;
+        } catch {
+          /* 忽略瞬时不可读 */
+        }
+      }
+    }
+  }
+  await walk(dir);
+  return total;
+}
+
+/**
+ * 进程/主机资源采样并落 GAUGE：
+ * - CPU 百分比（跨窗口差值 / 墙钟）
+ * - 内存 RSS / 堆占用
+ * - 系统负载（1min）与内存使用率
+ * - 事件循环延迟
+ * - 数据目录大小（传入 dataDir 才统计）
+ */
+export async function collectSystemMetrics(dataDir?: string): Promise<void> {
+  const now = process.hrtime.bigint();
+  const wallMs = Number(now - lastCpuWall) / 1e6;
+  const cur = process.cpuUsage();
+  if (lastCpuUsage && wallMs > 0) {
+    const delta =
+      (cur.user - lastCpuUsage.user + cur.system - lastCpuUsage.system) /
+      1000; // µs → ms
+    selfMetrics.gauge(
+      "machora.process.cpu_percent",
+      Math.round((Math.min(100, (delta / wallMs) * 100)) * 10) / 10,
+    );
+  }
+  lastCpuUsage = cur;
+  lastCpuWall = now;
+
+  const mem = process.memoryUsage();
+  selfMetrics.gauge("machora.process.memory_rss_bytes", mem.rss);
+  selfMetrics.gauge("machora.process.memory_heap_bytes", mem.heapUsed);
+
+  selfMetrics.gauge("machora.process.load1", loadavg()[0] ?? 0);
+
+  const total = totalmem();
+  const free = freemem();
+  selfMetrics.gauge("machora.process.mem_free_bytes", free);
+  selfMetrics.gauge(
+    "machora.process.mem_used_percent",
+    total > 0 ? Math.round(((total - free) / total) * 1000) / 10 : 0,
+  );
+
+  selfMetrics.gauge("machora.process.event_loop_ms", await measureEventLoopDelay());
+
+  if (dataDir) {
+    selfMetrics.gauge("machora.process.data_dir_bytes", await dirSizeBytes(dataDir));
+  }
 }
