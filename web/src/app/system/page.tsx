@@ -24,6 +24,13 @@ function fmtUptime(ms: number): string {
   return `${m}分 ${s % 60}秒`;
 }
 
+function fmtBytes(n: number): string {
+  if (n >= 1024 ** 3) return `${(n / 1024 ** 3).toFixed(2)} GB`;
+  if (n >= 1024 ** 2) return `${(n / 1024 ** 2).toFixed(1)} MB`;
+  if (n >= 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${n} B`;
+}
+
 // 平台自身健康面板：运行状态卡 + machora.* 指标趋势。
 // 数据源为 machora-system 专用项目的自观测采样（60s 窗口 SUM）。
 export default async function SystemPage({
@@ -81,6 +88,41 @@ export default async function SystemPage({
     },
   ];
 
+  // 进程资源：按指标名取最新一窗（samples 已按时间倒序）
+  const latestByName = new Map<string, number>();
+  for (const s of samples) {
+    if (!latestByName.has(s.name) && s.value != null) {
+      latestByName.set(s.name, s.value);
+    }
+  }
+  const resCpu = latestByName.get("machora.process.cpu_percent") ?? null;
+  const resRss = latestByName.get("machora.process.memory_rss_bytes") ?? null;
+  const resDataDir = latestByName.get("machora.process.data_dir_bytes") ?? null;
+  const resEvLoop = latestByName.get("machora.process.event_loop_ms") ?? null;
+
+  const resStats = [
+    {
+      label: "CPU",
+      value: resCpu != null ? `${resCpu}%` : "—",
+      hint: "进程 CPU 占用（跨窗口差值）",
+    },
+    {
+      label: "内存 RSS",
+      value: resRss != null ? fmtBytes(resRss) : "—",
+      hint: "进程常驻内存",
+    },
+    {
+      label: "数据目录",
+      value: resDataDir != null ? fmtBytes(resDataDir) : "—",
+      hint: "PGlite 落盘大小",
+    },
+    {
+      label: "事件循环",
+      value: resEvLoop != null ? `${resEvLoop.toFixed(2)} ms` : "—",
+      hint: "setImmediate 轮询平均延迟",
+    },
+  ];
+
   return (
     <>
       <div className="page-head">
@@ -95,6 +137,17 @@ export default async function SystemPage({
 
       <div className="grid grid-4 mb-3">
         {stats.map((st) => (
+          <div className="card" key={st.label}>
+            <div className="label">{st.label}</div>
+            <div className="value text-accent">{st.value}</div>
+            <div className="hint">{st.hint}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="section-title">进程资源（近 {range.label} 最新值）</div>
+      <div className="grid grid-4 mb-3">
+        {resStats.map((st) => (
           <div className="card" key={st.label}>
             <div className="label">{st.label}</div>
             <div className="value text-accent">{st.value}</div>
