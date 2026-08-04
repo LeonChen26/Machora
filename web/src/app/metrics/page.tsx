@@ -4,6 +4,7 @@ import { BarChart } from "../../components/BarChart";
 import { EmptyIcon } from "../../components/EmptyIcon";
 import { Link } from "../../components/NativeLink";
 import { requireUser } from "../../server/session";
+import { getCurrentProjectId } from "../../server/project";
 
 export const dynamic = "force-dynamic";
 
@@ -48,6 +49,43 @@ function attrsText(attrs: unknown): string {
   }
 }
 
+interface MetricAgg {
+  unit: string | null;
+  kind: string;
+  latest: { value: number | null; ts: number } | null;
+  count: number;
+  total: number;
+  buckets: Map<number, number>;
+}
+
+/** 按指标名聚合一组采样（最新值 / 样本数 / 总 sum / chart 桶 sum） */
+function aggregate(
+  samples: { name: string; kind: string; unit: string | null; value: number | null; timestamp: Date }[],
+  bucketMs: number,
+): Map<string, MetricAgg> {
+  const byName = new Map<string, MetricAgg>();
+  for (const s of samples) {
+    const e = byName.get(s.name) ?? {
+      unit: s.unit,
+      kind: s.kind,
+      latest: null,
+      count: 0,
+      total: 0,
+      buckets: new Map<number, number>(),
+    };
+    const ts = s.timestamp.getTime();
+    if (!e.latest || ts > e.latest.ts) {
+      e.latest = { value: s.value, ts };
+    }
+    e.count++;
+    e.total += s.value ?? 0;
+    const key = Math.floor(ts / bucketMs) * bucketMs;
+    e.buckets.set(key, (e.buckets.get(key) ?? 0) + (s.value ?? 0));
+    byName.set(s.name, e);
+  }
+  return byName;
+}
+
 export default async function MetricsPage({
   searchParams,
 }: {
@@ -59,45 +97,34 @@ export default async function MetricsPage({
   const raw = Array.isArray(sp.range) ? sp.range[0] : sp.range;
   const range = RANGES.find((r) => r.key === raw) ?? RANGES[0]!;
 
+  // 合并范围：自运维（machora-system）+ 当前项目的 OTLP 外部上报指标
+  const projectId = await getCurrentProjectId();
+  const project = projectId
+    ? await prisma.project.findUnique({ where: { id: projectId }, select: { id: true, name: true } })
+    : null;
+  const scopeIds =
+    !projectId || projectId === SYSTEM_PROJECT_ID
+      ? [SYSTEM_PROJECT_ID]
+      : [SYSTEM_PROJECT_ID, projectId];
+
   const since = new Date(Date.now() - range.ms);
   const samples = await prisma.metricSample.findMany({
-    where: { projectId: SYSTEM_PROJECT_ID, timestamp: { gte: since } },
+    where: { projectId: { in: scopeIds }, timestamp: { gte: since } },
     orderBy: { timestamp: "desc" },
     take: MAX_SAMPLES,
   });
 
-  // 按指标名聚合：最新值 / 窗口样本数 / 总 sum / chart 桶 sum
-  const byName = new Map<
-    string,
-    {
-      unit: string | null;
-      kind: string;
-      latest: (typeof samples)[number] | null;
-      count: number;
-      total: number;
-      buckets: Map<number, number>;
-    }
-  >();
-  for (const s of samples) {
-    const e = byName.get(s.name) ?? {
-      unit: s.unit,
-      kind: s.kind,
-      latest: null,
-      count: 0,
-      total: 0,
-      buckets: new Map<number, number>(),
-    };
-    if (!e.latest || s.timestamp > e.latest.timestamp) e.latest = s;
-    e.count++;
-    e.total += s.value ?? 0;
-    const key = Math.floor(s.timestamp.getTime() / range.bucketMs) * range.bucketMs;
-    e.buckets.set(key, (e.buckets.get(key) ?? 0) + (s.value ?? 0));
-    byName.set(s.name, e);
+  // 展示分组：自运维在前，当前项目在后
+  const groups: { id: string; title: string; name: string }[] = [
+    { id: SYSTEM_PROJECT_ID, title: "自运维指标", name: "Machora System" },
+    ...(project && project.id !== SYSTEM_PROJECT_ID
+      ? [{ id: project.id, title: "项目指标", name: project.name }]
+      : []),
+  ];
+  const samplesByGroup = new Map<string, typeof samples>();
+  for (const g of groups) {
+    samplesByGroup.set(g.id, samples.filter((s) => s.projectId === g.id));
   }
-
-  const names = Array.from(byName.entries()).sort((a, b) =>
-    a[0] < b[0] ? -1 : 1,
-  );
 
   return (
     <>
@@ -106,8 +133,8 @@ export default async function MetricsPage({
           <h1>Metrics</h1>
           <div className="sub">
             {samples.length} 条采样
-            {samples.length === MAX_SAMPLES ? "（已达上限）" : ""} · 近 {range.label} · 归属
-            系统项目
+            {samples.length === MAX_SAMPLES ? "（已达上限）" : ""} · 近 {range.label} · 自运维 +
+            当前项目
           </div>
         </div>
       </div>
@@ -127,56 +154,70 @@ export default async function MetricsPage({
           ))}
         </div>
         <div className="hint mt-2">
-          自观测指标由服务内部每 60 秒汇总落库一次（SUM，value 为窗口内累计值），
-          图表按时间桶聚合展示吞吐与趋势。
+          自运维指标由服务内部每 60 秒汇总落库（SUM，value 为窗口内累计值）；项目指标由
+          OTLP metrics 端点上报（Basic Auth，归属当前项目）。图表按时间桶聚合展示吞吐与趋势。
         </div>
       </div>
 
-      {names.length === 0 ? (
+      {samples.length === 0 ? (
         <div className="card empty">
           <EmptyIcon type="chart" />
-          暂无系统指标数据。指标会在服务运行（注入 / 队列 / 评估）约 1 分钟后开始落库。
+          暂无指标数据。自运维指标会在服务运行约 1 分钟后开始落库；项目指标通过
+          /api/public/otel/v1/metrics 上报后可见。
         </div>
       ) : (
         <>
-          <div className="section-title">指标走势</div>
-          <div className="grid grid-4">
-            {names.map(([name, e]) => {
-              const avg = e.count > 0 ? e.total / e.count : null;
-              const chartData = Array.from(e.buckets.entries())
-                .sort((a, b) => a[0] - b[0])
-                .map(([ts, v]) => ({
-                  label: bucketLabel(new Date(ts), range),
-                  value: Math.round(v * 100) / 100,
-                }));
-              return (
-                <div className="card" key={name}>
-                  <div className="label" title={name}>
-                    {name}
-                  </div>
-                  <div className="value text-accent">
-                    {fmtNum(e.latest?.value)}
-                    {e.unit ? <span className="hint"> {e.unit}</span> : null}
-                  </div>
-                  <div className="hint">
-                    n={e.count}
-                    {avg != null ? ` · 均值 ${fmtNum(avg)}` : ""}
-                  </div>
-                  <BarChart
-                    data={chartData}
-                    height={90}
-                    emptyText="该窗口无采样"
-                  />
+          {groups.map((g) => {
+            const gSamples = samplesByGroup.get(g.id) ?? [];
+            const byName = aggregate(gSamples, range.bucketMs);
+            const names = Array.from(byName.entries()).sort((a, b) => (a[0] < b[0] ? -1 : 1));
+            if (names.length === 0) return null;
+            return (
+              <div key={g.id}>
+                <div className="section-title">
+                  {g.title} <span className="count">{g.name}</span>
                 </div>
-              );
-            })}
-          </div>
+                <div className="grid grid-4">
+                  {names.map(([name, e]) => {
+                    const avg = e.count > 0 ? e.total / e.count : null;
+                    const chartData = Array.from(e.buckets.entries())
+                      .sort((a, b) => a[0] - b[0])
+                      .map(([ts, v]) => ({
+                        label: bucketLabel(new Date(ts), range),
+                        value: Math.round(v * 100) / 100,
+                      }));
+                    return (
+                      <div className="card" key={name}>
+                        <div className="label" title={name}>
+                          {name}
+                        </div>
+                        <div className="value text-accent">
+                          {fmtNum(e.latest?.value)}
+                          {e.unit ? <span className="hint"> {e.unit}</span> : null}
+                        </div>
+                        <div className="hint">
+                          n={e.count}
+                          {avg != null ? ` · 均值 ${fmtNum(avg)}` : ""}
+                        </div>
+                        <BarChart
+                          data={chartData}
+                          height={90}
+                          emptyText="该窗口无采样"
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
 
           <div className="section-title">明细</div>
           <div className="table-wrap">
             <table>
               <thead>
                 <tr>
+                  <th scope="col">项目</th>
                   <th scope="col">指标</th>
                   <th scope="col">类型</th>
                   <th scope="col">值</th>
@@ -188,6 +229,9 @@ export default async function MetricsPage({
               <tbody>
                 {samples.slice(0, 100).map((s) => (
                   <tr key={s.id}>
+                    <td className="muted">
+                      {groups.find((g) => g.id === s.projectId)?.name ?? s.projectId}
+                    </td>
                     <td className="mono">{s.name}</td>
                     <td>
                       <span className="badge">{s.kind}</span>
