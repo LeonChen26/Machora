@@ -1,6 +1,6 @@
 {
   "name": "machora",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "private": true,
   "devEngines": {
     "packageManager": {
@@ -18,7 +18,8 @@
     "db:migrate": "turbo run db:migrate",
     "standalone:dev": "pnpm --filter @machora/standalone dev",
     "standalone:start": "pnpm --filter @machora/standalone start",
-    "release": "node scripts/release.mjs"
+    "release": "node scripts/release.mjs",
+    "release:full": "node scripts/release.mjs --with-deps"
   },
   "devDependencies": {
     "turbo": "^2.10.7",

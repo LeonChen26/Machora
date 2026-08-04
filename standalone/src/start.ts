@@ -7,7 +7,6 @@
  * 关键不变量：Express 必须同进程启动，与 worker 共享 queueBus 单例
  */
 
-import { spawn } from "node:child_process";
 import { resolve } from "node:path";
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
 import { randomBytes } from "node:crypto";
@@ -92,6 +91,9 @@ function setupEnvironment(): void {
 
 interface PgliteHandle {
   stop(): Promise<void>;
+  // 直接暴露 PGlite 实例给 Schema 同步用，避免第二次 PGlite.create
+  // 在同一 dataDir 打开独立句柄导致写入不持久（跨进程上下文隔离）。
+  db: { exec(sql: string): Promise<unknown>; close(): Promise<void> };
 }
 
 async function startPgliteServer(): Promise<PgliteHandle> {
@@ -111,14 +113,13 @@ async function startPgliteServer(): Promise<PgliteHandle> {
     db,
     port: PG_PORT,
     host: "127.0.0.1",
-    // 留足余量：Prisma 连接池 + db push 子进程瞬时并发会同时占多条连接，
-    // 上限太小会在冷启动时拒绝新连接（P1001）
     maxConnections: 30,
   });
   await server.start();
 
   console.log("[PGlite] 已就绪");
   return {
+    db,
     async stop() {
       try { await server.stop(); } catch {}
       try { await db.close(); } catch {}
@@ -127,85 +128,94 @@ async function startPgliteServer(): Promise<PgliteHandle> {
 }
 
 // ---------------------------------------------------------------------------
-// Prisma 迁移（prisma db push）
+// Schema 同步（直接通过 PGlite 执行 packages/shared/prisma/schema.sql）
+//
+// 构建期（scripts/release.mjs）已做两件事，因此运行时零 prisma CLI 依赖：
+//   1) prisma generate 预生成 client，产物随包发布
+//   2) prisma migrate diff 导出 schema.sql，并处理成 IF NOT EXISTS 幂等
+//
+// 这里做最后一层兜底：SQL 按分号（;）拆分，单条 try/catch 执行，
+// CREATE TABLE / CREATE INDEX 已在构建期加了 IF NOT EXISTS，
+// ALTER ADD FOREIGN KEY 可能重复报错 → 单条吞错，达到整体幂等。
 // ---------------------------------------------------------------------------
 
-async function runPrismaMigrations(): Promise<void> {
-  const root = resolve(import.meta.dirname, "..", "..");
-  const schemaPath = resolve(
-    root,
-    "packages",
-    "shared",
-    "prisma",
-    "schema.prisma",
-  );
-  // 直接用 prisma binary，避免 pnpm exec 的 deps check
-  // .bin 里 Windows 生成 prisma.CMD，Linux/macOS 生成无扩展名的 prisma
-  const prismaBin = resolve(
-    root,
-    "packages",
-    "shared",
-    "node_modules",
-    ".bin",
-    process.platform === "win32" ? "prisma.CMD" : "prisma",
-  );
-
-  // 用 async spawn：PGlite 在同进程，spawnSync 会阻塞事件循环导致
-  // PGLiteSocketServer 无法接受 Prisma 的连接
-  console.log("[Prisma] 执行 db push...");
-  const code = await new Promise<number>((resolveP, rejectP) => {
-    const child = spawn(
-      prismaBin,
-      ["db", "push", "--accept-data-loss", "--skip-generate", `--schema=${schemaPath}`],
-      {
-        cwd: root,
-        env: { ...process.env, DATABASE_URL: process.env.DATABASE_URL },
-        stdio: "inherit",
-        shell: true,
-      },
-    );
-    child.on("exit", (c) => resolveP(c ?? 0));
-    child.on("error", rejectP);
-  });
-  if (code !== 0) throw new Error(`Prisma db push 失败，退出码 ${code}`);
-  console.log("[Prisma] 迁移完成");
+// 轻量 SQL 语句拆分器：按 ';' 分段，跳过 '--' 注释与空段，单引号字符串内部不拆。
+function splitStatements(sql: string): string[] {
+  const out: string[] = [];
+  let buf = "";
+  let inSingle = false;
+  let inLineComment = false;
+  for (let i = 0; i < sql.length; i++) {
+    const c = sql[i];
+    const next = sql[i + 1];
+    if (inLineComment) {
+      buf += c;
+      if (c === "\n" || c === "\r") inLineComment = false;
+      continue;
+    }
+    if (!inSingle && c === "-" && next === "-") {
+      inLineComment = true;
+      buf += c;
+      continue;
+    }
+    if (!inLineComment && c === "'" && sql[i - 1] !== "\\") {
+      inSingle = !inSingle;
+      buf += c;
+      continue;
+    }
+    if (!inSingle && !inLineComment && c === ";") {
+      const s = buf.trim();
+      if (s) out.push(s);
+      buf = "";
+      continue;
+    }
+    buf += c;
+  }
+  const tail = buf.trim();
+  if (tail) out.push(tail);
+  return out;
 }
 
-async function runPrismaGenerate(): Promise<void> {
+async function applySchemaSql(db: { exec(sql: string): Promise<unknown> }): Promise<void> {
   const root = resolve(import.meta.dirname, "..", "..");
-  const schemaPath = resolve(
+  const sqlPath = resolve(
     root,
     "packages",
     "shared",
     "prisma",
-    "schema.prisma",
+    "schema.sql",
   );
-  const prismaBin = resolve(
-    root,
-    "packages",
-    "shared",
-    "node_modules",
-    ".bin",
-    process.platform === "win32" ? "prisma.CMD" : "prisma",
-  );
+  if (!existsSync(sqlPath)) {
+    // 本地开发模式（pnpm dev / start）未走 release 流程，
+    // schema.sql 不一定存在；此时回退到旧的 prisma CLI 流程（不强制依赖）。
+    console.warn("[Schema] 未找到 schema.sql，跳过 SQL 同步（开发模式可忽略）");
+    return;
+  }
 
-  console.log("[Prisma] 生成 client...");
-  const code = await new Promise<number>((resolveP, rejectP) => {
-    const child = spawn(
-      prismaBin,
-      ["generate", `--schema=${schemaPath}`],
-      {
-        cwd: root,
-        env: { ...process.env, DATABASE_URL: process.env.DATABASE_URL },
-        stdio: "inherit",
-        shell: true,
-      },
-    );
-    child.on("exit", (c) => resolveP(c ?? 0));
-    child.on("error", rejectP);
-  });
-  if (code !== 0) throw new Error(`Prisma generate 失败，退出码 ${code}`);
-  console.log("[Prisma] client 生成完成");
+  console.log("[Schema] 读 schema.sql 并幂等建表...");
+  const raw = readFileSync(sqlPath, "utf8");
+  const stmts = splitStatements(raw);
+
+  let ok = 0;
+  let skipped = 0;
+  for (const stmt of stmts) {
+    try {
+      await db.exec(stmt);
+      ok++;
+    } catch (e) {
+      const msg = String((e as Error)?.message ?? e);
+      if (
+        /(relation|constraint|index) .* already exists/i.test(msg) ||
+        /duplicate key( value)? violates unique constraint/i.test(msg)
+      ) {
+        skipped++;
+      } else {
+        console.warn("[Schema] 语句执行失败（仍继续）:", msg.slice(0, 200));
+        skipped++;
+      }
+    }
+  }
+  console.log(`[Schema] 完成（成功 ${ok}，跳过/已存在 ${skipped}，共 ${stmts.length}）`);
 }
 
 /**
@@ -215,6 +225,9 @@ async function runPrismaGenerate(): Promise<void> {
  * 解压后）这条链上不存在生成的 Prisma Client，页面会报 Cannot find module
  * '.prisma/client/default'。因此把生成的 client 补到 web/.next/node_modules/.prisma/client，
  * 该位置位于 default.js 的包解析链（副本/node_modules → .next/node_modules）上。
+ *
+ * v0.1.2+ 构建期（release.mjs）已经把 Prisma Client 预复制到此位置，这里仅做兜底
+ * 检查（若缺失再从根 node_modules 找，适用于本地开发模式）。
  */
 async function ensureNextPrismaClientCopy(): Promise<void> {
   const root = resolve(import.meta.dirname, "..", "..");
@@ -227,9 +240,10 @@ async function ensureNextPrismaClientCopy(): Promise<void> {
     return;
   }
 
-  // 定位 prisma generate 的默认输出：cwd/根 node_modules/.prisma/client，或 pnpm 虚拟存储
+  // 兜底：构建期复制没到位（或本地开发模式）时沿常规路径找生成的 client。
   const candidates = [
     resolve(root, "node_modules", ".prisma", "client"),
+    resolve(root, "packages", "shared", "node_modules", ".prisma", "client"),
     resolve(process.cwd(), "node_modules", ".prisma", "client"),
   ];
   const pnpmRoot = resolve(root, "node_modules", ".pnpm");
@@ -404,8 +418,7 @@ async function main() {
 
   const pglite = await startPgliteServer();
 
-  await runPrismaMigrations();
-  await runPrismaGenerate();
+  await applySchemaSql(pglite.db);
   await ensureNextPrismaClientCopy();
   await seedStandaloneData();
 

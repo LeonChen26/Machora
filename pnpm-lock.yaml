@@ -217,7 +217,7 @@ importers:
   packages/shared:
     dependencies:
       '@prisma/client':
-        specifier: ^5.20.0
+        specifier: 5.22.0
         version: 5.22.0(prisma@5.22.0)
       bcryptjs:
         specifier: ^2.4.3
@@ -236,7 +236,7 @@ importers:
         specifier: ^20.19.43
         version: 20.19.43
       prisma:
-        specifier: ^5.20.0
+        specifier: 5.22.0
         version: 5.22.0
       typescript:
         specifier: ^5.9.0
@@ -285,7 +285,7 @@ importers:
         specifier: workspace:*
         version: link:../packages/shared
       '@prisma/client':
-        specifier: ^5.20.0
+        specifier: 5.22.0
         version: 5.22.0(prisma@5.22.0)
       '@trpc/server':
         specifier: ^11.0.0
