@@ -179,6 +179,11 @@ export default async function DocsPage() {
               <td className="muted">OTLP 注入（JSON / protobuf，Basic Auth）</td>
             </tr>
             <tr>
+              <td><span className="badge blue">POST</span></td>
+              <td className="mono">/api/public/otel/v1/metrics</td>
+              <td className="muted">OTLP metrics 注入（JSON / protobuf，Basic Auth）</td>
+            </tr>
+            <tr>
               <td><span className="badge green">GET</span></td>
               <td className="mono">/api/public/traces</td>
               <td className="muted">查询 Trace（时间窗 + 游标分页 + select 字段选择）</td>

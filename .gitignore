@@ -6,6 +6,7 @@ dist/
 .machora-data/
 .machora-v5/
 .machora-data-bak*/
+.machora-data-corrupted*/
 .openclaw-home/
 # 本地设计文档，不上传仓库（保留本机）
 design.md

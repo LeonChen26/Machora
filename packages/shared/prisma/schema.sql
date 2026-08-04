@@ -1,5 +1,5 @@
 -- CreateTable
-CREATE TABLE "Project" (
+CREATE TABLE IF NOT EXISTS "Project" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -8,7 +8,7 @@ CREATE TABLE "Project" (
 );
 
 -- CreateTable
-CREATE TABLE "ApiKey" (
+CREATE TABLE IF NOT EXISTS "ApiKey" (
     "id" TEXT NOT NULL,
     "projectId" TEXT NOT NULL,
     "publicKey" TEXT NOT NULL,
@@ -20,7 +20,7 @@ CREATE TABLE "ApiKey" (
 );
 
 -- CreateTable
-CREATE TABLE "User" (
+CREATE TABLE IF NOT EXISTS "User" (
     "id" TEXT NOT NULL,
     "email" TEXT NOT NULL,
     "passwordHash" TEXT NOT NULL,
@@ -31,7 +31,7 @@ CREATE TABLE "User" (
 );
 
 -- CreateTable
-CREATE TABLE "Trace" (
+CREATE TABLE IF NOT EXISTS "Trace" (
     "id" TEXT NOT NULL,
     "projectId" TEXT NOT NULL,
     "name" TEXT,
@@ -52,7 +52,7 @@ CREATE TABLE "Trace" (
 );
 
 -- CreateTable
-CREATE TABLE "Observation" (
+CREATE TABLE IF NOT EXISTS "Observation" (
     "id" TEXT NOT NULL,
     "traceId" TEXT NOT NULL,
     "projectId" TEXT NOT NULL,
@@ -79,7 +79,7 @@ CREATE TABLE "Observation" (
 );
 
 -- CreateTable
-CREATE TABLE "Score" (
+CREATE TABLE IF NOT EXISTS "Score" (
     "id" TEXT NOT NULL,
     "traceId" TEXT,
     "observationId" TEXT,
@@ -95,7 +95,7 @@ CREATE TABLE "Score" (
 );
 
 -- CreateTable
-CREATE TABLE "Evaluation" (
+CREATE TABLE IF NOT EXISTS "Evaluation" (
     "id" TEXT NOT NULL,
     "projectId" TEXT NOT NULL,
     "traceId" TEXT NOT NULL,
@@ -111,47 +111,73 @@ CREATE TABLE "Evaluation" (
     CONSTRAINT "Evaluation_pkey" PRIMARY KEY ("id")
 );
 
--- CreateIndex
-CREATE UNIQUE INDEX "ApiKey_publicKey_key" ON "ApiKey"("publicKey");
+-- CreateTable
+CREATE TABLE IF NOT EXISTS "MetricSample" (
+    "id" TEXT NOT NULL,
+    "projectId" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "unit" TEXT,
+    "kind" TEXT NOT NULL,
+    "attributes" JSONB,
+    "timestamp" TIMESTAMP(3) NOT NULL,
+    "value" DOUBLE PRECISION,
+    "count" DOUBLE PRECISION,
+    "sum" DOUBLE PRECISION,
+    "min" DOUBLE PRECISION,
+    "max" DOUBLE PRECISION,
+    "buckets" JSONB,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "MetricSample_pkey" PRIMARY KEY ("id")
+);
 
 -- CreateIndex
-CREATE INDEX "ApiKey_projectId_idx" ON "ApiKey"("projectId");
+CREATE UNIQUE INDEX IF NOT EXISTS "ApiKey_publicKey_key" ON "ApiKey"("publicKey");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
+CREATE INDEX IF NOT EXISTS "ApiKey_projectId_idx" ON "ApiKey"("projectId");
 
 -- CreateIndex
-CREATE INDEX "Trace_projectId_timestamp_idx" ON "Trace"("projectId", "timestamp");
+CREATE UNIQUE INDEX IF NOT EXISTS "User_email_key" ON "User"("email");
 
 -- CreateIndex
-CREATE INDEX "Trace_userId_idx" ON "Trace"("userId");
+CREATE INDEX IF NOT EXISTS "Trace_projectId_timestamp_idx" ON "Trace"("projectId", "timestamp");
 
 -- CreateIndex
-CREATE INDEX "Trace_sessionId_idx" ON "Trace"("sessionId");
+CREATE INDEX IF NOT EXISTS "Trace_userId_idx" ON "Trace"("userId");
 
 -- CreateIndex
-CREATE INDEX "Observation_projectId_startTime_idx" ON "Observation"("projectId", "startTime");
+CREATE INDEX IF NOT EXISTS "Trace_sessionId_idx" ON "Trace"("sessionId");
 
 -- CreateIndex
-CREATE INDEX "Observation_traceId_idx" ON "Observation"("traceId");
+CREATE INDEX IF NOT EXISTS "Observation_projectId_startTime_idx" ON "Observation"("projectId", "startTime");
 
 -- CreateIndex
-CREATE INDEX "Observation_parentObservationId_idx" ON "Observation"("parentObservationId");
+CREATE INDEX IF NOT EXISTS "Observation_traceId_idx" ON "Observation"("traceId");
 
 -- CreateIndex
-CREATE INDEX "Score_projectId_timestamp_idx" ON "Score"("projectId", "timestamp");
+CREATE INDEX IF NOT EXISTS "Observation_parentObservationId_idx" ON "Observation"("parentObservationId");
 
 -- CreateIndex
-CREATE INDEX "Score_traceId_idx" ON "Score"("traceId");
+CREATE INDEX IF NOT EXISTS "Score_projectId_timestamp_idx" ON "Score"("projectId", "timestamp");
 
 -- CreateIndex
-CREATE INDEX "Evaluation_projectId_createdAt_idx" ON "Evaluation"("projectId", "createdAt");
+CREATE INDEX IF NOT EXISTS "Score_traceId_idx" ON "Score"("traceId");
 
 -- CreateIndex
-CREATE INDEX "Evaluation_traceId_idx" ON "Evaluation"("traceId");
+CREATE INDEX IF NOT EXISTS "Evaluation_projectId_createdAt_idx" ON "Evaluation"("projectId", "createdAt");
 
 -- CreateIndex
-CREATE INDEX "Evaluation_status_idx" ON "Evaluation"("status");
+CREATE INDEX IF NOT EXISTS "Evaluation_traceId_idx" ON "Evaluation"("traceId");
+
+-- CreateIndex
+CREATE INDEX IF NOT EXISTS "Evaluation_status_idx" ON "Evaluation"("status");
+
+-- CreateIndex
+CREATE INDEX IF NOT EXISTS "MetricSample_projectId_name_timestamp_idx" ON "MetricSample"("projectId", "name", "timestamp");
+
+-- CreateIndex
+CREATE INDEX IF NOT EXISTS "MetricSample_name_timestamp_idx" ON "MetricSample"("name", "timestamp");
 
 -- AddForeignKey
 ALTER TABLE "ApiKey" ADD CONSTRAINT "ApiKey_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -167,3 +193,6 @@ ALTER TABLE "Score" ADD CONSTRAINT "Score_traceId_fkey" FOREIGN KEY ("traceId") 
 
 -- AddForeignKey
 ALTER TABLE "Evaluation" ADD CONSTRAINT "Evaluation_traceId_fkey" FOREIGN KEY ("traceId") REFERENCES "Trace"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "MetricSample" ADD CONSTRAINT "MetricSample_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE CASCADE ON UPDATE CASCADE;

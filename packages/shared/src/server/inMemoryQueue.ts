@@ -1,19 +1,28 @@
 import { EventEmitter } from "node:events";
+import { selfMetrics } from "../self/index.ts";
 
 // 进程内队列总线，替代 BullMQ
 // 关键不变量：Next.js 与 worker 必须同进程，共享此单例
 export class InMemoryQueueBus extends EventEmitter {
   enqueue<T>(queue: string, payload: T): void {
+    selfMetrics.inc("machora.queue.enqueued", 1, { queue });
     // 非阻塞：下一 tick 投递，避免阻塞 HTTP 响应
     setImmediate(() => this.emit(queue, payload));
   }
 
   consume<T>(queue: string, handler: (payload: T) => Promise<void>): void {
     this.on(queue, async (payload: T) => {
+      const start = Date.now();
       try {
         await handler(payload);
+        selfMetrics.inc("machora.queue.consumed", 1, { queue, status: "ok" });
       } catch (e) {
+        selfMetrics.inc("machora.queue.consumed", 1, { queue, status: "error" });
         console.error(`[queue:${queue}] handler error:`, e);
+      } finally {
+        selfMetrics.observe("machora.queue.duration_ms", Date.now() - start, {
+          queue,
+        });
       }
     });
   }

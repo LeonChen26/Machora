@@ -1,10 +1,12 @@
-import { prisma, queueBus, IngestionBatchSchema, QUEUES, calculateCost } from "@machora/shared";
+import { prisma, queueBus, IngestionBatchSchema, QUEUES, calculateCost, selfMetrics } from "@machora/shared";
 import { Prisma } from "@prisma/client";
 import { verifyApiKey } from "../../../../server/auth";
 
 export async function POST(req: Request) {
+  const start = Date.now();
   const auth = await verifyApiKey(req.headers.get("authorization") ?? undefined);
   if (!auth) {
+    selfMetrics.inc("machora.ingestion.requests", 1, { status: "unauthorized" });
     return Response.json({ error: "Invalid API key" }, { status: 401 });
   }
   const projectId = auth.projectId;
@@ -13,11 +15,13 @@ export async function POST(req: Request) {
   try {
     body = await req.json();
   } catch {
+    selfMetrics.inc("machora.ingestion.requests", 1, { status: "bad-json" });
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
   const parsed = IngestionBatchSchema.safeParse(body);
   if (!parsed.success) {
+    selfMetrics.inc("machora.ingestion.requests", 1, { status: "bad-payload" });
     return Response.json(
       { error: "Invalid payload", details: parsed.error.flatten() },
       { status: 400 },
@@ -105,6 +109,12 @@ export async function POST(req: Request) {
       errors.push({ index, error: e.message });
     }
   }
+
+  selfMetrics.inc("machora.ingestion.requests", 1, {
+    status: errors.length ? "error" : "ok",
+  });
+  selfMetrics.inc("machora.ingestion.events", batch.length);
+  selfMetrics.observe("machora.ingestion.duration_ms", Date.now() - start);
 
   return Response.json({
     success: true,

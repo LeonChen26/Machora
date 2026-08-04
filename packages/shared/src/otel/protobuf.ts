@@ -11,9 +11,14 @@
 import protobuf from "protobufjs";
 import type {
   OtlpAnyValue,
+  OtlpExportMetricsServiceRequest,
   OtlpExportTraceServiceRequest,
   OtlpKeyValue,
+  OtlpMetric,
+  OtlpMetricDataPoint,
+  OtlpResourceMetrics,
   OtlpResourceSpans,
+  OtlpScopeMetrics,
   OtlpScopeSpans,
   OtlpSpan,
   OtlpSpanEvent,
@@ -155,14 +160,114 @@ message ExportTraceServiceRequest {
 }
 `;
 
+const METRICS_PROTO = `
+syntax = "proto3";
+
+package opentelemetry.proto.metrics.v1;
+
+message Metric {
+  string name = 1;
+  string description = 2;
+  string unit = 3;
+  oneof data {
+    Gauge gauge = 5;
+    Sum sum = 7;
+    Histogram histogram = 9;
+    Summary summary = 11;
+  }
+}
+
+message Gauge {
+  repeated NumberDataPoint data_points = 1;
+}
+
+message Sum {
+  repeated NumberDataPoint data_points = 1;
+  AggregationTemporality aggregation_temporality = 2;
+  bool is_monotonic = 3;
+}
+
+message Histogram {
+  repeated HistogramDataPoint data_points = 1;
+  AggregationTemporality aggregation_temporality = 2;
+}
+
+message Summary {
+  repeated SummaryDataPoint data_points = 1;
+}
+
+message NumberDataPoint {
+  repeated opentelemetry.proto.common.v1.KeyValue attributes = 7;
+  fixed64 start_time_unix_nano = 2;
+  fixed64 time_unix_nano = 3;
+  oneof value {
+    double as_double = 4;
+    sfixed64 as_int = 6;
+  }
+}
+
+message HistogramDataPoint {
+  repeated opentelemetry.proto.common.v1.KeyValue attributes = 9;
+  fixed64 start_time_unix_nano = 2;
+  fixed64 time_unix_nano = 3;
+  fixed64 count = 4;
+  double sum = 5;
+  repeated fixed64 bucket_counts = 6;
+  repeated double explicit_bounds = 7;
+  double min = 11;
+  double max = 12;
+}
+
+message SummaryDataPoint {
+  repeated opentelemetry.proto.common.v1.KeyValue attributes = 7;
+  fixed64 start_time_unix_nano = 2;
+  fixed64 time_unix_nano = 3;
+  fixed64 count = 4;
+  double sum = 5;
+}
+
+enum AggregationTemporality {
+  AGGREGATION_TEMPORALITY_UNSPECIFIED = 0;
+  AGGREGATION_TEMPORALITY_DELTA = 1;
+  AGGREGATION_TEMPORALITY_CUMULATIVE = 2;
+}
+
+message ScopeMetrics {
+  opentelemetry.proto.trace.v1.InstrumentationScope scope = 1;
+  repeated Metric metrics = 2;
+  string schema_url = 3;
+}
+
+message ResourceMetrics {
+  opentelemetry.proto.resource.v1.Resource resource = 1;
+  repeated ScopeMetrics scope_metrics = 2;
+  string schema_url = 3;
+}
+`;
+
+const COLLECTOR_METRICS_PROTO = `
+syntax = "proto3";
+
+package opentelemetry.proto.collector.metrics.v1;
+
+message ExportMetricsServiceRequest {
+  repeated opentelemetry.proto.metrics.v1.ResourceMetrics resource_metrics = 1;
+}
+`;
+
 const root = new protobuf.Root();
 protobuf.parse(COMMON_PROTO, root);
 protobuf.parse(RESOURCE_PROTO, root);
 protobuf.parse(TRACE_PROTO, root);
 protobuf.parse(COLLECTOR_TRACE_PROTO, root);
+protobuf.parse(METRICS_PROTO, root);
+protobuf.parse(COLLECTOR_METRICS_PROTO, root);
 root.resolveAll();
 const ExportTraceServiceRequestType = root.lookupType(
   "opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest",
+);
+const ExportMetricsServiceRequestType = root.lookupType(
+  "opentelemetry.proto.collector.metrics.v1.ExportMetricsServiceRequest",
 );
 
 // ---------------------------------------------------------------------------
@@ -355,6 +460,141 @@ export function decodeOtlpProtobuf(bytes: Uint8Array): OtlpExportTraceServiceReq
   // 与 JSON 通道的空 payload 行为一致
   if (decoded.resourceSpans && decoded.resourceSpans.length > 0) {
     out.resourceSpans = decoded.resourceSpans.map(mapResourceSpans);
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// OTLP Metrics：protobufjs 产物 → OTLP JSON 结构
+// ---------------------------------------------------------------------------
+
+interface PbMetricDataPoint {
+  attributes?: PbKeyValue[];
+  startTimeUnixNano?: { toString(): string };
+  timeUnixNano?: { toString(): string };
+  asDouble?: number;
+  asInt?: { toString(): string };
+  count?: { toString(): string };
+  sum?: number;
+  min?: number;
+  max?: number;
+  bucketCounts?: Array<number | { toString(): string }>;
+  explicitBounds?: number[];
+}
+
+interface PbMetric {
+  name?: string;
+  description?: string;
+  unit?: string;
+  gauge?: { dataPoints?: PbMetricDataPoint[] };
+  sum?: { dataPoints?: PbMetricDataPoint[]; aggregationTemporality?: number; isMonotonic?: boolean };
+  histogram?: { dataPoints?: PbMetricDataPoint[]; aggregationTemporality?: number };
+  summary?: { dataPoints?: PbMetricDataPoint[] };
+}
+
+interface PbScopeMetrics {
+  scope?: { name?: string; version?: string };
+  metrics?: PbMetric[];
+}
+
+interface PbResourceMetrics {
+  resource?: { attributes?: PbKeyValue[] };
+  scopeMetrics?: PbScopeMetrics[];
+}
+
+interface PbExportMetricsServiceRequest {
+  resourceMetrics?: PbResourceMetrics[];
+}
+
+function mapMetricDataPoint(dp: PbMetricDataPoint): OtlpMetricDataPoint {
+  const out: OtlpMetricDataPoint = {};
+  if (has(dp, "attributes") && dp.attributes!.length > 0) {
+    out.attributes = dp.attributes!.map(mapKeyValue);
+  }
+  if (has(dp, "startTimeUnixNano")) out.startTimeUnixNano = longToStr(dp.startTimeUnixNano!);
+  if (has(dp, "timeUnixNano")) out.timeUnixNano = longToStr(dp.timeUnixNano!);
+  if (has(dp, "asDouble")) out.asDouble = dp.asDouble;
+  if (has(dp, "asInt")) out.asInt = longToStr(dp.asInt!);
+  if (has(dp, "count")) out.count = longToStr(dp.count!);
+  if (has(dp, "sum")) out.sum = dp.sum;
+  if (has(dp, "min")) out.min = dp.min;
+  if (has(dp, "max")) out.max = dp.max;
+  if (has(dp, "bucketCounts") && dp.bucketCounts!.length > 0) {
+    // fixed64 → protobufjs Long 对象，统一转字符串与 JSON 通道（"10"）对齐
+    out.bucketCounts = dp.bucketCounts!.map((b) =>
+      typeof b === "object" ? b.toString() : b,
+    );
+  }
+  if (has(dp, "explicitBounds") && dp.explicitBounds!.length > 0) {
+    out.explicitBounds = dp.explicitBounds!;
+  }
+  return out;
+}
+
+function mapMetric(m: PbMetric): OtlpMetric {
+  const out: OtlpMetric = {};
+  if (has(m, "name")) out.name = m.name;
+  if (has(m, "description")) out.description = m.description;
+  if (has(m, "unit")) out.unit = m.unit;
+  if (has(m, "gauge") && m.gauge!.dataPoints!.length > 0) {
+    out.gauge = { dataPoints: m.gauge!.dataPoints!.map(mapMetricDataPoint) };
+  }
+  if (has(m, "sum") && m.sum!.dataPoints!.length > 0) {
+    out.sum = {
+      dataPoints: m.sum!.dataPoints!.map(mapMetricDataPoint),
+      ...(has(m.sum!, "aggregationTemporality")
+        ? { aggregationTemporality: m.sum!.aggregationTemporality }
+        : {}),
+      ...(has(m.sum!, "isMonotonic") ? { isMonotonic: m.sum!.isMonotonic } : {}),
+    };
+  }
+  if (has(m, "histogram") && m.histogram!.dataPoints!.length > 0) {
+    out.histogram = { dataPoints: m.histogram!.dataPoints!.map(mapMetricDataPoint) };
+  }
+  if (has(m, "summary") && m.summary!.dataPoints!.length > 0) {
+    out.summary = { dataPoints: m.summary!.dataPoints!.map(mapMetricDataPoint) };
+  }
+  return out;
+}
+
+function mapScopeMetrics(sm: PbScopeMetrics): OtlpScopeMetrics {
+  const out: OtlpScopeMetrics = {};
+  if (has(sm, "scope")) {
+    out.scope = {};
+    if (has(sm.scope!, "name")) out.scope.name = sm.scope!.name;
+    if (has(sm.scope!, "version")) out.scope.version = sm.scope!.version;
+  }
+  if (has(sm, "metrics") && sm.metrics!.length > 0) out.metrics = sm.metrics!.map(mapMetric);
+  return out;
+}
+
+function mapResourceMetrics(rm: PbResourceMetrics): OtlpResourceMetrics {
+  const out: OtlpResourceMetrics = {};
+  if (has(rm, "resource")) {
+    out.resource = {};
+    if (has(rm.resource!, "attributes") && rm.resource!.attributes!.length > 0) {
+      out.resource.attributes = rm.resource!.attributes!.map(mapKeyValue);
+    }
+  }
+  if (has(rm, "scopeMetrics") && rm.scopeMetrics!.length > 0) {
+    out.scopeMetrics = rm.scopeMetrics!.map(mapScopeMetrics);
+  }
+  return out;
+}
+
+/**
+ * 解码 OTLP metrics protobuf 二进制（ExportMetricsServiceRequest）
+ * 输出与 OTLP JSON 一致的结构，可直接喂给 parseOtelMetricsPayload
+ */
+export function decodeOtlpMetricsProtobuf(
+  bytes: Uint8Array,
+): OtlpExportMetricsServiceRequest {
+  const decoded = ExportMetricsServiceRequestType.decode(
+    bytes,
+  ) as unknown as PbExportMetricsServiceRequest;
+  const out: OtlpExportMetricsServiceRequest = {};
+  if (decoded.resourceMetrics && decoded.resourceMetrics.length > 0) {
+    out.resourceMetrics = decoded.resourceMetrics.map(mapResourceMetrics);
   }
   return out;
 }

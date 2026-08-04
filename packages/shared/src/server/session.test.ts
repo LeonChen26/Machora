@@ -25,8 +25,10 @@ describe("session token", () => {
     const flip = data[0] === "A" ? "B" : "A";
     const tamperedPayload = flip + data.slice(1) + "." + sig;
     expect(await verifySessionToken(tamperedPayload, SECRET)).toBeNull();
-    // 篡改签名
-    const tamperedSig = data + "." + sig.replace(/.$/, "A");
+    // 篡改签名（翻转首字符：base64 首字符必编码到第 0 字节，字节必然变化；
+    // 末字符低 2 位超出 32 字节边界，翻转后可能解码出相同字节，不具确定性）
+    const sigFlip = sig[0] === "A" ? "B" : "A";
+    const tamperedSig = data + "." + sigFlip + sig.slice(1);
     expect(await verifySessionToken(tamperedSig, SECRET)).toBeNull();
   });
 

@@ -54,6 +54,56 @@ export interface OtlpExportTraceServiceRequest {
   resourceSpans?: OtlpResourceSpans[];
 }
 
+// ---------------------------------------------------------------------------
+// OTLP Metrics（ExportMetricsServiceRequest）
+// ---------------------------------------------------------------------------
+
+export interface OtlpMetricDataPoint {
+  attributes?: OtlpKeyValue[];
+  startTimeUnixNano?: string | number;
+  timeUnixNano?: string | number;
+  asDouble?: number;
+  asInt?: string | number;
+  // histogram
+  count?: string | number;
+  sum?: number;
+  min?: number;
+  max?: number;
+  bucketCounts?: Array<string | number>;
+  explicitBounds?: number[];
+}
+
+export interface OtlpMetric {
+  name?: string;
+  description?: string;
+  unit?: string;
+  gauge?: { dataPoints?: OtlpMetricDataPoint[] };
+  sum?: {
+    dataPoints?: OtlpMetricDataPoint[];
+    aggregationTemporality?: number;
+    isMonotonic?: boolean;
+  };
+  histogram?: {
+    dataPoints?: OtlpMetricDataPoint[];
+    aggregationTemporality?: number;
+  };
+  summary?: { dataPoints?: OtlpMetricDataPoint[] };
+}
+
+export interface OtlpScopeMetrics {
+  scope?: { name?: string; version?: string };
+  metrics?: OtlpMetric[];
+}
+
+export interface OtlpResourceMetrics {
+  resource?: { attributes?: OtlpKeyValue[] };
+  scopeMetrics?: OtlpScopeMetrics[];
+}
+
+export interface OtlpExportMetricsServiceRequest {
+  resourceMetrics?: OtlpResourceMetrics[];
+}
+
 /** 解码 OTLP AnyValue → JSON 值 */
 export function decodeAnyValue(v: OtlpAnyValue | undefined): unknown {
   if (!v) return null;

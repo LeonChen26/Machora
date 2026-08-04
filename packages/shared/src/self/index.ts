@@ -72,7 +72,16 @@ class SelfMetrics {
   }
 }
 
-export const selfMetrics = new SelfMetrics();
+declare global {
+  // eslint-disable-next-line no-var
+  var __machoraSelfMetrics: SelfMetrics | undefined;
+}
+
+// 与 queueBus 同理：Next.js 会把 @machora/shared 内联进 web 路由 bundle，若不用
+// globalThis 兜底，路由内 inc 的计数与 start.ts 周期 flush 的是两个实例，永远落不了库。
+export const selfMetrics: SelfMetrics =
+  globalThis.__machoraSelfMetrics ?? new SelfMetrics();
+globalThis.__machoraSelfMetrics = selfMetrics;
 
 let timer: NodeJS.Timeout | null = null;
 

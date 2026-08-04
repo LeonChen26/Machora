@@ -7,6 +7,7 @@ import {
   QUEUES,
   prisma,
   getEvaluator,
+  selfMetrics,
   type IngestionQueuePayload,
   type EvaluationQueuePayload,
 } from "@machora/shared";
@@ -29,6 +30,7 @@ export function registerQueueProcessors(): void {
  * 幂等：COMPLETED / ERROR 状态的任务直接跳过（不会重复写 Score）
  */
 async function runEvaluation(payload: EvaluationQueuePayload): Promise<void> {
+  const start = Date.now();
   const evaluation = await prisma.evaluation.findUnique({
     where: { id: payload.evaluationId },
   });
@@ -37,6 +39,9 @@ async function runEvaluation(payload: EvaluationQueuePayload): Promise<void> {
     console.log(`[evaluation] skip (${evaluation.status}) id=${evaluation.id}`);
     return;
   }
+  selfMetrics.inc("machora.evaluation.attempted", 1, {
+    type: evaluation.evaluatorType,
+  });
 
   try {
     await prisma.evaluation.update({
@@ -86,6 +91,9 @@ async function runEvaluation(payload: EvaluationQueuePayload): Promise<void> {
       where: { id: evaluation.id },
       data: { status: "COMPLETED", result: result as object },
     });
+    selfMetrics.inc("machora.evaluation.completed", 1, {
+      type: evaluation.evaluatorType,
+    });
     console.log(
       `[evaluation] completed id=${evaluation.id} type=${evaluation.evaluatorType} value=${result.value}`,
     );
@@ -94,6 +102,11 @@ async function runEvaluation(payload: EvaluationQueuePayload): Promise<void> {
       where: { id: evaluation.id },
       data: { status: "ERROR", error: String(e?.message ?? e) },
     });
+    selfMetrics.inc("machora.evaluation.failed", 1, {
+      type: evaluation.evaluatorType,
+    });
     console.error(`[evaluation] failed id=${evaluation.id}`, e);
+  } finally {
+    selfMetrics.observe("machora.evaluation.duration_ms", Date.now() - start);
   }
 }

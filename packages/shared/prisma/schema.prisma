@@ -15,11 +15,12 @@ datasource db {
 // ---------------------------------------------------------------------------
 
 model Project {
-  id        String   @id @default(cuid())
-  name      String
-  createdAt DateTime @default(now())
-  apiKeys   ApiKey[]
-  traces    Trace[]
+  id            String        @id @default(cuid())
+  name          String
+  createdAt     DateTime      @default(now())
+  apiKeys       ApiKey[]
+  traces        Trace[]
+  metricSamples MetricSample[]
 }
 
 model ApiKey {
@@ -140,4 +141,31 @@ model Evaluation {
   @@index([projectId, createdAt])
   @@index([traceId])
   @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// 指标采样（OTLP metrics 外部接入 + 自观测共用）
+// ---------------------------------------------------------------------------
+
+model MetricSample {
+  id         String   @id @default(cuid())
+  projectId  String
+  name       String
+  unit       String?
+  kind       String // GAUGE | SUM | HISTOGRAM
+  attributes Json? // labels（OTLP attributes / 自观测维度）
+  timestamp  DateTime
+  // gauge / sum：单值
+  value      Float?
+  // histogram：摘要
+  count      Float?
+  sum        Float?
+  min        Float?
+  max        Float?
+  buckets    Json? // [{ boundary: number, count: number }]（累计直方图）
+  createdAt  DateTime @default(now())
+  project    Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, name, timestamp])
+  @@index([name, timestamp])
 }

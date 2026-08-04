@@ -58,6 +58,9 @@ const ICONS: Record<string, React.ReactNode> = {
   users: (
     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c1-3.5 3.5-5 6.5-5s5.5 1.5 6.5 5"/><path d="M16 5.5a3.5 3.5 0 010 6.6M17.5 15c2.3.6 3.7 2.2 4.2 5"/></svg>
   ),
+  metrics: (
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="20" x2="20" y2="20"/><polyline points="6,16 10,10 14,13 20,5"/></svg>
+  ),
   projects: (
     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7a2 2 0 012-2h4l2 2.5h8a2 2 0 012 2V17a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
   ),
@@ -118,6 +121,7 @@ export default async function RootLayout({
             <NavItem href="/scores" label="Scores" icon="scores" />
             <NavItem href="/sessions" label="Sessions" icon="sessions" />
             <NavItem href="/users" label="Users" icon="users" />
+            <NavItem href="/metrics" label="Metrics" icon="metrics" />
             <div className="nav-section">项目</div>
             <NavItem href="/projects" label="Projects" icon="projects" />
             <NavItem href="/api-keys" label="API Keys" icon="keys" />
