@@ -363,16 +363,22 @@ async function startNextJs(): Promise<void> {
   await nextApp.prepare();
 
   const server = createServer((req, res) => {
-    // 自运维 HTTP 全量统计：请求数按状态码分类，耗时 observe（machora.http.*）
+    // 自运维 HTTP 全量统计：请求数按状态码 + 端点（归一化）分类，耗时 observe（machora.http.*）
     const startHr = process.hrtime.bigint();
+    // 归一化路径：去 query，长 ID 段替换为 {id}（避免动态路由高基数）
+    const rawPath = req.url?.split("?")[0] ?? "/";
+    const path = rawPath
+      .split("/")
+      .map((seg) => (/^[0-9a-f]{8,}$/i.test(seg) ? "{id}" : seg))
+      .join("/");
     res.on("finish", () => {
       const api = selfApi;
       if (!api) return;
       const ms = Number(process.hrtime.bigint() - startHr) / 1e6;
       const code = res.statusCode;
       const status = code >= 500 ? "5xx" : code >= 400 ? "4xx" : "2xx";
-      api.selfMetrics.inc("machora.http.requests", 1, { status });
-      api.selfMetrics.observe("machora.http.duration_ms", ms, { status });
+      api.selfMetrics.inc("machora.http.requests", 1, { status, path });
+      api.selfMetrics.observe("machora.http.duration_ms", ms, { status, path });
     });
     handler(req, res).catch((err: Error) => {
       console.error("[Next.js] 请求处理错误:", err);

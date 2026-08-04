@@ -3,7 +3,7 @@ import { db, metricSample, SYSTEM_PROJECT_ID, getSelfStartedAt } from "@machora/
 import { formatDateTime, formatRelative } from "../../lib/format";
 import { EmptyIcon } from "../../components/EmptyIcon";
 import { Link } from "../../components/NativeLink";
-import { StackedBarChart } from "../../components/StackedBarChart";
+import { LineChart } from "../../components/LineChart";
 import {
   RANGES,
   MAX_SAMPLES,
@@ -125,23 +125,32 @@ export default async function SystemPage({
     },
   ];
 
-  // 接入请求按状态码堆叠（machora.ingestion.requests 的 attrs.status 维度）
-  const ingBuckets = new Map<number, Map<string, number>>();
+  // HTTP 请求按 端点/状态码 双维度聚合（machora.http.requests 的 attrs.path / attrs.status）
+  const httpByUrl = new Map<number, Map<string, number>>();
+  const httpByStatus = new Map<number, Map<string, number>>();
   for (const s of samples) {
-    if (s.name !== "machora.ingestion.requests" || s.value == null) continue;
-    const status = String((s.attributes as Record<string, unknown>)?.status ?? "unknown");
+    if (s.name !== "machora.http.requests" || s.value == null) continue;
+    const attrs = (s.attributes ?? {}) as Record<string, unknown>;
+    const path = String(attrs.path ?? "/");
+    const status = String(attrs.status ?? "2xx");
     const key = Math.floor(s.timestamp.getTime() / range.bucketMs) * range.bucketMs;
-    const m = ingBuckets.get(key) ?? new Map<string, number>();
-    m.set(status, (m.get(status) ?? 0) + s.value);
-    ingBuckets.set(key, m);
+    const mUrl = httpByUrl.get(key) ?? new Map<string, number>();
+    mUrl.set(path, (mUrl.get(path) ?? 0) + s.value);
+    httpByUrl.set(key, mUrl);
+    const mSt = httpByStatus.get(key) ?? new Map<string, number>();
+    mSt.set(status, (mSt.get(status) ?? 0) + s.value);
+    httpByStatus.set(key, mSt);
   }
-  const ingSeries = Array.from(ingBuckets.entries())
-    .sort((a, b) => a[0] - b[0])
-    .map(([ts, m]) => ({
-      label: bucketLabel(new Date(ts), range),
-      series: Array.from(m.entries()).map(([name, value]) => ({ name, value })),
-    }));
-  const hasIng = ingSeries.some((d) => d.series.length > 0);
+  const toSeries = (m: Map<number, Map<string, number>>) =>
+    Array.from(m.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([ts, mm]) => ({
+        label: bucketLabel(new Date(ts), range),
+        series: Array.from(mm.entries()).map(([name, value]) => ({ name, value })),
+      }));
+  const urlSeries = toSeries(httpByUrl);
+  const statusSeries = toSeries(httpByStatus);
+  const hasHttp = urlSeries.some((d) => d.series.length > 0);
 
   return (
     <>
@@ -205,15 +214,15 @@ export default async function SystemPage({
         <>
           <MetricCardGrid samples={samples} range={range} />
 
-          {hasIng && (
+          {hasHttp && (
             <>
-              <div className="section-title">接入请求（ingestion · 按状态码堆叠）</div>
+              <div className="section-title">HTTP 请求 · 按端点</div>
               <div className="card mb-3">
-                <StackedBarChart
-                  data={ingSeries}
-                  height={140}
-                  emptyText="该窗口无接入请求"
-                />
+                <LineChart data={urlSeries} height={140} emptyText="该窗口无请求" />
+              </div>
+              <div className="section-title">HTTP 请求 · 按状态码</div>
+              <div className="card mb-3">
+                <LineChart data={statusSeries} height={140} emptyText="该窗口无请求" />
               </div>
             </>
           )}
