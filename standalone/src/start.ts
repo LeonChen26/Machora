@@ -63,12 +63,21 @@ function loadDotEnv(): void {
 }
 
 function setupEnvironment(): void {
+  // 打包后的发布环境（.next 存在且有 server/static 目录）默认走 production，
+  // 避免 Turbopack dev 模式跨目录推断 workspace root。用户显式设置
+  // NODE_ENV=development 时仍可走开发模式。
+  const envDefaultsNodeEnv =
+    process.env.NODE_ENV ??
+    (existsSync(resolve(import.meta.dirname, "..", "..", "web", ".next", "server")) &&
+    existsSync(resolve(import.meta.dirname, "..", "..", "web", ".next", "static"))
+      ? "production"
+      : "development");
   const defaults: Record<string, string> = {
     DATABASE_URL: `postgresql://postgres:postgres@127.0.0.1:${PG_PORT}/postgres?sslmode=disable&connection_limit=5`,
     NEXTAUTH_URL: `http://localhost:${WEB_PORT}`,
     NEXTAUTH_SECRET: "machora-standalone-dev-secret-do-not-use-in-production",
     PORT: String(WEB_PORT),
-    NODE_ENV: "development",
+    NODE_ENV: envDefaultsNodeEnv,
     // seed 凭据（MACHORA_INIT_USER_PASSWORD 不设默认值：优先读 .env，
     // 未配置时 seed 随机生成，见 seedStandaloneData）
     MACHORA_INIT_PROJECT_NAME: "Machora Project",
