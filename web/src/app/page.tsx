@@ -16,6 +16,7 @@ import {
   formatCost,
 } from "../lib/format";
 import { BarChart } from "../components/BarChart";
+import { StatCard } from "../components/StatCard";
 import { getCurrentProjectId } from "../server/project";
 import { requireUser } from "../server/session";
 
@@ -198,56 +199,37 @@ export default async function Home() {
       </div>
 
       <div className="grid grid-4">
-        <div className="card" style={{ borderLeft: "3px solid var(--accent)" }}>
-          <div className="label">Traces</div>
-          <div className="value">{traceCount}</div>
-          <div className="hint">总记录数</div>
-        </div>
-        <div className="card">
-          <div className="label">Observations</div>
-          <div className="value">{obsCount}</div>
-          <div className="hint">span / generation / event</div>
-        </div>
-        <div className="card">
-          <div className="label">Scores</div>
-          <div className="value">{scoreCount}</div>
-          <div className="hint">人工 / 自动评分</div>
-        </div>
-        <div className="card">
-          <div className="label">Projects</div>
-          <div className="value">{projectCount}</div>
-          <div className="hint">{project?.name ?? "—"}</div>
-        </div>
+        <StatCard label="Traces" value={traceCount} hint="总记录数" icon="🧾" accent />
+        <StatCard label="Observations" value={obsCount} hint="span / generation / event" icon="📊" />
+        <StatCard label="Scores" value={scoreCount} hint="人工 / 自动评分" icon="⭐" />
+        <StatCard label="Projects" value={projectCount} hint={project?.name ?? "—"} icon="📁" />
       </div>
 
       <div className="section-title">近 {TREND_DAYS} 天聚合</div>
       <div className="grid grid-4">
-        <div className="card">
-          <div className="label">Generation 调用</div>
-          <div className="value">{gens7d.length}</div>
-          <div className="hint">近 {TREND_DAYS} 天</div>
-        </div>
-        <div className="card">
-          <div className="label">Token 总量</div>
-          <div className="value value-md">
-            {formatTokens(totalTokens7d)}
-          </div>
-          <div className="hint">近 {TREND_DAYS} 天</div>
-        </div>
-        <div className="card">
-          <div className="label">总成本</div>
-          <div className="value value-md text-success">
-            {formatCost(totalCost7d)}
-          </div>
-          <div className="hint">近 {TREND_DAYS} 天</div>
-        </div>
-        <div className="card">
-          <div className="label">错误率</div>
-          <div className="value text-danger">
-            {(errorRate7d * 100).toFixed(1)}%
-          </div>
-          <div className="hint">{errors7d} ERROR · 近 {TREND_DAYS} 天</div>
-        </div>
+        <StatCard label="Generation 调用" value={gens7d.length} hint={`近 ${TREND_DAYS} 天`} icon="⚡" />
+        <StatCard
+          label="Token 总量"
+          value={formatTokens(totalTokens7d)}
+          hint={`近 ${TREND_DAYS} 天`}
+          size="md"
+          icon="🔢"
+        />
+        <StatCard
+          label="总成本"
+          value={formatCost(totalCost7d)}
+          hint={`近 ${TREND_DAYS} 天`}
+          size="md"
+          tone="success"
+          icon="💰"
+        />
+        <StatCard
+          label="错误率"
+          value={`${(errorRate7d * 100).toFixed(1)}%`}
+          hint={`${errors7d} ERROR · 近 ${TREND_DAYS} 天`}
+          tone="danger"
+          icon="⚠"
+        />
       </div>
 
       <div className="section-title">近 {TREND_DAYS} 天分布</div>
@@ -334,14 +316,13 @@ export default async function Home() {
                   {x.t.name || <span className="mute2">{x.t.id}</span>}
                 </Link>
                 <span
-                  className={`mono ${
+                  className={`mono nowrap ${
                     (x.latency ?? 0) >= 8000
                       ? "latency-high"
                       : (x.latency ?? 0) >= 2000
                         ? "latency-mid"
                         : "latency-low"
                   }`}
-                  style={{ whiteSpace: "nowrap" }}
                 >
                   {formatDuration(x.latency)}
                 </span>

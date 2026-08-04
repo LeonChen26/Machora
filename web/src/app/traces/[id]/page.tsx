@@ -15,6 +15,7 @@ import { CopyButton } from "../../../components/CopyButton";
 import { EmptyIcon } from "../../../components/EmptyIcon";
 import { requireUser } from "../../../server/session";
 import { JsonBlock } from "../../../components/JsonBlock";
+import { StatCard } from "../../../components/StatCard";
 import ScoreForm from "../../../components/ScoreForm";
 import { getCurrentProjectId } from "../../../server/project";
 import {
@@ -326,53 +327,48 @@ export default async function TraceDetailPage({
 
       {/* 聚合指标卡 */}
       <div className="grid grid-4 mb-3">
-        <div className="card">
-          <div className="label">总耗时</div>
-          <div className="value value-sm">
-            {formatDuration(traceEnd - traceStart)}
-          </div>
-          <div className="hint">trace 时间跨度</div>
-        </div>
-        <div className="card">
-          <div className="label">总 Token</div>
-          <div className="value value-sm">
-            {formatTokens(totalTokens)}
-          </div>
-          <div className="hint">{trace.observations.length} obs 合计</div>
-        </div>
-        <div className="card">
-          <div className="label">总成本</div>
-          <div className="value value-sm cost">
-            {formatCost(totalCost)}
-          </div>
-          <div className="hint">{costCount} 个 obs 含成本</div>
-        </div>
-        <div className={errorCount > 0 ? "card card-error" : "card"}>
-          <div className="label">异常</div>
-          <div className={errorCount > 0 ? "value value-sm text-danger" : "value value-sm"}>
-            {errorCount > 0 ? `${errorCount} ERROR` : "0 ERROR"}
-          </div>
-          <div className="hint">{warningCount} WARNING</div>
-        </div>
-        <div className="card">
-          <div className="label">平均分</div>
-          <div
-            className={
-              avgScore == null
-                ? "value value-sm"
-                : avgScore >= 0.8
-                  ? "value value-sm text-success"
-                  : avgScore >= 0.5
-                    ? "value value-sm text-warn"
-                    : "value value-sm text-danger"
-            }
-          >
-            {avgScore != null ? avgScore.toFixed(3) : "—"}
-          </div>
-          <div className="hint">
-            {numericScores.length} 个 NUMERIC 评分
-          </div>
-        </div>
+        <StatCard
+          label="总耗时"
+          value={formatDuration(traceEnd - traceStart)}
+          hint="trace 时间跨度"
+          icon="⏱"
+        />
+        <StatCard
+          label="总 Token"
+          value={formatTokens(totalTokens)}
+          hint={`${trace.observations.length} obs 合计`}
+          icon="🔢"
+        />
+        <StatCard
+          label="总成本"
+          value={formatCost(totalCost)}
+          hint={`${costCount} 个 obs 含成本`}
+          tone="success"
+          icon="💰"
+        />
+        <StatCard
+          label="异常"
+          value={errorCount > 0 ? `${errorCount} ERROR` : "0 ERROR"}
+          hint={`${warningCount} WARNING`}
+          alert={errorCount > 0}
+          tone={errorCount > 0 ? "danger" : undefined}
+          icon="⚠"
+        />
+        <StatCard
+          label="平均分"
+          value={avgScore != null ? avgScore.toFixed(3) : "—"}
+          hint={`${numericScores.length} 个 NUMERIC 评分`}
+          tone={
+            avgScore == null
+              ? undefined
+              : avgScore >= 0.8
+                ? "success"
+                : avgScore >= 0.5
+                  ? "warn"
+                  : "danger"
+          }
+          icon="⭐"
+        />
       </div>
 
       {/* Langfuse 式 Tab 分区 */}
@@ -676,7 +672,7 @@ export default async function TraceDetailPage({
                   key={t}
                   href={`/traces?tag=${encodeURIComponent(t)}`}
                   prefetch={false}
-                  style={{ marginRight: 4 }}
+                  className="mr-1"
                 >
                   <span className="badge">{t}</span>
                 </Link>

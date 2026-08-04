@@ -329,11 +329,11 @@ export default async function TracesPage({
             <thead>
               <tr>
                 <th scope="col">名称</th>
-                <th scope="col">Agent</th>
+                <th scope="col" className="col-narrow">Agent</th>
                 <th scope="col">Trace ID</th>
                 {sortTh("时间", "time")}
-                <th scope="col">用户</th>
-                <th scope="col">模型</th>
+                <th scope="col" className="col-narrow">用户</th>
+                <th scope="col" className="col-narrow">模型</th>
                 {sortTh("耗时", "latency")}
                 {sortTh("Token", "token")}
                 {sortTh("成本", "cost")}
@@ -367,8 +367,7 @@ export default async function TracesPage({
                       <Link href={`/traces/${t.id}`} prefetch={false}>
                         {hasError && (
                           <span
-                            className="text-danger"
-                            style={{ marginRight: 4 }}
+                            className="text-danger mr-1"
                             title="该 trace 含 ERROR observation"
                           >
                             ●
@@ -376,8 +375,7 @@ export default async function TracesPage({
                         )}
                         {!hasError && hasWarn && (
                           <span
-                            className="text-warn"
-                            style={{ marginRight: 4 }}
+                            className="text-warn mr-1"
                             title="该 trace 含 WARNING observation"
                           >
                             ●
@@ -386,23 +384,23 @@ export default async function TracesPage({
                         {t.name || <span className="mute2">（未命名）</span>}
                       </Link>
                       {t.tags.length > 0 && (
-                        <div style={{ marginTop: 2 }}>
+                        <div className="mt-2px">
                           {t.tags.slice(0, 3).map((tag) => (
-                            <span key={tag} className="badge" style={{ marginRight: 4 }}>
+                            <span key={tag} className="badge mr-1">
                               {tag}
                             </span>
                           ))}
                         </div>
                       )}
                     </td>
-                    <td>
+                    <td className="col-narrow">
                       {t.agentName ? (
                         <span className="badge green">{t.agentName}</span>
                       ) : (
                         <span className="mute2">—</span>
                       )}
                       {t.skillName ? (
-                        <span className="badge" style={{ marginLeft: 4 }}>
+                        <span className="badge ml-1">
                           {t.skillName}
                         </span>
                       ) : null}
@@ -411,13 +409,13 @@ export default async function TracesPage({
                     <td className="muted" title={formatDateTime(t.timestamp)}>
                       {formatRelative(t.timestamp)}
                     </td>
-                    <td className="mono muted">
+                    <td className="mono muted col-narrow">
                       {t.userId ? short(t.userId) : <span className="mute2">—</span>}
                     </td>
-                    <td>
+                    <td className="col-narrow">
                       {models.length > 0 ? (
                         models.map((m) => (
-                          <span key={m} className="badge purple" style={{ marginRight: 4 }}>
+                          <span key={m} className="badge purple mr-1">
                             {m}
                           </span>
                         ))

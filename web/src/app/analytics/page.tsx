@@ -6,6 +6,7 @@ import { formatDuration, formatTokens, formatCost } from "../../lib/format";
 import { StackedBarChart } from "../../components/StackedBarChart";
 import { EmptyIcon } from "../../components/EmptyIcon";
 import { BarChart } from "../../components/BarChart";
+import { StatCard } from "../../components/StatCard";
 import { getCurrentProjectId } from "../../server/project";
 import { requireUser } from "../../server/session";
 
@@ -369,53 +370,46 @@ export default async function AnalyticsPage({
       )}
 
       <div className="grid grid-4">
-        <div className="card">
-          <div className="label">调用量</div>
-          <div className="value">{total}</div>
-          <div className="hint">近 {days} 天 generation 总数</div>
-        </div>
-        <div className="card">
-          <div className="label">平均延迟</div>
-          <div className="value value-md">
-            {formatDuration(totalAvg)}
-          </div>
-          <div className="hint">endTime − startTime</div>
-        </div>
-        <div className="card">
-          <div className="label">P95 延迟</div>
-          <div className="value value-md">
-            {formatDuration(totalP95)}
-          </div>
-          <div className="hint">95% 调用在此之内</div>
-        </div>
-        <div className="card">
-          <div className="label">错误率</div>
-          <div className="value text-danger">
-            {(totalErrorRate * 100).toFixed(1)}%
-          </div>
-          <div className="hint">
-            {totalErrors} ERROR · {totalWarnings} WARNING
-          </div>
-        </div>
+        <StatCard label="调用量" value={total} hint={`近 ${days} 天 generation 总数`} icon="⚡" />
+        <StatCard
+          label="平均延迟"
+          value={formatDuration(totalAvg)}
+          hint="endTime − startTime"
+          size="md"
+          icon="⏱"
+        />
+        <StatCard
+          label="P95 延迟"
+          value={formatDuration(totalP95)}
+          hint="95% 调用在此之内"
+          size="md"
+          icon="⏱"
+        />
+        <StatCard
+          label="错误率"
+          value={`${(totalErrorRate * 100).toFixed(1)}%`}
+          hint={`${totalErrors} ERROR · ${totalWarnings} WARNING`}
+          tone="danger"
+          icon="⚠"
+        />
       </div>
 
       <div className="grid grid-2">
-        <div className="card">
-          <div className="label">Token 用量</div>
-          <div className="value value-md">
-            {formatTokens(totalTokens)}
-          </div>
-          <div className="hint">近 {days} 天 generation 输入 + 输出</div>
-        </div>
-        <div className="card">
-          <div className="label">总成本</div>
-          <div className="value value-md cost">
-            {formatCost(totalCost)}
-          </div>
-          <div className="hint">
-            {costModels} 个模型有定价记录，按每百万 token 单价估算
-          </div>
-        </div>
+        <StatCard
+          label="Token 用量"
+          value={formatTokens(totalTokens)}
+          hint={`近 ${days} 天 generation 输入 + 输出`}
+          size="md"
+          icon="🔢"
+        />
+        <StatCard
+          label="总成本"
+          value={formatCost(totalCost)}
+          hint={`${costModels} 个模型有定价记录，按每百万 token 单价估算`}
+          size="md"
+          tone="success"
+          icon="💰"
+        />
       </div>
 
       <div className="section-title">

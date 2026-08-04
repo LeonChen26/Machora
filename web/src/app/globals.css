@@ -274,6 +274,17 @@ a:hover {
 .login-card {
   width: min(360px, calc(100vw - 3rem));
   padding: 2rem 1.75rem;
+  position: relative;
+  overflow: hidden;
+  box-shadow: var(--shadow-lg);
+  border-color: var(--border);
+}
+.login-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: linear-gradient(90deg, var(--accent), var(--purple), var(--green));
 }
 .login-brand {
   text-align: center;
@@ -347,6 +358,10 @@ a:hover {
 .main {
   padding: 1.75rem 2rem 4rem;
   min-width: 0;
+  /* 超宽屏内容宽度上限，避免表格/卡片横向拉满影响扫描 */
+  max-width: 1440px;
+  margin: 0 auto;
+  width: 100%;
 }
 
 /* ---------- Page header ---------- */
@@ -387,8 +402,16 @@ a:hover {
 }
 @media (max-width: 900px) {
   .grid-4,
-  .grid-3 {
+  .grid-3,
+  .grid-2 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 560px) {
+  .grid-4,
+  .grid-3,
+  .grid-2 {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -397,6 +420,7 @@ a:hover {
   border: 1px solid var(--border-soft);
   border-radius: var(--radius);
   padding: 1rem 1.1rem;
+  box-shadow: var(--shadow-sm);
 }
 .card .label {
   color: var(--text-mute);
@@ -771,6 +795,14 @@ pre.code .s {
 .mt-1 { margin-top: 0.5rem; }
 .mt-2 { margin-top: 0.75rem; }
 .mt-3 { margin-top: 1rem; }
+/* 更细粒度水平/垂直间距（对应内联 4px/6px/2px） */
+.mr-1 { margin-right: 0.25rem; }
+.ml-1 { margin-left: 0.25rem; }
+.mt-2px { margin-top: 2px; }
+.mt-4px { margin-top: 4px; }
+.mb-4px { margin-bottom: 4px; }
+/* 单行不换行（数字/徽章行） */
+.nowrap { white-space: nowrap; }
 
 /* 按钮组 */
 .btn-group {
@@ -853,6 +885,14 @@ pre.code .s {
   overflow-wrap: anywhere;
 }
 
+/* 统计卡：左侧强调条 + 图标 */
+.stat-accent {
+  border-left: 3px solid var(--accent);
+}
+.stat-icon {
+  margin-right: 0.35rem;
+}
+
 /* 单行截断 */
 .ellipsis {
   max-width: 320px;
@@ -870,6 +910,9 @@ pre.code .s {
 }
 .col-dur {
   width: 10%;
+}
+.col-narrow {
+  max-width: 220px;
 }
 
 /* 跳页 input */
@@ -1079,6 +1122,9 @@ pre.code .s {
   padding: 2.5rem 1rem;
   text-align: center;
   color: var(--text-mute);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-elev);
 }
 .empty .icon {
   font-size: 28px;
@@ -1091,6 +1137,10 @@ pre.code .s {
   align-items: center;
   margin-top: 1rem;
   gap: 1rem;
+  padding: 0.6rem 0.85rem;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  background: var(--bg-elev);
 }
 .pager .info {
   color: var(--text-dim);
@@ -1351,10 +1401,7 @@ textarea:focus-visible {
   -webkit-text-fill-color: transparent;
 }
 
-/* 卡片：阴影 + 统计小卡 hover 上浮 */
-.card {
-  box-shadow: var(--shadow-sm);
-}
+/* 卡片：统计小卡 hover 上浮 */
 .grid-4 .card,
 .grid-3 .card {
   position: relative;
@@ -1433,28 +1480,6 @@ tbody tr:hover {
   background: linear-gradient(135deg, rgba(79, 141, 247, 0.16), rgba(79, 141, 247, 0.05));
 }
 
-/* 登录页：卡片阴影 + 顶部渐变装饰条 */
-.login-card {
-  position: relative;
-  overflow: hidden;
-  box-shadow: var(--shadow-lg);
-  border-color: var(--border);
-}
-.login-card::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto;
-  height: 3px;
-  background: linear-gradient(90deg, var(--accent), var(--purple), var(--green));
-}
-
-/* 空状态：虚线框 */
-.empty {
-  border: 1px dashed var(--border);
-  border-radius: var(--radius);
-  background: var(--bg-elev);
-}
-
 /* 时间线节点：光晕 */
 .tl-node,
 .timeline-item::before {
@@ -1490,14 +1515,6 @@ pre.code,
 .sort-th .sort-hint {
   opacity: 0.3;
   font-size: 11px;
-}
-
-/* 分页器 card 化 */
-.pager {
-  padding: 0.6rem 0.85rem;
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius);
-  background: var(--bg-elev);
 }
 
 /* 移动端：active 导航指示条改为底部条 */
