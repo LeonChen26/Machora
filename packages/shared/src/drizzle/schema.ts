@@ -1,6 +1,6 @@
 // Drizzle ORM 表定义（方案 C：移除 Prisma 后的替换层）
 //
-// 与 packages/shared/prisma/schema.sql 保持一致（8 张表，宽事件模型）：
+// 与 packages/shared/sql/schema.sql 保持一致（8 张表，宽事件模型）：
 // - 列名/表名与 schema.sql 完全相同（列键即列名，保证现有代码字段访问不变）
 // - 表结构由 schema.sql 幂等建立，drizzle 定义仅作类型层 + relations 引用
 // - timestamp(3) 用 mode: "date"（与 Prisma 返回 Date 语义一致）

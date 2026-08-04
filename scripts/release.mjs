@@ -17,7 +17,7 @@
  *     Linux 包需在 Linux/ECS 上构建），因 pglite wasm / esbuild 二进制随平台。
  *
  * 运行时零 ORM CLI：数据访问用 drizzle-orm + pg（纯 JS），表结构由
- * packages/shared/prisma/schema.sql（幂等）在启动时直接 exec，无任何引擎二进制。
+ * packages/shared/sql/schema.sql（幂等）在启动时直接 exec，无任何引擎二进制。
  */
 import { execSync, spawnSync } from "node:child_process";
 import {
@@ -94,7 +94,7 @@ copy(".env.example"); // 目标机配置参考（.env 需自行创建）
 // workspace 包：源码 + dist + schema.sql（start.ts 启动时幂等建表）
 copy("packages/shared/package.json", "packages/shared/package.json");
 copy("packages/shared/dist", "packages/shared/dist");
-copy("packages/shared/prisma", "packages/shared/prisma");
+copy("packages/shared/sql", "packages/shared/sql");
 copy("packages/shared/tsconfig.json", "packages/shared/tsconfig.json");
 copy("packages/shared/tsconfig.build.json", "packages/shared/tsconfig.build.json");
 copy("packages/shared/src", "packages/shared/src"); // fixture/OTel 解码源码随包，便于本地调试
@@ -173,7 +173,7 @@ writeFileSync(
     withDeps ? "" : "开发模式（热重载）：\n  pnpm dev\n",
     "数据说明：PGlite 数据落盘在 standalone/.machora-data，删除即清空。",
     "",
-    "Schema 初始化：表结构定义在 packages/shared/prisma/schema.sql（幂等建表），",
+    "Schema 初始化：表结构定义在 packages/shared/sql/schema.sql（幂等建表），",
     "启动时 PGlite 直接 exec，无需任何 ORM CLI / 引擎二进制。",
     "",
   ].join("\n"),

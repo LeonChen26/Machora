@@ -135,9 +135,9 @@ async function startPgliteServer(): Promise<PgliteHandle> {
 }
 
 // ---------------------------------------------------------------------------
-// Schema 同步（直接通过 PGlite 执行 packages/shared/prisma/schema.sql）
+// Schema 同步（直接通过 PGlite 执行 packages/shared/sql/schema.sql）
 //
-// 表结构真源是 packages/shared/prisma/schema.sql（幂等：IF NOT EXISTS），
+// 表结构真源是 packages/shared/sql/schema.sql（幂等：IF NOT EXISTS），
 // 数据访问走 drizzle-orm + pg（纯 JS，无引擎二进制），运行时零 ORM CLI。
 // SQL 按分号（;）拆分，单条 try/catch 执行，整体幂等。
 // ---------------------------------------------------------------------------
@@ -185,7 +185,7 @@ async function applySchemaSql(db: { exec(sql: string): Promise<unknown> }): Prom
     root,
     "packages",
     "shared",
-    "prisma",
+    "sql",
     "schema.sql",
   );
   if (!existsSync(sqlPath)) {
