@@ -70,6 +70,9 @@ const ICONS: Record<string, React.ReactNode> = {
   docs: (
     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M5 4a2 2 0 012-2h10a2 2 0 012 2v16a2 2 0 01-2 2H7a2 2 0 01-2-2z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
   ),
+  system: (
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12h4l2-5 4 10 2-5h6"/></svg>
+  ),
 };
 
 function NavItem({
@@ -127,6 +130,8 @@ export default async function RootLayout({
             <NavItem href="/api-keys" label="API Keys" icon="keys" />
             <div className="nav-section">接入</div>
             <NavItem href="/docs" label="Docs" icon="docs" />
+            <div className="nav-section">系统</div>
+            <NavItem href="/system" label="System" icon="system" />
             {user && (
               <div className="sidebar-user">
                 <div className="user-meta">

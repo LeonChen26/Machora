@@ -83,6 +83,23 @@ export const selfMetrics: SelfMetrics =
   globalThis.__machoraSelfMetrics ?? new SelfMetrics();
 globalThis.__machoraSelfMetrics = selfMetrics;
 
+declare global {
+  // eslint-disable-next-line no-var
+  var __machoraStartedAt: number | undefined;
+}
+
+/** 记录进程启动时间（start.ts 调用；globalThis 兜底保证 web 侧可读） */
+export function markSelfStarted(): void {
+  if (globalThis.__machoraStartedAt === undefined) {
+    globalThis.__machoraStartedAt = Date.now();
+  }
+}
+
+/** 进程启动时间戳（System 健康面板展示运行时长） */
+export function getSelfStartedAt(): number | null {
+  return globalThis.__machoraStartedAt ?? null;
+}
+
 let timer: NodeJS.Timeout | null = null;
 
 /** 启动周期落库（默认 60s），返回停止函数 */

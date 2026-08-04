@@ -12,7 +12,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync } from "node:f
 import { randomBytes } from "node:crypto";
 import { createRequire } from "node:module";
 import { createServer, type Server } from "node:http";
-import { ensureSystemProject, startSelfMetrics } from "@machora/shared";
+import { ensureSystemProject, startSelfMetrics, markSelfStarted } from "@machora/shared";
 
 // ---------------------------------------------------------------------------
 // 配置
@@ -433,6 +433,7 @@ async function main() {
   await seedStandaloneData();
 
   // 自观测：确保 system 项目存在并启动周期落库（60s），队列/请求指标由此采集
+  markSelfStarted();
   await ensureSystemProject();
   startSelfMetrics();
   console.log("[Self] 自观测已启动（周期落库 MetricSample → machora-system）");
