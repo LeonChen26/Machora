@@ -57,6 +57,25 @@ function step(msg) {
   console.log(`\n[release] ${msg}`);
 }
 
+// Windows 上 rmSync({recursive, force}) 对含只读文件（.next 产物全为只读）的目录
+// 会静默失败（force 吞 EPERM），导致 staging 清理不净、dev 缓存残留进发布包。
+// 用 PowerShell Remove-Item -Recurse -Force 强删（cmd rmdir /s /q 亦可）。
+function rmForce(p) {
+  if (!existsSync(p)) return;
+  if (process.platform === "win32") {
+    try {
+      execSync(
+        `powershell -NoProfile -NonInteractive -Command "Remove-Item -LiteralPath '${p.replace(/'/g, "''")}' -Recurse -Force -ErrorAction SilentlyContinue"`,
+        { stdio: "ignore" },
+      );
+    } catch {
+      /* Remove-Item 偶发退出码 1（如目标已被并发删除），忽略 */
+    }
+  } else {
+    rmSync(p, { recursive: true, force: true });
+  }
+}
+
 // ---------------------------------------------------------------------------
 step(withDeps ? "1/4 全量构建（pnpm build）" : "1/3 全量构建（pnpm build）");
 // Next.js production build 会加载全部 server 路由（含 db 连接的 api 路由），为避免
@@ -81,7 +100,7 @@ try {
 
 // ---------------------------------------------------------------------------
 step(withDeps ? "2/4 组装发布目录" : "2/3 组装发布目录");
-rmSync(staging, { recursive: true, force: true });
+rmForce(staging);
 mkdirSync(staging, { recursive: true });
 
 // monorepo 根配置（install 需要）
@@ -109,9 +128,16 @@ copy("web/package.json", "web/package.json");
 copy("web/tsconfig.json", "web/tsconfig.json");
 copy("web/next-env.d.ts", "web/next-env.d.ts");
 copy("web/public", "web/public");
-copy("web/.next", "web/.next"); // production next({ dev: false }) 依赖
-// web/.next/dev 是 dev 模式构建缓存（体积大），生产运行不需要，排除以免进发布包
-rmSync(resolve(staging, "web", ".next", "dev"), { recursive: true, force: true });
+// web/.next：production next({ dev: false }) 依赖；filter 排除 .next/dev
+// （dev 模式构建缓存，可达数百 MB，曾因 rmSync 在 Windows 上未删净导致发布包暴涨到 261MB）
+const webNextSrc = resolve(root, "web", ".next");
+if (existsSync(webNextSrc)) {
+  cpSync(webNextSrc, resolve(staging, "web", ".next"), {
+    recursive: true,
+    filter: (src) => !src.startsWith(resolve(webNextSrc, "dev")),
+  });
+}
+rmForce(resolve(staging, "web", ".next", "dev"));
 
 copy("standalone/package.json", "standalone/package.json");
 copy("standalone/tsconfig.json", "standalone/tsconfig.json");
