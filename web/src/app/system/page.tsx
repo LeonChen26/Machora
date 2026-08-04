@@ -3,12 +3,14 @@ import { db, metricSample, SYSTEM_PROJECT_ID, getSelfStartedAt } from "@machora/
 import { formatDateTime, formatRelative } from "../../lib/format";
 import { EmptyIcon } from "../../components/EmptyIcon";
 import { Link } from "../../components/NativeLink";
+import { StackedBarChart } from "../../components/StackedBarChart";
 import {
   RANGES,
   MAX_SAMPLES,
   fmtNum,
   attrsText,
   MetricCardGrid,
+  bucketLabel,
 } from "../../components/metricsShared";
 import { requireUser } from "../../server/session";
 
@@ -123,6 +125,24 @@ export default async function SystemPage({
     },
   ];
 
+  // 接入请求按状态码堆叠（machora.ingestion.requests 的 attrs.status 维度）
+  const ingBuckets = new Map<number, Map<string, number>>();
+  for (const s of samples) {
+    if (s.name !== "machora.ingestion.requests" || s.value == null) continue;
+    const status = String((s.attributes as Record<string, unknown>)?.status ?? "unknown");
+    const key = Math.floor(s.timestamp.getTime() / range.bucketMs) * range.bucketMs;
+    const m = ingBuckets.get(key) ?? new Map<string, number>();
+    m.set(status, (m.get(status) ?? 0) + s.value);
+    ingBuckets.set(key, m);
+  }
+  const ingSeries = Array.from(ingBuckets.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([ts, m]) => ({
+      label: bucketLabel(new Date(ts), range),
+      series: Array.from(m.entries()).map(([name, value]) => ({ name, value })),
+    }));
+  const hasIng = ingSeries.some((d) => d.series.length > 0);
+
   return (
     <>
       <div className="page-head">
@@ -184,6 +204,19 @@ export default async function SystemPage({
       ) : (
         <>
           <MetricCardGrid samples={samples} range={range} />
+
+          {hasIng && (
+            <>
+              <div className="section-title">接入请求（ingestion · 按状态码堆叠）</div>
+              <div className="card mb-3">
+                <StackedBarChart
+                  data={ingSeries}
+                  height={140}
+                  emptyText="该窗口无接入请求"
+                />
+              </div>
+            </>
+          )}
 
           <div className="section-title">明细</div>
           <div className="table-wrap">
