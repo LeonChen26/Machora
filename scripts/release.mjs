@@ -105,6 +105,26 @@ try {
   }
 }
 
+// 收集仓库 pnpm store 里所有 prisma generate 生成的 client 目录，按版本降序返回。
+// 关键：.pnpm 里可能残留多个 @prisma+client@X.Y.Z（如 5.20.0 与 5.22.0 并存），
+// readdirSync 顺序不保证版本顺序；必须取版本最高者，否则会复制到旧生成物
+// （缺 MetricSample 等新模型），完整包 SSR 侧 prisma.<model> 为 undefined 直接 500。
+function collectPrismaClientDirs() {
+  const out = [];
+  const pnpmRoot = resolve(root, "node_modules", ".pnpm");
+  if (existsSync(pnpmRoot)) {
+    for (const d of readdirSync(pnpmRoot)) {
+      const m = d.match(/^@prisma\+client@(\d+\.\d+\.\d+)/);
+      if (m) {
+        const p = resolve(pnpmRoot, d, "node_modules", ".prisma", "client");
+        if (existsSync(resolve(p, "default.js"))) out.push({ ver: m[1], path: p });
+      }
+    }
+  }
+  out.sort((a, b) => (a.ver < b.ver ? 1 : -1));
+  return out.map((x) => x.path);
+}
+
 // ---------------------------------------------------------------------------
 step(withDeps ? "2/5 组装发布目录" : "2/4 组装发布目录");
 rmSync(staging, { recursive: true, force: true });
@@ -230,20 +250,11 @@ step(withDeps ? "3/5 构建期 Prisma（预 generate + 导出 schema.sql）" : "
   //   node_modules/.pnpm/@prisma+client@x/node_modules/.prisma/client
   // 复制到 staging/node_modules/.prisma/client 以便跟包发布。
   {
-    const pnpmRoot = resolve(root, "node_modules", ".pnpm");
     const candidates = [
       resolve(prismaCwd, "node_modules", ".prisma", "client"),
       resolve(root, "node_modules", ".prisma", "client"),
+      ...collectPrismaClientDirs(),
     ];
-    if (existsSync(pnpmRoot)) {
-      for (const d of readdirSync(pnpmRoot)) {
-        if (d.startsWith("@prisma+client@")) {
-          candidates.push(
-            resolve(pnpmRoot, d, "node_modules", ".prisma", "client"),
-          );
-        }
-      }
-    }
     const src = candidates.find((c) => existsSync(resolve(c, "default.js")));
     if (src) {
       cpSync(src, prismaClientOutput, { recursive: true });
@@ -307,17 +318,9 @@ if (withDeps) {
   // pnpm install --prod 会重新铺 node_modules/.prisma/client（@prisma/client 包
   // 自带的旧模板，不含最新模型如 MetricSample）→ 完整包运行时 prisma.metricSample
   // 为 undefined。必须用构建期生成的 client 强制覆盖顶层与 web/.next 两份。
+  // 注意：必须取版本最高的生成物（.pnpm 可能残留多个 @prisma+client@X.Y.Z）。
   {
-    const pnpmRoot = resolve(root, "node_modules", ".pnpm");
-    const srcs = [];
-    if (existsSync(pnpmRoot)) {
-      for (const d of readdirSync(pnpmRoot)) {
-        if (d.startsWith("@prisma+client@")) {
-          srcs.push(resolve(pnpmRoot, d, "node_modules", ".prisma", "client"));
-        }
-      }
-    }
-    const freshSrc = srcs.find((c) => existsSync(resolve(c, "default.js")));
+    const freshSrc = collectPrismaClientDirs()[0];
     if (!freshSrc) throw new Error("pnpm install 后未找到构建期生成的 Prisma Client（.pnpm/@prisma+client@*）");
     const topDest = resolve(staging, "node_modules", ".prisma", "client");
     rmSync(topDest, { recursive: true, force: true });
