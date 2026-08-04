@@ -370,27 +370,27 @@ export default async function AnalyticsPage({
       )}
 
       <div className="grid grid-4">
-        <StatCard label="调用量" value={total} hint={`近 ${days} 天 generation 总数`} icon="⚡" />
+        <StatCard label="调用量" value={total} hint={`近 ${days} 天 generation 总数`} icon="bolt" />
         <StatCard
           label="平均延迟"
           value={formatDuration(totalAvg)}
           hint="endTime − startTime"
           size="md"
-          icon="⏱"
+          icon="clock"
         />
         <StatCard
           label="P95 延迟"
           value={formatDuration(totalP95)}
           hint="95% 调用在此之内"
           size="md"
-          icon="⏱"
+          icon="gauge"
         />
         <StatCard
           label="错误率"
           value={`${(totalErrorRate * 100).toFixed(1)}%`}
           hint={`${totalErrors} ERROR · ${totalWarnings} WARNING`}
           tone="danger"
-          icon="⚠"
+          icon="alert"
         />
       </div>
 
@@ -400,7 +400,7 @@ export default async function AnalyticsPage({
           value={formatTokens(totalTokens)}
           hint={`近 ${days} 天 generation 输入 + 输出`}
           size="md"
-          icon="🔢"
+          icon="hash"
         />
         <StatCard
           label="总成本"
@@ -408,7 +408,7 @@ export default async function AnalyticsPage({
           hint={`${costModels} 个模型有定价记录，按每百万 token 单价估算`}
           size="md"
           tone="success"
-          icon="💰"
+          icon="coin"
         />
       </div>
 

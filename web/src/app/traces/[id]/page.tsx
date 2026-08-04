@@ -331,20 +331,20 @@ export default async function TraceDetailPage({
           label="总耗时"
           value={formatDuration(traceEnd - traceStart)}
           hint="trace 时间跨度"
-          icon="⏱"
+          icon="clock"
         />
         <StatCard
           label="总 Token"
           value={formatTokens(totalTokens)}
           hint={`${trace.observations.length} obs 合计`}
-          icon="🔢"
+          icon="hash"
         />
         <StatCard
           label="总成本"
           value={formatCost(totalCost)}
           hint={`${costCount} 个 obs 含成本`}
           tone="success"
-          icon="💰"
+          icon="coin"
         />
         <StatCard
           label="异常"
@@ -352,7 +352,7 @@ export default async function TraceDetailPage({
           hint={`${warningCount} WARNING`}
           alert={errorCount > 0}
           tone={errorCount > 0 ? "danger" : undefined}
-          icon="⚠"
+          icon="alert"
         />
         <StatCard
           label="平均分"
@@ -367,7 +367,7 @@ export default async function TraceDetailPage({
                   ? "warn"
                   : "danger"
           }
-          icon="⭐"
+          icon="star"
         />
       </div>
 

@@ -2,6 +2,7 @@
   color-scheme: dark;
   --bg: #0b0f14;
   --bg-elev: #131922;
+  --bg-elev-1: #182030;
   --bg-elev-2: #1b2230;
   --border: #243044;
   --border-soft: #1a2333;
@@ -28,6 +29,7 @@ html[data-theme="light"] {
   color-scheme: light;
   --bg: #f4f6fa;
   --bg-elev: #ffffff;
+  --bg-elev-1: #f1f4f8;
   --bg-elev-2: #eceff5;
   --border: #c8d1de;
   --border-soft: #e0e5ed;
@@ -891,6 +893,8 @@ pre.code .s {
 }
 .stat-icon {
   margin-right: 0.35rem;
+  display: inline-flex;
+  align-items: center;
 }
 
 /* 单行截断 */

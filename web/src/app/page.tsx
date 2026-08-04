@@ -199,21 +199,21 @@ export default async function Home() {
       </div>
 
       <div className="grid grid-4">
-        <StatCard label="Traces" value={traceCount} hint="总记录数" icon="🧾" accent />
-        <StatCard label="Observations" value={obsCount} hint="span / generation / event" icon="📊" />
-        <StatCard label="Scores" value={scoreCount} hint="人工 / 自动评分" icon="⭐" />
-        <StatCard label="Projects" value={projectCount} hint={project?.name ?? "—"} icon="📁" />
+        <StatCard label="Traces" value={traceCount} hint="总记录数" icon="list" accent />
+        <StatCard label="Observations" value={obsCount} hint="span / generation / event" icon="boxes" />
+        <StatCard label="Scores" value={scoreCount} hint="人工 / 自动评分" icon="star" />
+        <StatCard label="Projects" value={projectCount} hint={project?.name ?? "—"} icon="folder" />
       </div>
 
       <div className="section-title">近 {TREND_DAYS} 天聚合</div>
       <div className="grid grid-4">
-        <StatCard label="Generation 调用" value={gens7d.length} hint={`近 ${TREND_DAYS} 天`} icon="⚡" />
+        <StatCard label="Generation 调用" value={gens7d.length} hint={`近 ${TREND_DAYS} 天`} icon="bolt" />
         <StatCard
           label="Token 总量"
           value={formatTokens(totalTokens7d)}
           hint={`近 ${TREND_DAYS} 天`}
           size="md"
-          icon="🔢"
+          icon="hash"
         />
         <StatCard
           label="总成本"
@@ -221,14 +221,14 @@ export default async function Home() {
           hint={`近 ${TREND_DAYS} 天`}
           size="md"
           tone="success"
-          icon="💰"
+          icon="coin"
         />
         <StatCard
           label="错误率"
           value={`${(errorRate7d * 100).toFixed(1)}%`}
           hint={`${errors7d} ERROR · 近 ${TREND_DAYS} 天`}
           tone="danger"
-          icon="⚠"
+          icon="alert"
         />
       </div>
 
