@@ -381,7 +381,7 @@ export default async function Home() {
                       {t.name || <span className="mute2">（未命名）</span>}
                     </Link>
                   </td>
-                  <td className="mono muted">{t.id}</td>
+                  <td className="mono muted" title={t.id}>{t.id.slice(0, 8)}</td>
                   <td className="muted" title={formatDateTime(t.timestamp)}>
                     {formatRelative(t.timestamp)}
                   </td>

@@ -107,7 +107,10 @@ export default async function UsersPage() {
                       href={`/traces?user=${encodeURIComponent(u.userId)}`}
                       prefetch={false}
                     >
-                      <span className="mono">{u.userId}</span>
+                      <span className="mono" title={u.userId}>
+                        {u.userId.slice(0, 10)}
+                        {u.userId.length > 10 ? "…" : ""}
+                      </span>
                     </Link>
                   </td>
                   <td>

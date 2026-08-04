@@ -423,6 +423,10 @@ a:hover {
   border-radius: var(--radius);
   overflow-x: auto;
 }
+/* 表格内长文本（id/name/model/comment 等）可换行，避免撑宽列导致横向滚动 */
+.table-wrap td {
+  overflow-wrap: anywhere;
+}
 table {
   width: 100%;
   border-collapse: collapse;
@@ -487,6 +491,8 @@ tbody tr[data-level="WARNING"]:hover {
   border: 1px solid var(--border);
   color: var(--text-dim);
   background: var(--bg-elev-2);
+  /* 超长 name/model/agentName 换行看全，防撑破 pill 与列宽 */
+  overflow-wrap: anywhere;
 }
 .badge.green {
   color: var(--green);
@@ -948,6 +954,9 @@ pre.code .s {
 .tl-item:last-child::before {
   display: none;
 }
+.tl-body {
+  overflow-wrap: anywhere;
+}
 .tl-node {
   position: absolute;
   left: -1.75rem;
@@ -1115,6 +1124,8 @@ pre.code .s {
   color: var(--text-dim);
   font-size: 13px;
   margin-bottom: 0.75rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .breadcrumb a {
   color: var(--text-dim);

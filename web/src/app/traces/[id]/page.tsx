@@ -589,7 +589,7 @@ export default async function TraceDetailPage({
               <div className="chat-head">
                 <span className="badge">{ROLE_LABEL[m.role] ?? m.role}</span>
                 {m.model && <span className="badge purple">{m.model}</span>}
-                {m.obsName && <span className="chat-obs">{m.obsName}</span>}
+                {m.obsName && <span className="chat-obs" title={m.obsName}>{m.obsName}</span>}
               </div>
               <div className="chat-content">
                 {m.content || <span className="mute2">（空）</span>}

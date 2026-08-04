@@ -161,7 +161,10 @@ export default async function SessionsPage({
                 <tr key={s.sessionId}>
                   <td>
                     <Link href={`/sessions/${encodeURIComponent(s.sessionId)}`} prefetch={false}>
-                      <span className="mono">{s.sessionId}</span>
+                      <span className="mono" title={s.sessionId}>
+                        {s.sessionId.slice(0, 10)}
+                        {s.sessionId.length > 10 ? "…" : ""}
+                      </span>
                     </Link>
                   </td>
                   <td>
