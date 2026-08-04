@@ -312,6 +312,17 @@ if (withDeps) {
   const binName = process.platform === "win32" ? "prisma.CMD" : "prisma";
   const prismaBinInStaging = resolve(nmDir, ".bin", binName);
   if (existsSync(prismaBinInStaging)) rmSync(prismaBinInStaging, { force: true });
+  // 发布包仅需 node_modules，不再需要 workspace 元数据；删掉后 Next.js
+  // 不会再把 staging 当成 monorepo workspace 的根，也就不会向父目录递归
+  // 推断 workspace root（之前会找到解压目录外的真正仓库 pnpm-workspace.yaml，
+  // 导致把别人的项目当成 root，app/pages 找不到，整站 SSR 500）。
+  for (const f of ["pnpm-workspace.yaml", "pnpm-lock.yaml", "turbo.json"]) {
+    const p = resolve(staging, f);
+    if (existsSync(p)) rmSync(p, { force: true });
+  }
+  // 轻量包模式也不再需要真实仓库的 pnpm-workspace.yaml（和 staging 里的目录
+  // 结构不匹配），目标机在 staging 内 `pnpm install --frozen-lockfile` 时
+  // 用 staging 自己的 workspace 元数据。但轻量包保留 pnpm-lock.yaml。
   console.log("[release] 已裁剪 prisma CLI/engines、@next/swc、@img/sharp、typescript（生产运行不需要）");
   afterSchemaStep = 5;
 }
