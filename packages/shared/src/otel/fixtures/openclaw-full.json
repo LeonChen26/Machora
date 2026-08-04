@@ -176,7 +176,8 @@
                     "intValue": "20000"
                   }
                 }
-              ]
+              ],
+              "status": {}
             },
             {
               "traceId": "651acd99b43d36eabc84b8db0b0e3207",
@@ -258,7 +259,11 @@
                     "doubleValue": 0.05
                   }
                 }
-              ]
+              ],
+              "status": {
+                "message": "event_loop_delay",
+                "code": 2
+              }
             },
             {
               "traceId": "b460363f68582dc19193ee9b881f20e3",
@@ -425,7 +430,8 @@
                     "intValue": "24320"
                   }
                 }
-              ]
+              ],
+              "status": {}
             },
             {
               "traceId": "b460363f68582dc19193ee9b881f20e3",
@@ -586,7 +592,8 @@
                     "intValue": "24448"
                   }
                 }
-              ]
+              ],
+              "status": {}
             },
             {
               "traceId": "b460363f68582dc19193ee9b881f20e3",
@@ -627,7 +634,8 @@
                     "intValue": "0"
                   }
                 }
-              ]
+              ],
+              "status": {}
             },
             {
               "traceId": "b460363f68582dc19193ee9b881f20e3",
@@ -674,7 +682,8 @@
                     "stringValue": "call_01_ET_J9Ju7OXKkgSvfoX71SmU1433"
                   }
                 }
-              ]
+              ],
+              "status": {}
             }
           ]
         }
@@ -808,7 +817,8 @@
                     "stringValue": "completed"
                   }
                 }
-              ]
+              ],
+              "status": {}
             },
             {
               "traceId": "b460363f68582dc19193ee9b881f20e3",
@@ -969,7 +979,8 @@
                     "intValue": "24576"
                   }
                 }
-              ]
+              ],
+              "status": {}
             },
             {
               "traceId": "b460363f68582dc19193ee9b881f20e3",
@@ -1033,7 +1044,8 @@
                     "intValue": "0"
                   }
                 }
-              ]
+              ],
+              "status": {}
             },
             {
               "traceId": "56227a41d949e1afa4867c57893139e9",
@@ -1133,7 +1145,8 @@
                     "intValue": "73344"
                   }
                 }
-              ]
+              ],
+              "status": {}
             }
           ]
         }

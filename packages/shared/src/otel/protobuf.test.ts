@@ -91,9 +91,7 @@ function buildFixture(): Uint8Array {
     vint(6, 2), // kind = SPAN_KIND_SERVER
     fixed64(7, 1_000_000_000_000n), // start_time_unix_nano
     fixed64(8, 2_000_000_000_000n), // end_time_unix_nano
-    // 注意：Machora 旧实现 / 老 OpenClaw fixture 用错写的字段号 attributes=9
-    // 新 OTel 官方 SDK 是 attributes=10；protobuf schema 里同时声明了
-    // attributes=9 和 otel_attributes=10，两套都会解到 JS 侧 attributes。
+    // 官方 trace.proto：attributes=9, events=11, status=15
     repeated(9, [
       keyValue("gen_ai.request.model", avString("gpt-4o")),
       keyValue("gen_ai.usage.input_tokens", avInt(42)),
@@ -102,7 +100,7 @@ function buildFixture(): Uint8Array {
       keyValue("ids", avArray(avInt(1), avString("two"))),
       keyValue("blob", avBytes(new Uint8Array([0xde, 0xad]))),
     ]),
-    ld(13, concat(str(2, "boom"), vint(3, 2))), // 旧 schema status=13；新 schema otel_status=14
+    ld(15, concat(str(2, "boom"), vint(3, 2))), // status=15（官方字段号）
   );
 
   const scopeSpans = concat(
@@ -199,7 +197,7 @@ describe("decodeOtlpProtobuf", () => {
       vint(6, 1),
       fixed64(7, 1_000_000_000_000n),
       fixed64(8, 2_000_000_000_000n),
-      repeated(9, [badAttr]), // 旧 attributes=9
+      repeated(9, [badAttr]), // attributes=9（官方字段号）
     );
     const scopeSpans = concat(ld(1, str(1, "scope-x")), ld(2, span));
     const resourceSpans = concat(
@@ -278,9 +276,9 @@ function buildEventSpanFixture(): Uint8Array {
     vint(6, 1), // SPAN_KIND_INTERNAL
     fixed64(7, 1_000_000_000_000n),
     fixed64(8, 2_000_000_000_000n),
-    repeated(9, [keyValue("gen_ai.request.model", avString("gpt-4o"))]), // 旧 attributes=9
+    repeated(9, [keyValue("gen_ai.request.model", avString("gpt-4o"))]), // attributes=9（官方字段号）
     repeated(11, [
-      // 旧 events=11；新规范 events=12
+      // events=11（官方字段号）
       concat(
         fixed64(1, 1_100_000_000n),
         str(2, "gen_ai.choice"),

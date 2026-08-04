@@ -128,7 +128,8 @@
                     "stringValue": "completed"
                   }
                 }
-              ]
+              ],
+              "status": {}
             },
             {
               "traceId": "b460363f68582dc19193ee9b881f20e3",
@@ -289,7 +290,8 @@
                     "intValue": "24576"
                   }
                 }
-              ]
+              ],
+              "status": {}
             },
             {
               "traceId": "b460363f68582dc19193ee9b881f20e3",
@@ -353,7 +355,8 @@
                     "intValue": "0"
                   }
                 }
-              ]
+              ],
+              "status": {}
             },
             {
               "traceId": "56227a41d949e1afa4867c57893139e9",
@@ -453,7 +456,8 @@
                     "intValue": "73344"
                   }
                 }
-              ]
+              ],
+              "status": {}
             }
           ]
         }

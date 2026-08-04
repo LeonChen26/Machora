@@ -173,26 +173,21 @@ message Span {
   SpanKind kind = 6;
   fixed64 start_time_unix_nano = 7;
   fixed64 end_time_unix_nano = 8;
-  // ---------------------------------------------------------------------
-  // 兼容两层协议：
-  //   1) 旧 Machora / 老 OpenClaw fixture 用的错写字段号：
-  //      attributes=9, events=11, status=13
-  //   2) OTel 官方规范字段号：
-  //      attributes=10, events=12, status=14
-  // links 两边都暂不核心，先把 12/13 让给 events=12 / status=13。
-  // protobuf 同 message 禁止 id 重复，所以给规范版起 otel_ 前缀名字，
-  // 在 mapSpan 里合并 attributes/events/status。
-  // ---------------------------------------------------------------------
+  // 字段号与官方 opentelemetry-proto v1.3.0 trace.proto 完全一致：
+  //   attributes=9, dropped_attributes_count=10, events=11,
+  //   dropped_events_count=12, links=13, dropped_links_count=14,
+  //   status=15, flags=16
+  // 之前把 status 错写成 13、links 错写成 15 且加了 otel_ 前缀双字段，
+  // 与官方 wire 格式不兼容——最新 OpenClaw SDK 的 status 在字段 15 会被
+  // 误解析为 Link，导致解码错乱。这里回归官方编号。
   repeated opentelemetry.proto.common.v1.KeyValue attributes = 9;
-  repeated opentelemetry.proto.common.v1.KeyValue otel_attributes = 10;
+  uint32 dropped_attributes_count = 10;
   repeated Event events = 11;
-  repeated Event otel_events = 12;
-  Status status = 13;
-  Status otel_status = 14;
-  repeated Link links = 15;
-  uint32 dropped_attributes_count = 16;
-  uint32 dropped_events_count = 17;
-  uint32 dropped_links_count = 18;
+  uint32 dropped_events_count = 12;
+  repeated Link links = 13;
+  uint32 dropped_links_count = 14;
+  Status status = 15;
+  fixed32 flags = 16;
 }
 
 enum SpanKind {
@@ -310,24 +305,29 @@ message Summary {
   repeated SummaryDataPoint data_points = 1;
 }
 
-// 所有 metric DataPoint 的 attributes 在 OTel 规范里都是 field 1，
-// 之前写成 7/9/... 是错抄了旧 openinference 版本，导致最新
-// OpenTelemetry SDK 编码的二进制在 Machora 侧解析丢 attributes，
-// 或 protobufjs 报 "duplicate id N"（和 Metric.oneof 的字段号冲突）。
+// 字段号与官方 opentelemetry-proto v1.3.0 metrics.proto 一致：
+//   NumberDataPoint:    attributes=7, exemplars=5, flags=8
+//   HistogramDataPoint: attributes=9, exemplars=8, flags=10, min=11, max=12
+//   SummaryDataPoint:   attributes=7, quantile_values=6, flags=8
+//   ExponentialHistogramDataPoint: attributes=1, scale=6, zero_count=7, ...
+// 之前把 attributes 错写成 1（与官方 7/9/7 相反），min/max 错写成 10/11，
+// 导致官方 SDK 编码的 attributes 全被跳过、min/max 错位。回归官方编号。
 message NumberDataPoint {
-  repeated opentelemetry.proto.common.v1.KeyValue attributes = 1;
+  reserved 1; // 官方保留字段（废弃的 labels）
+  repeated opentelemetry.proto.common.v1.KeyValue attributes = 7;
   fixed64 start_time_unix_nano = 2;
   fixed64 time_unix_nano = 3;
   oneof value {
     double as_double = 4;
     sfixed64 as_int = 6;
   }
-  repeated Exemplar exemplars = 7;
+  repeated Exemplar exemplars = 5;
   uint32 flags = 8;
 }
 
 message HistogramDataPoint {
-  repeated opentelemetry.proto.common.v1.KeyValue attributes = 1;
+  reserved 1; // 官方保留字段（废弃的 labels）
+  repeated opentelemetry.proto.common.v1.KeyValue attributes = 9;
   fixed64 start_time_unix_nano = 2;
   fixed64 time_unix_nano = 3;
   fixed64 count = 4;
@@ -335,9 +335,9 @@ message HistogramDataPoint {
   repeated fixed64 bucket_counts = 6;
   repeated double explicit_bounds = 7;
   repeated Exemplar exemplars = 8;
-  uint32 flags = 9;
-  double min = 10;
-  double max = 11;
+  uint32 flags = 10;
+  double min = 11;
+  double max = 12;
 }
 
 message ExponentialHistogramDataPoint {
@@ -363,13 +363,14 @@ message Buckets {
 }
 
 message SummaryDataPoint {
-  repeated opentelemetry.proto.common.v1.KeyValue attributes = 1;
+  reserved 1; // 官方保留字段（废弃的 labels）
+  repeated opentelemetry.proto.common.v1.KeyValue attributes = 7;
   fixed64 start_time_unix_nano = 2;
   fixed64 time_unix_nano = 3;
   fixed64 count = 4;
   double sum = 5;
   repeated ValueAtQuantile quantile_values = 6;
-  uint32 flags = 7;
+  uint32 flags = 8;
 }
 
 message ValueAtQuantile {
@@ -470,14 +471,9 @@ interface PbSpan {
   kind?: number;
   startTimeUnixNano?: { toString(): string };
   endTimeUnixNano?: { toString(): string };
-  // 旧 Machora / 老 OpenClaw fixture：attributes=9, events=11, status=13
   attributes?: PbKeyValue[];
   events?: PbSpanEvent[];
   status?: PbSpanStatus;
-  // 新 OTel 官方 SDK：attributes=10, events=12, status=14
-  otelAttributes?: PbKeyValue[];
-  otelEvents?: PbSpanEvent[];
-  otelStatus?: PbSpanStatus;
 }
 
 interface PbScopeSpans {
@@ -574,28 +570,20 @@ function mapSpan(span: PbSpan): OtlpSpan {
   if (has(span, "startTimeUnixNano")) out.startTimeUnixNano = longToStr(span.startTimeUnixNano!);
   if (has(span, "endTimeUnixNano")) out.endTimeUnixNano = longToStr(span.endTimeUnixNano!);
 
-  // 合并 attributes：旧实现 field=9（span.attributes）+ 规范 field=10（span.otelAttributes）
-  const attrs: PbKeyValue[] = [];
-  if (has(span, "attributes")) attrs.push(...span.attributes!);
-  if (has(span, "otelAttributes")) attrs.push(...span.otelAttributes!);
-  if (attrs.length > 0) out.attributes = attrs.map(mapKeyValue);
+  // attributes/events/status 与官方 trace.proto 字段号一一对应，
+  // 无需再合并 otel_ 前缀的双字段（已删）。
+  if (has(span, "attributes") && span.attributes!.length > 0) {
+    out.attributes = span.attributes!.map(mapKeyValue);
+  }
 
-  // 合并 events：旧实现 field=11（span.events）+ 规范 field=12（span.otelEvents）
-  const evs: PbSpanEvent[] = [];
-  if (has(span, "events")) evs.push(...span.events!);
-  if (has(span, "otelEvents")) evs.push(...span.otelEvents!);
-  if (evs.length > 0) out.events = evs.map(mapSpanEvent);
+  if (has(span, "events") && span.events!.length > 0) {
+    out.events = span.events!.map(mapSpanEvent);
+  }
 
-  // 合并 status：旧实现 field=13（span.status）+ 规范 field=14（span.otelStatus）
-  const statusSrc = has(span, "status")
-    ? span.status!
-    : has(span, "otelStatus")
-      ? span.otelStatus!
-      : undefined;
-  if (statusSrc) {
+  if (has(span, "status")) {
     out.status = {};
-    if (has(statusSrc, "message")) out.status.message = statusSrc.message;
-    if (has(statusSrc, "code")) out.status.code = statusSrc.code;
+    if (has(span.status!, "message")) out.status.message = span.status!.message;
+    if (has(span.status!, "code")) out.status.code = span.status!.code;
   }
   return out;
 }
