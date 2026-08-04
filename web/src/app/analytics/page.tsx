@@ -1,6 +1,7 @@
 import { Link } from "../../components/NativeLink";
 import type { ReactNode } from "react";
-import { prisma } from "@machora/shared";
+import { and, eq, gte } from "drizzle-orm";
+import { db, observation } from "@machora/shared";
 import { formatDuration, formatTokens, formatCost } from "../../lib/format";
 import { StackedBarChart } from "../../components/StackedBarChart";
 import { EmptyIcon } from "../../components/EmptyIcon";
@@ -86,22 +87,24 @@ export default async function AnalyticsPage({
   const prevEnd = since;
   const prevSince = new Date(since.getTime() - days * DAY_MS);
 
-  const gens = await prisma.observation.findMany({
-    where: {
-      projectId,
-      type: "GENERATION",
-      startTime: { gte: prevSince },
-    },
-    select: {
-      model: true,
-      agentName: true,
-      startTime: true,
-      endTime: true,
-      level: true,
-      totalTokens: true,
-      totalCost: true,
-    },
-  });
+  const gens = await db
+    .select({
+      model: observation.model,
+      agentName: observation.agentName,
+      startTime: observation.startTime,
+      endTime: observation.endTime,
+      level: observation.level,
+      totalTokens: observation.totalTokens,
+      totalCost: observation.totalCost,
+    })
+    .from(observation)
+    .where(
+      and(
+        eq(observation.projectId, projectId),
+        eq(observation.type, "GENERATION"),
+        gte(observation.startTime, prevSince),
+      ),
+    );
 
   // 按窗口拆解
   const cur = new Map<string, ModelStat>();

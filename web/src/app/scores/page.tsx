@@ -1,5 +1,6 @@
 import { Link } from "../../components/NativeLink";
-import { prisma } from "@machora/shared";
+import { and, count, desc, eq, gte, ilike, lt, type SQL } from "drizzle-orm";
+import { db, score } from "@machora/shared";
 import { formatRelative, formatDateTime } from "../../lib/format";
 import { BarChart } from "../../components/BarChart";
 import { EmptyIcon } from "../../components/EmptyIcon";
@@ -42,31 +43,31 @@ export default async function ScoresPage({
   const projectId = await getCurrentProjectId();
   const since = days > 0 ? new Date(Date.now() - days * DAY_MS) : undefined;
 
-  const where = {
-    projectId,
-    ...(name ? { name: { contains: name, mode: "insensitive" as const } } : {}),
-    ...(since ? { timestamp: { gte: since } } : {}),
-  };
+  const conds: SQL<unknown>[] = [eq(score.projectId, projectId)];
+  if (name) conds.push(ilike(score.name, `%${name}%`));
+  if (since) conds.push(gte(score.timestamp, since));
 
   // 聚合集：用于汇总卡片与直方图（上限 1000 条防爆）
-  const aggScores = await prisma.score.findMany({
-    where,
-    orderBy: { timestamp: "desc" },
-    take: AGG_LIMIT,
-  });
+  const aggScores = await db
+    .select()
+    .from(score)
+    .where(and(...conds))
+    .orderBy(desc(score.timestamp))
+    .limit(AGG_LIMIT);
 
   // 明细分页集
-  const rows = await prisma.score.findMany({
-    where,
-    orderBy: { timestamp: "desc" },
-    take: PAGE_SIZE + 1,
-    ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
-    include: { trace: { select: { name: true } } },
+  const rows = await db.query.score.findMany({
+    where: and(...conds, cursor ? lt(score.id, cursor) : undefined),
+    orderBy: (t, { desc }) => [desc(t.timestamp)],
+    limit: PAGE_SIZE + 1,
+    with: { trace: true },
   });
   const hasNext = rows.length > PAGE_SIZE;
   const shown = hasNext ? rows.slice(0, PAGE_SIZE) : rows;
   const nextCursor = hasNext ? rows[rows.length - 1].id : null;
-  const total = await prisma.score.count({ where });
+  const total = (
+    await db.select({ c: count() }).from(score).where(and(...conds))
+  )[0].c;
 
   // 按名称聚合（仅 NUMERIC）
   const byName = new Map<string, { count: number; sum: number; values: number[] }>();

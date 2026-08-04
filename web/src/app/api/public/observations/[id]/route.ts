@@ -1,4 +1,5 @@
-import { prisma } from "@machora/shared";
+import { eq } from "drizzle-orm";
+import { db, observation as observationTable } from "@machora/shared";
 import { verifyApiKey } from "../../../../../server/auth";
 
 // GET /api/public/observations/{id}
@@ -9,7 +10,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   }
   const { id } = await params;
 
-  const observation = await prisma.observation.findUnique({ where: { id } });
+  const observation = await db.query.observation.findFirst({
+    where: eq(observationTable.id, id),
+  });
   if (!observation || observation.projectId !== auth.projectId) {
     return Response.json({ error: "Observation not found" }, { status: 404 });
   }

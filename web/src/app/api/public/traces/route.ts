@@ -1,10 +1,13 @@
-import { prisma } from "@machora/shared";
+import { and, arrayContains, count, desc, eq, ilike, lt, type SQL } from "drizzle-orm";
+import { db, trace } from "@machora/shared";
 import { verifyApiKey } from "../../../../server/auth";
 import {
+  TRACE_COLUMNS,
   TRACE_SELECT_FIELDS,
   buildSelect,
   listEnvelope,
   parseCommonQuery,
+  pickColumns,
   timeWindow,
 } from "../../../../server/publicQuery";
 
@@ -32,44 +35,43 @@ export async function GET(req: Request) {
     ? sp.get("tags")!.split(",").map((t) => t.trim()).filter(Boolean)
     : undefined;
 
-  const where = {
-    projectId: auth.projectId,
-    timestamp: timeWindow(from, to),
-    ...(name ? { name } : {}),
-    ...(userId ? { userId } : {}),
-    ...(sessionId ? { sessionId } : {}),
-    ...(agent
-      ? { agentName: { contains: agent, mode: "insensitive" as const } }
-      : {}),
-    ...(workflow
-      ? { workflowName: { contains: workflow, mode: "insensitive" as const } }
-      : {}),
-    ...(skill
-      ? { skillName: { contains: skill, mode: "insensitive" as const } }
-      : {}),
-    ...(tags && tags.length > 0 ? { tags: { hasEvery: tags } } : {}),
-  };
+  const conds: SQL<unknown>[] = [
+    eq(trace.projectId, auth.projectId),
+    ...timeWindow(trace.timestamp, from, to),
+  ];
+  if (name) conds.push(eq(trace.name, name));
+  if (userId) conds.push(eq(trace.userId, userId));
+  if (sessionId) conds.push(eq(trace.sessionId, sessionId));
+  if (agent) conds.push(ilike(trace.agentName, `%${agent}%`));
+  if (workflow) conds.push(ilike(trace.workflowName, `%${workflow}%`));
+  if (skill) conds.push(ilike(trace.skillName, `%${skill}%`));
+  if (tags && tags.length > 0) conds.push(arrayContains(trace.tags, tags));
+  if (cursor) conds.push(lt(trace.id, cursor));
 
-  let prismaSelect;
+  let fields: string[] | undefined;
   try {
-    prismaSelect = buildSelect(select, TRACE_SELECT_FIELDS);
+    fields = buildSelect(select, TRACE_SELECT_FIELDS);
   } catch (e: any) {
     return Response.json({ error: e.message }, { status: 400 });
   }
+  const cols = pickColumns(TRACE_COLUMNS, fields);
 
   const [items, totalCount] = await Promise.all([
-    prisma.trace.findMany({
-      where,
-      orderBy: { timestamp: "desc" },
-      take: limit + 1,
-      ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
-      ...(prismaSelect ? { select: prismaSelect } : {}),
-    }),
-    prisma.trace.count({ where }),
+    db
+      .select(cols)
+      .from(trace)
+      .where(and(...conds))
+      .orderBy(desc(trace.timestamp))
+      .limit(limit + 1),
+    db.select({ c: count() }).from(trace).where(and(...conds)),
   ]);
 
   const nextCursor = items.length > limit ? items[items.length - 1].id : null;
   return Response.json(
-    listEnvelope(items.slice(0, limit), { limit, nextCursor, totalCount }),
+    listEnvelope(items.slice(0, limit), {
+      limit,
+      nextCursor,
+      totalCount: totalCount[0].c,
+    }),
   );
 }

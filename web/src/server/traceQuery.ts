@@ -1,5 +1,7 @@
-// 列表页筛选参数解析与 Prisma where 构建（页面与 CSV 导出共用）
-import type { Prisma } from "@prisma/client";
+// 列表页筛选参数解析与 drizzle where 条件构建（页面与 CSV 导出共用）
+// 返回 SQL 条件数组，调用方用 and(...conds) 组装
+import { and, arrayContains, eq, exists, gte, ilike, lte, sql, type SQL } from "drizzle-orm";
+import { db, observation, trace } from "@machora/shared";
 
 const str = (v: string | string[] | undefined) =>
   Array.isArray(v) ? v[0] : v;
@@ -45,33 +47,46 @@ export function parseTraceFilters(
 export function buildTraceWhere(
   projectId: string,
   f: TraceFilters,
-): Prisma.TraceWhereInput {
-  return {
-    projectId,
-    timestamp: { gte: f.from, lte: f.to },
-    ...(f.q
-      ? { name: { contains: f.q, mode: "insensitive" as const } }
-      : {}),
-    ...(f.userId
-      ? { userId: { contains: f.userId, mode: "insensitive" as const } }
-      : {}),
-    ...(f.sessionId
-      ? { sessionId: { contains: f.sessionId, mode: "insensitive" as const } }
-      : {}),
-    ...(f.model
-      ? {
-          observations: {
-            some: { model: { contains: f.model, mode: "insensitive" as const } },
-          },
-        }
-      : {}),
-    ...(f.level ? { observations: { some: { level: f.level } } } : {}),
-    ...(f.env ? { environment: f.env } : {}),
-    ...(f.agent
-      ? { agentName: { contains: f.agent, mode: "insensitive" as const } }
-      : {}),
-    ...(f.tags.length > 0 ? { tags: { hasEvery: f.tags } } : {}),
-  };
+): SQL<unknown>[] {
+  const conds: SQL<unknown>[] = [
+    eq(trace.projectId, projectId),
+    gte(trace.timestamp, f.from),
+    lte(trace.timestamp, f.to),
+  ];
+  if (f.q) conds.push(ilike(trace.name, `%${f.q}%`));
+  if (f.userId) conds.push(ilike(trace.userId, `%${f.userId}%`));
+  if (f.sessionId) conds.push(ilike(trace.sessionId, `%${f.sessionId}%`));
+  if (f.model) {
+    conds.push(
+      exists(
+        db
+          .select({ x: sql`1` })
+          .from(observation)
+          .where(
+            and(
+              eq(observation.traceId, trace.id),
+              ilike(observation.model, `%${f.model}%`),
+            ),
+          ),
+      ),
+    );
+  }
+  if (f.level) {
+    conds.push(
+      exists(
+        db
+          .select({ x: sql`1` })
+          .from(observation)
+          .where(
+            and(eq(observation.traceId, trace.id), eq(observation.level, f.level)),
+          ),
+      ),
+    );
+  }
+  if (f.env) conds.push(eq(trace.environment, f.env));
+  if (f.agent) conds.push(ilike(trace.agentName, `%${f.agent}%`));
+  if (f.tags.length > 0) conds.push(arrayContains(trace.tags, f.tags));
+  return conds;
 }
 
 export interface GenerationFilters {
@@ -95,14 +110,13 @@ export function parseGenerationFilters(
 export function buildGenerationWhere(
   projectId: string,
   f: GenerationFilters,
-): Prisma.ObservationWhereInput {
-  return {
-    projectId,
-    type: "GENERATION" as const,
-    ...(f.since ? { startTime: { gte: f.since } } : {}),
-    ...(f.level ? { level: f.level } : {}),
-    ...(f.model
-      ? { model: { contains: f.model, mode: "insensitive" as const } }
-      : {}),
-  };
+): SQL<unknown>[] {
+  const conds: SQL<unknown>[] = [
+    eq(observation.projectId, projectId),
+    eq(observation.type, "GENERATION"),
+  ];
+  if (f.since) conds.push(gte(observation.startTime, f.since));
+  if (f.level) conds.push(eq(observation.level, f.level));
+  if (f.model) conds.push(ilike(observation.model, `%${f.model}%`));
+  return conds;
 }

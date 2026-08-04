@@ -35,20 +35,19 @@
     "build": "tsc -p tsconfig.build.json",
     "lint": "echo lint",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "db:generate": "prisma generate",
-    "db:migrate": "prisma db push --accept-data-loss --skip-generate"
+    "test": "vitest run"
   },
   "dependencies": {
-    "@prisma/client": "5.22.0",
     "bcryptjs": "^2.4.3",
+    "drizzle-orm": "^0.45.2",
+    "pg": "^8.22.0",
     "protobufjs": "^8.7.1",
     "zod": "^3.23.0"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20.19.43",
-    "prisma": "5.22.0",
+    "@types/pg": "^8.20.3",
     "typescript": "^5.9.0",
     "vitest": "^4.1.10"
   }

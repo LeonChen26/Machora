@@ -8,8 +8,9 @@
 // 落库形态：每个采集窗口（默认 60s）一条 SUM 采样，value=窗口内 sum，
 // 均值由 UI 按 sum/count 计算。
 
-import type { Prisma } from "@prisma/client";
-import { prisma } from "../db.ts";
+import { lt } from "drizzle-orm";
+import { db } from "../db.ts";
+import { metricSample, project } from "../drizzle/schema.ts";
 
 export const SYSTEM_PROJECT_ID = "machora-system";
 export const SELF_METRICS_INTERVAL_MS = 60_000;
@@ -123,11 +124,10 @@ export function stopSelfMetrics(): void {
 
 /** system 专用项目（自观测指标归属，UI 按此过滤） */
 export async function ensureSystemProject(): Promise<void> {
-  await prisma.project.upsert({
-    where: { id: SYSTEM_PROJECT_ID },
-    create: { id: SYSTEM_PROJECT_ID, name: "Machora System" },
-    update: {},
-  });
+  await db
+    .insert(project)
+    .values({ id: SYSTEM_PROJECT_ID, name: "Machora System" })
+    .onConflictDoNothing({ target: project.id });
 }
 
 /** 把窗口内计数落库为 MetricSample（SUM，value=sum）并清理过期数据 */
@@ -136,22 +136,22 @@ export async function flushSelfMetrics(): Promise<void> {
   if (entries.length > 0) {
     await ensureSystemProject();
     const now = new Date();
-    const data: Prisma.MetricSampleCreateManyInput[] = entries.map((e) => ({
+    const data = entries.map((e) => ({
       projectId: SYSTEM_PROJECT_ID,
       name: e.name,
       unit: null,
       kind: "SUM",
-      attributes: e.attrs as unknown as Prisma.InputJsonValue,
+      attributes: e.attrs as unknown as typeof metricSample.$inferInsert["attributes"],
       timestamp: now,
       value: e.sum,
     }));
-    await prisma.metricSample.createMany({ data });
+    await db.insert(metricSample).values(data);
   }
   await pruneOldMetrics();
 }
 
 export async function pruneOldMetrics(): Promise<void> {
-  await prisma.metricSample.deleteMany({
-    where: { timestamp: { lt: new Date(Date.now() - RETENTION_MS) } },
-  });
+  await db
+    .delete(metricSample)
+    .where(lt(metricSample.timestamp, new Date(Date.now() - RETENTION_MS)));
 }

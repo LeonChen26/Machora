@@ -1,6 +1,7 @@
 import { Link } from "../../../components/NativeLink";
 import { notFound } from "next/navigation";
-import { prisma } from "@machora/shared";
+import { and, asc, eq } from "drizzle-orm";
+import { db, trace } from "@machora/shared";
 import {
   formatDateTime,
   formatDuration,
@@ -22,12 +23,12 @@ export default async function SessionDetailPage({
   const { sessionId } = await params;
   const projectId = await getCurrentProjectId();
 
-  const traces = await prisma.trace.findMany({
-    where: { sessionId, projectId },
-    orderBy: { timestamp: "asc" },
-    include: {
+  const traces = await db.query.trace.findMany({
+    where: and(eq(trace.sessionId, sessionId), eq(trace.projectId, projectId)),
+    orderBy: (t, { asc }) => [asc(t.timestamp)],
+    with: {
       observations: {
-        select: {
+        columns: {
           startTime: true,
           endTime: true,
           totalTokens: true,
@@ -35,7 +36,7 @@ export default async function SessionDetailPage({
           level: true,
         },
       },
-      _count: { select: { scores: true } },
+      scores: { columns: { id: true } },
     },
   });
 
@@ -141,8 +142,8 @@ export default async function SessionDetailPage({
                     耗时 {formatDuration(dur)}
                   </span>
                   <span className="badge blue">{t.observations.length} obs</span>
-                  {t._count.scores > 0 && (
-                    <span className="badge amber">{t._count.scores} score</span>
+                  {t.scores.length > 0 && (
+                    <span className="badge amber">{t.scores.length} score</span>
                   )}
                   <span className="mono">{formatTokens(tokens)}</span>
                   <span className={cost > 0 ? "mono cost" : "mono muted"}>

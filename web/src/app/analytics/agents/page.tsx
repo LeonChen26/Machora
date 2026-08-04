@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
-import { prisma } from "@machora/shared";
+import { and, count, desc, eq, gte, isNull } from "drizzle-orm";
+import { db, observation } from "@machora/shared";
 import { getCurrentProjectId } from "../../../server/project";
 import { requireUser } from "../../../server/session";
 import { DrilldownView, type DrilldownGen } from "../../../components/DrilldownPage";
@@ -36,26 +37,34 @@ export default async function AgentDrilldownPage({
   // analytics 汇总表中 agentName 空值归 "unknown"，此处还原为 null 查询
   const nameFilter = agent === UNKNOWN ? null : agent;
 
-  const gens = (await prisma.observation.findMany({
-    where: {
-      projectId,
-      type: "GENERATION",
-      agentName: nameFilter,
-      startTime: { gte: prevSince },
-    },
-    orderBy: { startTime: "desc" },
-    take: PAGE_SIZE,
-    include: { trace: { select: { name: true } } },
-  })) as DrilldownGen[];
+  const agentCond =
+    nameFilter === null ? isNull(observation.agentName) : eq(observation.agentName, nameFilter);
 
-  const total = await prisma.observation.count({
-    where: {
-      projectId,
-      type: "GENERATION",
-      agentName: nameFilter,
-      startTime: { gte: since },
-    },
-  });
+  const gens = (await db.query.observation.findMany({
+    where: and(
+      eq(observation.projectId, projectId),
+      eq(observation.type, "GENERATION"),
+      agentCond,
+      gte(observation.startTime, prevSince),
+    ),
+    orderBy: (t, { desc }) => [desc(t.startTime)],
+    limit: PAGE_SIZE,
+    with: { trace: true },
+  })) as unknown as DrilldownGen[];
+
+  const total = (
+    await db
+      .select({ c: count() })
+      .from(observation)
+      .where(
+        and(
+          eq(observation.projectId, projectId),
+          eq(observation.type, "GENERATION"),
+          agentCond,
+          gte(observation.startTime, since),
+        ),
+      )
+  )[0].c;
 
   return (
     <DrilldownView

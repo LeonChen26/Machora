@@ -1,6 +1,7 @@
 // 导出 generations 列表为 CSV（复用列表页筛选条件，session 鉴权）
 import { NextRequest } from "next/server";
-import { prisma } from "@machora/shared";
+import { and } from "drizzle-orm";
+import { db, observation } from "@machora/shared";
 import { getApiUser } from "../../../../server/session";
 import { getCurrentProjectId } from "../../../../server/project";
 import {
@@ -25,11 +26,11 @@ export async function GET(req: NextRequest) {
   for (const [k, v] of req.nextUrl.searchParams) sp[k] = v;
   const f = parseGenerationFilters(sp);
 
-  const items = await prisma.observation.findMany({
-    where: buildGenerationWhere(projectId, f),
-    orderBy: { startTime: "desc" },
-    take: LIMIT,
-    select: {
+  const items = await db.query.observation.findMany({
+    where: and(...buildGenerationWhere(projectId, f)),
+    orderBy: (o, { desc }) => [desc(o.startTime)],
+    limit: LIMIT,
+    columns: {
       id: true,
       name: true,
       model: true,
@@ -38,7 +39,9 @@ export async function GET(req: NextRequest) {
       totalTokens: true,
       totalCost: true,
       level: true,
-      trace: { select: { id: true, name: true } },
+    },
+    with: {
+      trace: { columns: { id: true, name: true } },
     },
   });
 

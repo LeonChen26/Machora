@@ -1,4 +1,5 @@
-import { prisma } from "@machora/shared";
+import { asc, desc } from "drizzle-orm";
+import { db, apiKey, project } from "@machora/shared";
 import { formatDateTime } from "../../lib/format";
 import { CopyButton } from "../../components/CopyButton";
 import { EmptyIcon } from "../../components/EmptyIcon";
@@ -11,11 +12,13 @@ export const dynamic = "force-dynamic";
 export default async function ApiKeysPage() {
   await requireUser();
   const [keys, projects] = await Promise.all([
-    prisma.apiKey.findMany({
-      orderBy: { createdAt: "desc" },
-      include: { project: { select: { name: true } } },
+    db.query.apiKey.findMany({
+      orderBy: (k, { desc }) => [desc(k.createdAt)],
+      with: { project: { columns: { name: true } } },
     }),
-    prisma.project.findMany({ orderBy: { createdAt: "asc" } }),
+    db.query.project.findMany({
+      orderBy: (p, { asc }) => [asc(p.createdAt)],
+    }),
   ]);
 
   return (

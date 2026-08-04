@@ -1,6 +1,7 @@
 // API Key 校验，参考 Langfuse 的 Basic Auth + bcrypt 模式
 import bcrypt from "bcryptjs";
-import { prisma } from "@machora/shared";
+import { eq } from "drizzle-orm";
+import { apiKey, db } from "@machora/shared";
 
 export interface AuthResult {
   projectId: string;
@@ -30,13 +31,16 @@ export async function verifyApiKey(
   const creds = parseBasicAuth(header);
   if (!creds) return null;
 
-  const apiKey = await prisma.apiKey.findUnique({
-    where: { publicKey: creds.publicKey },
-  });
-  if (!apiKey) return null;
+  const found = await db
+    .select({ hashedSecret: apiKey.hashedSecret, projectId: apiKey.projectId })
+    .from(apiKey)
+    .where(eq(apiKey.publicKey, creds.publicKey))
+    .limit(1);
+  const apiKeyRow = found[0];
+  if (!apiKeyRow) return null;
 
-  const ok = await bcrypt.compare(creds.secretKey, apiKey.hashedSecret);
+  const ok = await bcrypt.compare(creds.secretKey, apiKeyRow.hashedSecret);
   if (!ok) return null;
 
-  return { projectId: apiKey.projectId };
+  return { projectId: apiKeyRow.projectId };
 }

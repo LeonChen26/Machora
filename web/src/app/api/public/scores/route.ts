@@ -1,10 +1,13 @@
-import { prisma, ScoreCreateSchema } from "@machora/shared";
+import { and, count, desc, eq, lt, type SQL } from "drizzle-orm";
+import { db, observation, score, trace, ScoreCreateSchema } from "@machora/shared";
 import { verifyApiKey } from "../../../../server/auth";
 import {
+  SCORE_COLUMNS,
   SCORE_SELECT_FIELDS,
   buildSelect,
   listEnvelope,
   parseCommonQuery,
+  pickColumns,
   timeWindow,
 } from "../../../../server/publicQuery";
 
@@ -26,35 +29,40 @@ export async function GET(req: Request) {
   const observationId = sp.get("observationId") || undefined;
   const name = sp.get("name") || undefined;
 
-  const where = {
-    projectId: auth.projectId,
-    timestamp: timeWindow(from, to),
-    ...(traceId ? { traceId } : {}),
-    ...(observationId ? { observationId } : {}),
-    ...(name ? { name } : {}),
-  };
+  const conds: SQL<unknown>[] = [
+    eq(score.projectId, auth.projectId),
+    ...timeWindow(score.timestamp, from, to),
+  ];
+  if (traceId) conds.push(eq(score.traceId, traceId));
+  if (observationId) conds.push(eq(score.observationId, observationId));
+  if (name) conds.push(eq(score.name, name));
+  if (cursor) conds.push(lt(score.id, cursor));
 
-  let prismaSelect;
+  let fields: string[] | undefined;
   try {
-    prismaSelect = buildSelect(select, SCORE_SELECT_FIELDS);
+    fields = buildSelect(select, SCORE_SELECT_FIELDS);
   } catch (e: any) {
     return Response.json({ error: e.message }, { status: 400 });
   }
+  const cols = pickColumns(SCORE_COLUMNS, fields);
 
   const [items, totalCount] = await Promise.all([
-    prisma.score.findMany({
-      where,
-      orderBy: { timestamp: "desc" },
-      take: limit + 1,
-      ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
-      ...(prismaSelect ? { select: prismaSelect } : {}),
-    }),
-    prisma.score.count({ where }),
+    db
+      .select(cols)
+      .from(score)
+      .where(and(...conds))
+      .orderBy(desc(score.timestamp))
+      .limit(limit + 1),
+    db.select({ c: count() }).from(score).where(and(...conds)),
   ]);
 
   const nextCursor = items.length > limit ? items[items.length - 1].id : null;
   return Response.json(
-    listEnvelope(items.slice(0, limit), { limit, nextCursor, totalCount }),
+    listEnvelope(items.slice(0, limit), {
+      limit,
+      nextCursor,
+      totalCount: totalCount[0].c,
+    }),
   );
 }
 
@@ -89,26 +97,27 @@ export async function POST(req: Request) {
 
   // 归属校验：trace/observation 必须属于当前 project
   if (d.traceId) {
-    const trace = await prisma.trace.findUnique({
-      where: { id: d.traceId },
-      select: { id: true },
+    const traceRow = await db.query.trace.findFirst({
+      where: eq(trace.id, d.traceId),
+      columns: { id: true },
     });
-    if (!trace) {
+    if (!traceRow) {
       return Response.json({ error: "Trace not found" }, { status: 404 });
     }
   }
   if (d.observationId) {
-    const obs = await prisma.observation.findUnique({
-      where: { id: d.observationId },
-      select: { id: true },
+    const obsRow = await db.query.observation.findFirst({
+      where: eq(observation.id, d.observationId),
+      columns: { id: true },
     });
-    if (!obs) {
+    if (!obsRow) {
       return Response.json({ error: "Observation not found" }, { status: 404 });
     }
   }
 
-  const score = await prisma.score.create({
-    data: {
+  const [scoreRow] = await db
+    .insert(score)
+    .values({
       id: d.id ?? undefined,
       traceId: d.traceId ?? null,
       observationId: d.observationId ?? null,
@@ -118,8 +127,8 @@ export async function POST(req: Request) {
       dataType: d.dataType,
       source: d.source,
       comment: d.comment ?? null,
-    },
-  });
+    })
+    .returning();
 
-  return Response.json({ data: score }, { status: 201 });
+  return Response.json({ data: scoreRow }, { status: 201 });
 }

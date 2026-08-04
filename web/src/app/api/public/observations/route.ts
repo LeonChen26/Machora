@@ -1,10 +1,13 @@
-import { prisma } from "@machora/shared";
+import { and, count, desc, eq, ilike, lt, type SQL } from "drizzle-orm";
+import { db, observation } from "@machora/shared";
 import { verifyApiKey } from "../../../../server/auth";
 import {
+  OBSERVATION_COLUMNS,
   OBSERVATION_SELECT_FIELDS,
   buildSelect,
   listEnvelope,
   parseCommonQuery,
+  pickColumns,
   timeWindow,
 } from "../../../../server/publicQuery";
 
@@ -31,45 +34,44 @@ export async function GET(req: Request) {
   const workflow = sp.get("workflow") || undefined;
   const skill = sp.get("skill") || undefined;
 
-  const where = {
-    projectId: auth.projectId,
-    startTime: timeWindow(from, to),
-    ...(traceId ? { traceId } : {}),
-    ...(type ? { type } : {}),
-    ...(name ? { name } : {}),
-    ...(level ? { level } : {}),
-    ...(model ? { model } : {}),
-    ...(agent
-      ? { agentName: { contains: agent, mode: "insensitive" as const } }
-      : {}),
-    ...(workflow
-      ? { workflowName: { contains: workflow, mode: "insensitive" as const } }
-      : {}),
-    ...(skill
-      ? { skillName: { contains: skill, mode: "insensitive" as const } }
-      : {}),
-  };
+  const conds: SQL<unknown>[] = [
+    eq(observation.projectId, auth.projectId),
+    ...timeWindow(observation.startTime, from, to),
+  ];
+  if (traceId) conds.push(eq(observation.traceId, traceId));
+  if (type) conds.push(eq(observation.type, type));
+  if (name) conds.push(eq(observation.name, name));
+  if (level) conds.push(eq(observation.level, level));
+  if (model) conds.push(eq(observation.model, model));
+  if (agent) conds.push(ilike(observation.agentName, `%${agent}%`));
+  if (workflow) conds.push(ilike(observation.workflowName, `%${workflow}%`));
+  if (skill) conds.push(ilike(observation.skillName, `%${skill}%`));
+  if (cursor) conds.push(lt(observation.id, cursor));
 
-  let prismaSelect;
+  let fields: string[] | undefined;
   try {
-    prismaSelect = buildSelect(select, OBSERVATION_SELECT_FIELDS);
+    fields = buildSelect(select, OBSERVATION_SELECT_FIELDS);
   } catch (e: any) {
     return Response.json({ error: e.message }, { status: 400 });
   }
+  const cols = pickColumns(OBSERVATION_COLUMNS, fields);
 
   const [items, totalCount] = await Promise.all([
-    prisma.observation.findMany({
-      where,
-      orderBy: { startTime: "desc" },
-      take: limit + 1,
-      ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
-      ...(prismaSelect ? { select: prismaSelect } : {}),
-    }),
-    prisma.observation.count({ where }),
+    db
+      .select(cols)
+      .from(observation)
+      .where(and(...conds))
+      .orderBy(desc(observation.startTime))
+      .limit(limit + 1),
+    db.select({ c: count() }).from(observation).where(and(...conds)),
   ]);
 
   const nextCursor = items.length > limit ? items[items.length - 1].id : null;
   return Response.json(
-    listEnvelope(items.slice(0, limit), { limit, nextCursor, totalCount }),
+    listEnvelope(items.slice(0, limit), {
+      limit,
+      nextCursor,
+      totalCount: totalCount[0].c,
+    }),
   );
 }

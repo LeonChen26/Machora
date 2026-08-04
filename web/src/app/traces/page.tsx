@@ -1,7 +1,8 @@
 import { Link } from "../../components/NativeLink";
 import { EmptyIcon } from "../../components/EmptyIcon";
 import { Pager } from "../../components/Pager";
-import { prisma } from "@machora/shared";
+import { and, asc, count, desc, eq, inArray } from "drizzle-orm";
+import { db, trace, observation, score } from "@machora/shared";
 import type { ReactNode } from "react";
 import {
   formatRelative,
@@ -41,21 +42,20 @@ export default async function TracesPage({
   const where = buildTraceWhere(projectId, f);
 
   // 环境下拉选项（当前项目去重）
-  const envs = await prisma.trace.findMany({
-    where: { projectId },
-    select: { environment: true },
-    distinct: ["environment"],
-    orderBy: { environment: "asc" },
-  });
+  const envs = await db
+    .selectDistinct({ environment: trace.environment })
+    .from(trace)
+    .where(eq(trace.projectId, projectId))
+    .orderBy(asc(trace.environment));
 
-  const items = await prisma.trace.findMany({
-    where,
-    orderBy: { timestamp: "desc" },
-    skip: (page - 1) * PAGE_SIZE,
-    take: PAGE_SIZE,
-    include: {
+  const rows = await db.query.trace.findMany({
+    where: and(...where),
+    orderBy: (t, { desc }) => [desc(t.timestamp)],
+    offset: (page - 1) * PAGE_SIZE,
+    limit: PAGE_SIZE,
+    with: {
       observations: {
-        select: {
+        columns: {
           model: true,
           type: true,
           level: true,
@@ -64,18 +64,50 @@ export default async function TracesPage({
           totalTokens: true,
           totalCost: true,
         },
-        orderBy: { startTime: "asc" },
+        orderBy: (o, { asc }) => [asc(o.startTime)],
       },
       scores: {
-        select: { id: true, name: true, value: true, dataType: true },
-        orderBy: { timestamp: "desc" },
-        take: 3,
+        columns: { id: true, name: true, value: true, dataType: true },
+        orderBy: (s, { desc }) => [desc(s.timestamp)],
+        limit: 3,
       },
-      _count: { select: { observations: true, scores: true } },
     },
   });
 
-  const total = await prisma.trace.count({ where });
+  // _count：与 Prisma include._count 等价的两条聚合查询
+  const ids = rows.map((r) => r.id);
+  const [obsCounts, scoreCounts] = await Promise.all([
+    ids.length > 0
+      ? db
+          .select({ traceId: observation.traceId, c: count() })
+          .from(observation)
+          .where(inArray(observation.traceId, ids))
+          .groupBy(observation.traceId)
+      : Promise.resolve([]),
+    ids.length > 0
+      ? db
+          .select({ traceId: score.traceId, c: count() })
+          .from(score)
+          .where(inArray(score.traceId, ids))
+          .groupBy(score.traceId)
+      : Promise.resolve([]),
+  ]);
+  const obsCountMap = new Map(obsCounts.map((r) => [r.traceId, r.c]));
+  const scoreCountMap = new Map(scoreCounts.map((r) => [r.traceId, r.c]));
+  const items = rows.map((r) => ({
+    ...r,
+    _count: {
+      observations: obsCountMap.get(r.id) ?? 0,
+      scores: scoreCountMap.get(r.id) ?? 0,
+    },
+  }));
+
+  const total = (
+    await db
+      .select({ c: count() })
+      .from(trace)
+      .where(and(...where))
+  )[0].c;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const shown = items;
 

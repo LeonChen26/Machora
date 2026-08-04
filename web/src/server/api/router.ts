@@ -1,6 +1,7 @@
 import { initTRPC, TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { prisma } from "@machora/shared";
+import { and, desc, eq, gte, lt, lte } from "drizzle-orm";
+import { db, project, trace } from "@machora/shared";
 
 // 简化 context：v1 不接 next-auth，所有请求视为已登录
 export interface Context {
@@ -32,15 +33,18 @@ export const appRouter = router({
         }),
       )
       .query(async ({ ctx, input }) => {
-        const items = await prisma.trace.findMany({
-          where: {
-            projectId: ctx.projectId,
-            timestamp: { gte: new Date(input.from), lte: new Date(input.to) },
-          },
-          orderBy: { timestamp: "desc" },
-          take: input.limit + 1,
-          ...(input.cursor ? { skip: 1, cursor: { id: input.cursor } } : {}),
-        });
+        const where = and(
+          eq(trace.projectId, ctx.projectId),
+          gte(trace.timestamp, new Date(input.from)),
+          lte(trace.timestamp, new Date(input.to)),
+          input.cursor ? lt(trace.id, input.cursor) : undefined,
+        );
+        const items = await db
+          .select()
+          .from(trace)
+          .where(where)
+          .orderBy(desc(trace.timestamp))
+          .limit(input.limit + 1);
         const nextCursor =
           items.length > input.limit ? items[items.length - 1].id : null;
         return { items: items.slice(0, input.limit), nextCursor };
@@ -49,20 +53,22 @@ export const appRouter = router({
     byId: protectedProcedure
       .input(z.object({ id: z.string() }))
       .query(async ({ ctx, input }) => {
-        const trace = await prisma.trace.findUnique({
-          where: { id: input.id },
-          include: { observations: true, scores: true },
+        const traceRow = await db.query.trace.findFirst({
+          where: eq(trace.id, input.id),
+          with: { observations: true, scores: true },
         });
-        if (!trace || trace.projectId !== ctx.projectId) {
+        if (!traceRow || traceRow.projectId !== ctx.projectId) {
           throw new TRPCError({ code: "NOT_FOUND" });
         }
-        return trace;
+        return traceRow;
       }),
   }),
 
   projects: router({
     list: publicProcedure.query(async () => {
-      return prisma.project.findMany({ orderBy: { createdAt: "desc" } });
+      return db.query.project.findMany({
+        orderBy: (t, { desc }) => [desc(t.createdAt)],
+      });
     }),
   }),
 });

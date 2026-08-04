@@ -2,7 +2,8 @@ import {
   verifyApiKey,
   parseOtelMetricsPayload,
   decodeOtlpMetricsProtobuf,
-  prisma,
+  db,
+  metricSample,
   selfMetrics,
 } from "@machora/shared";
 
@@ -47,23 +48,23 @@ export async function POST(req: Request) {
   const samples = parseOtelMetricsPayload(body as any, auth.projectId);
   let written = 0;
   if (samples.length > 0) {
-    const created = await prisma.metricSample.createMany({
-      data: samples.map((s) => ({
+    await db.insert(metricSample).values(
+      samples.map((s) => ({
         projectId: s.projectId,
         name: s.name,
         unit: s.unit,
         kind: s.kind,
-        attributes: s.attributes as object,
+        attributes: s.attributes as unknown as typeof metricSample.$inferInsert["attributes"],
         timestamp: s.timestamp,
         value: s.value,
         count: s.count,
         sum: s.sum,
         min: s.min,
         max: s.max,
-        buckets: s.buckets as object | undefined,
+        buckets: (s.buckets ?? null) as unknown as typeof metricSample.$inferInsert["buckets"],
       })),
-    });
-    written = created.count;
+    );
+    written = samples.length;
   }
 
   selfMetrics.inc("machora.metrics.requests", 1, { status: "ok" });

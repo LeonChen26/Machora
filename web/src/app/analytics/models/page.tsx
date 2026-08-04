@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
-import { prisma } from "@machora/shared";
+import { and, count, desc, eq, gte } from "drizzle-orm";
+import { db, observation } from "@machora/shared";
 import { getCurrentProjectId } from "../../../server/project";
 import { requireUser } from "../../../server/session";
 import { DrilldownView, type DrilldownGen } from "../../../components/DrilldownPage";
@@ -32,21 +33,31 @@ export default async function ModelDrilldownPage({
   const since = new Date(today.getTime() - (days - 1) * DAY_MS);
   const prevSince = new Date(since.getTime() - days * DAY_MS);
 
-  const gens = (await prisma.observation.findMany({
-    where: {
-      projectId,
-      type: "GENERATION",
-      model,
-      startTime: { gte: prevSince },
-    },
-    orderBy: { startTime: "desc" },
-    take: PAGE_SIZE,
-    include: { trace: { select: { name: true } } },
-  })) as DrilldownGen[];
+  const gens = (await db.query.observation.findMany({
+    where: and(
+      eq(observation.projectId, projectId),
+      eq(observation.type, "GENERATION"),
+      eq(observation.model, model),
+      gte(observation.startTime, prevSince),
+    ),
+    orderBy: (t, { desc }) => [desc(t.startTime)],
+    limit: PAGE_SIZE,
+    with: { trace: true },
+  })) as unknown as DrilldownGen[];
 
-  const total = await prisma.observation.count({
-    where: { projectId, type: "GENERATION", model, startTime: { gte: since } },
-  });
+  const total = (
+    await db
+      .select({ c: count() })
+      .from(observation)
+      .where(
+        and(
+          eq(observation.projectId, projectId),
+          eq(observation.type, "GENERATION"),
+          eq(observation.model, model),
+          gte(observation.startTime, since),
+        ),
+      )
+  )[0].c;
 
   return (
     <DrilldownView

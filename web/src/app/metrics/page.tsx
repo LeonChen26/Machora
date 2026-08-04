@@ -1,4 +1,5 @@
-import { prisma } from "@machora/shared";
+import { and, desc, eq, gte } from "drizzle-orm";
+import { db, metricSample, project as projectTable } from "@machora/shared";
 import { formatDateTime, formatRelative } from "../../lib/format";
 import { EmptyIcon } from "../../components/EmptyIcon";
 import { Link } from "../../components/NativeLink";
@@ -28,16 +29,25 @@ export default async function MetricsPage({
   // 项目指标：当前项目经 OTLP metrics 端点上报的外部指标
   const projectId = await getCurrentProjectId();
   const project = projectId
-    ? await prisma.project.findUnique({ where: { id: projectId }, select: { id: true, name: true } })
+    ? await db.query.project.findFirst({
+        where: eq(projectTable.id, projectId),
+        columns: { id: true, name: true },
+      })
     : null;
 
   const since = new Date(Date.now() - range.ms);
   const samples = project
-    ? await prisma.metricSample.findMany({
-        where: { projectId: project.id, timestamp: { gte: since } },
-        orderBy: { timestamp: "desc" },
-        take: MAX_SAMPLES,
-      })
+    ? await db
+        .select()
+        .from(metricSample)
+        .where(
+          and(
+            eq(metricSample.projectId, project.id),
+            gte(metricSample.timestamp, since),
+          ),
+        )
+        .orderBy(desc(metricSample.timestamp))
+        .limit(MAX_SAMPLES)
     : [];
 
   return (

@@ -5,7 +5,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
-import { prisma } from "@machora/shared";
+import { eq } from "drizzle-orm";
+import { apiKey, db, project } from "@machora/shared";
 import { generateApiKey } from "../../../server/apiKeys";
 import { getApiUser } from "../../../server/session";
 
@@ -35,22 +36,25 @@ export async function POST(req: NextRequest) {
   }
   const { name, projectId } = parsed.data;
 
-  const project = await prisma.project.findUnique({ where: { id: projectId } });
-  if (!project) {
+  const projectRow = await db.query.project.findFirst({
+    where: eq(project.id, projectId),
+  });
+  if (!projectRow) {
     return NextResponse.json({ error: "项目不存在" }, { status: 400 });
   }
 
   const { publicKey, secretKey } = generateApiKey();
   const hashedSecret = await bcrypt.hash(secretKey, 11);
 
-  const key = await prisma.apiKey.create({
-    data: {
+  const [key] = await db
+    .insert(apiKey)
+    .values({
       projectId,
       publicKey,
       hashedSecret,
       name: name || null,
-    },
-  });
+    })
+    .returning();
 
   return NextResponse.json({
     key: { id: key.id, name: key.name, publicKey, secretKey },
@@ -67,7 +71,7 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "缺少 id" }, { status: 400 });
   }
   try {
-    await prisma.apiKey.delete({ where: { id } });
+    await db.delete(apiKey).where(eq(apiKey.id, id));
     return NextResponse.json({ ok: true });
   } catch (e: any) {
     return NextResponse.json(

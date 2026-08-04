@@ -6,19 +6,18 @@
  *
  * 流程：
  *   1. 全量构建（pnpm build：shared/worker/web/standalone 产出 dist + .next）
- *   2. 组装发布目录 .release/machora-<version>/
- *   3. 在 staging 构建期做两件事（轻量/完整包都跑）：
- *        a) prisma generate → 产物跟包走，运行时永不生成
- *        b) prisma migrate diff → 导出 schema.sql（IF NOT EXISTS 幂等），运行时直接 exec
- *   4. [--with-deps] 在 staging 现场 pnpm install --prod 装运行时依赖
- *      （不再包含 prisma CLI，启动时彻底零 prisma 调用）
- *   5. 打 zip（System32 tar）
- *   6. 打印发布指引
+ *   2. 组装发布目录 .release/machora-<version>/（含 schema.sql，start.ts 幂等建表）
+ *   3. [--with-deps] 在 staging 现场 pnpm install --prod 装运行时依赖
+ *   4. 打 zip（System32 tar）
+ *   5. 打印发布指引
  *
  * 发布形态：
  *   - 默认（轻量包）：源码 + 构建产物。目标机需 node ≥20 + pnpm，解压后 pnpm install --frozen-lockfile 再启动。
  *   - --with-deps（完整包）：含 node_modules，解压即用、零安装。平台特定（Windows 包仅 Windows 可用，
  *     Linux 包需在 Linux/ECS 上构建），因 pglite wasm / esbuild 二进制随平台。
+ *
+ * 运行时零 ORM CLI：数据访问用 drizzle-orm + pg（纯 JS），表结构由
+ * packages/shared/prisma/schema.sql（幂等）在启动时直接 exec，无任何引擎二进制。
  */
 import { execSync, spawnSync } from "node:child_process";
 import {
@@ -58,34 +57,9 @@ function step(msg) {
   console.log(`\n[release] ${msg}`);
 }
 
-// 把 Prisma 导出的原始 schema.sql 改为幂等版本：
-//   CREATE TABLE ...  → CREATE TABLE IF NOT EXISTS ...
-//   CREATE [UNIQUE] INDEX ...  → CREATE [UNIQUE] INDEX IF NOT EXISTS ...
-// ALTER ADD FOREIGN KEY 不处理，下面 applyIdempotentSchema 会单条 try/catch 兜底。
-function toIdempotentSchema(sql) {
-  return sql
-    .replace(/CREATE TABLE (IF NOT EXISTS )?"/g, 'CREATE TABLE IF NOT EXISTS "')
-    .replace(/CREATE UNIQUE INDEX (IF NOT EXISTS )?"/g, 'CREATE UNIQUE INDEX IF NOT EXISTS "')
-    .replace(/CREATE INDEX (IF NOT EXISTS )?"/g, 'CREATE INDEX IF NOT EXISTS "');
-}
-
-// 定位 prisma CLI（只在构建期的仓库根用）
-function resolveBuildPrismaBin() {
-  const binName = process.platform === "win32" ? "prisma.CMD" : "prisma";
-  const candidates = [
-    resolve(root, "packages", "shared", "node_modules", ".bin", binName),
-    resolve(root, "node_modules", ".bin", binName),
-  ];
-  const found = candidates.find((c) => existsSync(c));
-  if (!found) {
-    throw new Error(`构建期未找到 prisma CLI（尝试 ${candidates.join("、")}）`);
-  }
-  return found;
-}
-
 // ---------------------------------------------------------------------------
-step(withDeps ? "1/5 全量构建（pnpm build）" : "1/4 全量构建（pnpm build）");
-// Next.js production build 会加载全部 server 路由（含 prisma 连接的 api 路由），为避免
+step(withDeps ? "1/4 全量构建（pnpm build）" : "1/3 全量构建（pnpm build）");
+// Next.js production build 会加载全部 server 路由（含 db 连接的 api 路由），为避免
 // 构建阶段模块顶层副作用触发 DB 连接，这里给占位 env。运行时真实值由 start.ts 设置。
 const prev = {};
 for (const [k, v] of Object.entries({
@@ -105,28 +79,8 @@ try {
   }
 }
 
-// 收集仓库 pnpm store 里所有 prisma generate 生成的 client 目录，按版本降序返回。
-// 关键：.pnpm 里可能残留多个 @prisma+client@X.Y.Z（如 5.20.0 与 5.22.0 并存），
-// readdirSync 顺序不保证版本顺序；必须取版本最高者，否则会复制到旧生成物
-// （缺 MetricSample 等新模型），完整包 SSR 侧 prisma.<model> 为 undefined 直接 500。
-function collectPrismaClientDirs() {
-  const out = [];
-  const pnpmRoot = resolve(root, "node_modules", ".pnpm");
-  if (existsSync(pnpmRoot)) {
-    for (const d of readdirSync(pnpmRoot)) {
-      const m = d.match(/^@prisma\+client@(\d+\.\d+\.\d+)/);
-      if (m) {
-        const p = resolve(pnpmRoot, d, "node_modules", ".prisma", "client");
-        if (existsSync(resolve(p, "default.js"))) out.push({ ver: m[1], path: p });
-      }
-    }
-  }
-  out.sort((a, b) => (a.ver < b.ver ? 1 : -1));
-  return out.map((x) => x.path);
-}
-
 // ---------------------------------------------------------------------------
-step(withDeps ? "2/5 组装发布目录" : "2/4 组装发布目录");
+step(withDeps ? "2/4 组装发布目录" : "2/3 组装发布目录");
 rmSync(staging, { recursive: true, force: true });
 mkdirSync(staging, { recursive: true });
 
@@ -137,7 +91,7 @@ copy("pnpm-lock.yaml");
 copy("turbo.json");
 copy(".env.example"); // 目标机配置参考（.env 需自行创建）
 
-// workspace 包：源码 + dist + prisma schema（start.ts 会读 schema.sql）
+// workspace 包：源码 + dist + schema.sql（start.ts 启动时幂等建表）
 copy("packages/shared/package.json", "packages/shared/package.json");
 copy("packages/shared/dist", "packages/shared/dist");
 copy("packages/shared/prisma", "packages/shared/prisma");
@@ -156,6 +110,9 @@ copy("web/tsconfig.json", "web/tsconfig.json");
 copy("web/next-env.d.ts", "web/next-env.d.ts");
 copy("web/public", "web/public");
 copy("web/.next", "web/.next"); // production next({ dev: false }) 依赖
+// web/.next/dev 是 dev 模式构建缓存（可能含旧 @prisma/client 副本、338MB+），
+// 生产运行不需要，排除以免进发布包
+rmSync(resolve(staging, "web", ".next", "dev"), { recursive: true, force: true });
 
 copy("standalone/package.json", "standalone/package.json");
 copy("standalone/tsconfig.json", "standalone/tsconfig.json");
@@ -168,7 +125,7 @@ writeFileSync(
   resolve(staging, "start.cmd"),
   [
     "@echo off",
-    "rem Machora Standalone 启动（生产模式，零 tsx 依赖，零 prisma CLI 调用）",
+    "rem Machora Standalone 启动（生产模式，零 tsx 依赖，零 ORM CLI 调用）",
     "set NODE_ENV=production",
     "node standalone\\dist\\start.js",
     "",
@@ -178,7 +135,7 @@ writeFileSync(
   resolve(staging, "start.sh"),
   [
     "#!/bin/sh",
-    "# Machora Standalone 启动（生产模式，零 tsx 依赖，零 prisma CLI 调用）",
+    "# Machora Standalone 启动（生产模式，零 tsx 依赖，零 ORM CLI 调用）",
     "export NODE_ENV=production",
     'exec node standalone/dist/start.js "$@"',
     "",
@@ -217,87 +174,21 @@ writeFileSync(
     withDeps ? "" : "开发模式（热重载）：\n  pnpm dev\n",
     "数据说明：PGlite 数据落盘在 standalone/.machora-data，删除即清空。",
     "",
-    "Schema 初始化：构建期已预生成 Prisma Client，并把 schema 导出为 packages/shared/prisma/schema.sql，",
-    "启动时 PGlite 直接读 SQL 幂等建表，不调用 prisma CLI，零 prisma engines 下载。",
+    "Schema 初始化：表结构定义在 packages/shared/prisma/schema.sql（幂等建表），",
+    "启动时 PGlite 直接 exec，无需任何 ORM CLI / 引擎二进制。",
     "",
   ].join("\n"),
 );
 
 // ---------------------------------------------------------------------------
-// 构建期 prisma 动作（轻量/完整包都要，打包后运行时就不依赖 prisma 了）
-step(withDeps ? "3/5 构建期 Prisma（预 generate + 导出 schema.sql）" : "3/4 构建期 Prisma（预 generate + 导出 schema.sql）");
-{
-  const prismaBin = resolveBuildPrismaBin();
-  const sharedDir = resolve(staging, "packages", "shared");
-  // 关键：必须用仓库内的 schema 路径（packages/shared/prisma/schema.prisma），
-  // 不能用 staging 中的 schema 副本——Prisma CLI 会沿 schema 路径向上找
-  // 最近的 package.json，并以该目录为准判断是否「已装 prisma」。若指向
-  // staging 目录的副本，prisma 会认为当前项目未装 prisma，触发 `pnpm add prisma@x -D`
-  // 自动安装，在 TRAE 沙箱里 pnpm add 会被 E:.pnpm-store 拦截而失败。
-  const srcSchemaPath = resolve(root, "packages", "shared", "prisma", "schema.prisma");
-  const schemaSqlPath = resolve(sharedDir, "prisma", "schema.sql");
-  const prismaClientOutput = resolve(staging, "node_modules", ".prisma", "client");
-  mkdirSync(prismaClientOutput, { recursive: true });
-  const tmpSql = resolve(staging, "_schema.raw.sql");
-  const prismaCwd = resolve(root, "packages", "shared");
-
-  execSync(
-    `"${prismaBin}" generate --schema="${srcSchemaPath}"`,
-    { cwd: prismaCwd, stdio: "inherit" },
-  );
-
-  // prisma generate 在 pnpm workspace 下输出到
-  //   node_modules/.pnpm/@prisma+client@x/node_modules/.prisma/client
-  // 复制到 staging/node_modules/.prisma/client 以便跟包发布。
-  {
-    const candidates = [
-      resolve(prismaCwd, "node_modules", ".prisma", "client"),
-      resolve(root, "node_modules", ".prisma", "client"),
-      ...collectPrismaClientDirs(),
-    ];
-    const src = candidates.find((c) => existsSync(resolve(c, "default.js")));
-    if (src) {
-      cpSync(src, prismaClientOutput, { recursive: true });
-    } else {
-      throw new Error(`prisma generate 产物未找到（尝试 ${candidates.join("、")}）`);
-    }
-  }
-
-  execSync(
-    `"${prismaBin}" migrate diff --from-empty --to-schema-datamodel "${srcSchemaPath}" --script --output "${tmpSql}"`,
-    { cwd: prismaCwd, stdio: "inherit" },
-  );
-  const raw = readFileSync(tmpSql, "utf8");
-  writeFileSync(schemaSqlPath, toIdempotentSchema(raw), "utf8");
-  rmSync(tmpSql, { force: true });
-
-  // 把生成的 Prisma Client 也复制一份到 .next/node_modules/.prisma/client，
-  // 绕开 Turbopack 外部化 default.js 向上解析找不到 .prisma/client/default 的问题。
-  // 注意：必须强制覆盖——next build 可能已在 web/.next/node_modules 放下旧版
-  // client（@prisma/client 包自带模板），若按 existsSync(default.js) 跳过会带旧
-  // 生成物进包，SSR 里 prisma.<最新模型>（如 metricSample）为 undefined 直接 500。
-  const nextNodeModules = resolve(staging, "web", ".next", "node_modules");
-  const nmDir = resolve(staging, "node_modules");
-  const prismaOutSrc = resolve(nmDir, ".prisma", "client");
-  if (existsSync(prismaOutSrc)) {
-    const dest = resolve(nextNodeModules, ".prisma", "client");
-    rmSync(dest, { recursive: true, force: true });
-    mkdirSync(resolve(dest, ".."), { recursive: true });
-    cpSync(prismaOutSrc, dest, { recursive: true });
-  }
-  console.log("[release] 预生成 Prisma Client + schema.sql 完成，运行时零 prisma CLI 调用");
-}
-
-// ---------------------------------------------------------------------------
 // [--with-deps] 在 staging 现场装运行时依赖。
 // --node-linker=hoisted：npm 扁平布局，无符号链接，避免 tar 解引用导致 zip 体积翻倍。
-// --prod：跳过 typescript/vitest/tsx/prisma 等 dev 工具；**prisma 现在在 devDependencies，
-// 不会被装入 node_modules**——因为上面构建期阶段已经用仓库 prisma CLI 把 generate/diff 做完了。
+// --prod：跳过 typescript/vitest/tsx 等 dev 工具，只装运行时依赖。
 // 裁掉 @next/swc（SWC 编译器，仅 dev build 用）、@img/sharp（Next.js 图片优化，未启用）、
 // typescript（@trpc peerDep，运行时不需要）。
 let afterSchemaStep = withDeps ? 4 : 3;
 if (withDeps) {
-  step("4/5 安装运行时依赖（hoisted + prod，不含 prisma CLI）");
+  step("3/4 安装运行时依赖（hoisted + prod）");
   // 合并仓库根的 registry/fetch 配置（否则 staging 新装 npmrc 会回退 npmjs.org 被墙）
   const rootNpmrc = existsSync(resolve(root, ".npmrc"))
     ? readFileSync(resolve(root, ".npmrc"), "utf8")
@@ -315,28 +206,9 @@ if (withDeps) {
   // 本地 store 仅构建时用，不随包发布（否则 zip 体积翻倍）。
   const localStore = resolve(staging, ".pnpm-store-local");
   if (existsSync(localStore)) rmSync(localStore, { recursive: true, force: true });
-  // pnpm install --prod 会重新铺 node_modules/.prisma/client（@prisma/client 包
-  // 自带的旧模板，不含最新模型如 MetricSample）→ 完整包运行时 prisma.metricSample
-  // 为 undefined。必须用构建期生成的 client 强制覆盖顶层与 web/.next 两份。
-  // 注意：必须取版本最高的生成物（.pnpm 可能残留多个 @prisma+client@X.Y.Z）。
-  {
-    const freshSrc = collectPrismaClientDirs()[0];
-    if (!freshSrc) throw new Error("pnpm install 后未找到构建期生成的 Prisma Client（.pnpm/@prisma+client@*）");
-    const topDest = resolve(staging, "node_modules", ".prisma", "client");
-    rmSync(topDest, { recursive: true, force: true });
-    cpSync(freshSrc, topDest, { recursive: true });
-    const nextDest = resolve(staging, "web", ".next", "node_modules", ".prisma", "client");
-    rmSync(nextDest, { recursive: true, force: true });
-    mkdirSync(resolve(nextDest, ".."), { recursive: true });
-    cpSync(freshSrc, nextDest, { recursive: true });
-    console.log("[release] pnpm install 后用构建期 client 覆盖顶层与 web/.next 的 .prisma/client");
-  }
   // 裁掉生产不需要的大体积 optional 依赖
   // 注意：@next 只能裁 swc-*（SWC 编译器二进制，仅 dev build 用）；
   // @next/env 是 Next.js 运行时依赖，必须保留。
-  // @prisma/client optionalDependencies 里带 prisma（CLI + engines），这是
-  // 可选 peer，--prod 安装仍然会装；必须在运行时里把 prisma 整包删掉，
-  // 确保 release 包真的「运行时零 prisma CLI」。
   const nmDir = resolve(staging, "node_modules");
   const nextDir = resolve(nmDir, "@next");
   if (existsSync(nextDir)) {
@@ -349,16 +221,30 @@ if (withDeps) {
   const trimTargets = [
     "@img", // sharp 图片处理，未启用 next/image 优化
     "typescript", // @trpc peerDep，运行时不需要
-    "prisma", // prisma CLI + engines（构建期已做完 generate/diff，运行时零依赖）
   ];
   for (const t of trimTargets) {
     const p = resolve(nmDir, t);
     if (existsSync(p)) rmSync(p, { recursive: true, force: true });
   }
-  // @prisma/client optionalDeps 带的 prisma 还会在 .bin 里留下入口，顺手删除
-  const binName = process.platform === "win32" ? "prisma.CMD" : "prisma";
-  const prismaBinInStaging = resolve(nmDir, ".bin", binName);
-  if (existsSync(prismaBinInStaging)) rmSync(prismaBinInStaging, { force: true });
+  // workspace 包链接固化：pnpm 的 hoisted 布局把 @machora/* 链接放在各子包的
+  // node_modules 下（Windows 上是 Junction），System32 tar 打 zip 时不解引用
+  // junction，解压后链接变成空目录 → 运行时 Cannot find module '@machora/shared'。
+  // 这里把 workspace 包以真实目录复制到根 node_modules/@machora/（Node 从任何
+  // 子包向上解析 node_modules 都能命中），并删掉子包里的 junction，保证解压即用。
+  mkdirSync(resolve(nmDir, "@machora"), { recursive: true });
+  const workspaceCopies = [
+    ["@machora/shared", "packages/shared"],
+    ["@machora/worker", "worker"],
+  ];
+  for (const [pkg, src] of workspaceCopies) {
+    const dest = resolve(nmDir, pkg);
+    rmSync(dest, { recursive: true, force: true });
+    cpSync(resolve(staging, src), dest, { recursive: true });
+  }
+  for (const sub of ["standalone", "web", "worker"]) {
+    const link = resolve(staging, sub, "node_modules", "@machora");
+    if (existsSync(link)) rmSync(link, { recursive: true, force: true });
+  }
   // 发布包仅需 node_modules，不再需要 workspace 元数据；删掉后 Next.js
   // 不会再把 staging 当成 monorepo workspace 的根，也就不会向父目录递归
   // 推断 workspace root（之前会找到解压目录外的真正仓库 pnpm-workspace.yaml，
@@ -370,12 +256,12 @@ if (withDeps) {
   // 轻量包模式也不再需要真实仓库的 pnpm-workspace.yaml（和 staging 里的目录
   // 结构不匹配），目标机在 staging 内 `pnpm install --frozen-lockfile` 时
   // 用 staging 自己的 workspace 元数据。但轻量包保留 pnpm-lock.yaml。
-  console.log("[release] 已裁剪 prisma CLI/engines、@next/swc、@img/sharp、typescript（生产运行不需要）");
-  afterSchemaStep = 5;
+  console.log("[release] 已裁剪 @next/swc、@img/sharp、typescript（生产运行不需要）");
+  afterSchemaStep = 4;
 }
 
 // ---------------------------------------------------------------------------
-step(`${afterSchemaStep}/${withDeps ? 5 : 4} 打包 zip`);
+step(`${afterSchemaStep}/4 打包 zip`);
 rmSync(zipPath, { force: true });
 // 用系统 tar（libarchive，Windows 10+ 自带 System32\tar.exe）打 zip；避免 PowerShell
 // Compress-Archive 触发 Windows Recent 目录写入（沙箱环境会拦截）。
@@ -396,15 +282,15 @@ if (r.status !== 0) {
 }
 
 // ---------------------------------------------------------------------------
-step(`${withDeps ? 5 : 4}/${withDeps ? 5 : 4} 完成`);
+step(`${withDeps ? 4 : 3}/${withDeps ? 4 : 3} 完成`);
 console.log(`\n  发布包: ${zipPath}`);
 console.log(`  大小  : ${(statSync(zipPath).size / 1024 / 1024).toFixed(1)} MB`);
 console.log(`  形态  : ${withDeps ? "完整包（含 node_modules，解压即用）" : "轻量包（目标机需 pnpm install）"}`);
 console.log(`  平台  : ${process.platform} ${process.arch}（完整包仅同平台可用）`);
 console.log("");
-console.log("关键特性（v0.1.2+）：");
-console.log("  ✓ 构建期预生成 Prisma Client + schema.sql");
-console.log("  ✓ 运行时零 prisma CLI / prisma engines 调用");
+console.log("关键特性（Drizzle 版）：");
+console.log("  ✓ 运行时零 Prisma CLI / engines（drizzle-orm + pg 纯 JS）");
+console.log("  ✓ schema.sql 幂等建表，启动直接 exec");
 console.log("");
 console.log("发布指引：");
 if (withDeps) {

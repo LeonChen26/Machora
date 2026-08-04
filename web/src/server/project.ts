@@ -1,7 +1,8 @@
 // 项目上下文：当前选中的项目通过 cookie（machora_project）持久化。
 // 服务端页面用 getCurrentProjectId() 过滤数据，layout 用 getProjectContext() 渲染切换器。
 import { cookies } from "next/headers";
-import { prisma } from "@machora/shared";
+import { asc, eq } from "drizzle-orm";
+import { db, project } from "@machora/shared";
 import { PROJECT_COOKIE } from "../lib/project";
 
 // 返回当前选中（或回退到最早创建）的项目 id；无项目时返回空串
@@ -9,15 +10,15 @@ export async function getCurrentProjectId(): Promise<string> {
   const store = await cookies();
   const pid = store.get(PROJECT_COOKIE)?.value;
   if (pid) {
-    const p = await prisma.project.findUnique({
-      where: { id: pid },
-      select: { id: true },
+    const p = await db.query.project.findFirst({
+      where: eq(project.id, pid),
+      columns: { id: true },
     });
     if (p) return p.id;
   }
-  const first = await prisma.project.findFirst({
-    orderBy: { createdAt: "asc" },
-    select: { id: true },
+  const first = await db.query.project.findFirst({
+    orderBy: (t, { asc }) => [asc(t.createdAt)],
+    columns: { id: true },
   });
   return first?.id ?? "";
 }
@@ -32,9 +33,9 @@ export async function getProjectContext(): Promise<ProjectContext> {
   const store = await cookies();
   const pid = store.get(PROJECT_COOKIE)?.value;
 
-  const projects = await prisma.project.findMany({
-    orderBy: { createdAt: "asc" },
-    select: { id: true, name: true },
+  const projects = await db.query.project.findMany({
+    orderBy: (t, { asc }) => [asc(t.createdAt)],
+    columns: { id: true, name: true },
   });
 
   let currentId = projects.find((p) => p.id === pid)?.id;

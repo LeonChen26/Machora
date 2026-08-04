@@ -1,6 +1,7 @@
 import { Link } from "../../components/NativeLink";
 import { EmptyIcon } from "../../components/EmptyIcon";
-import { prisma } from "@machora/shared";
+import { and, eq, gte, isNotNull } from "drizzle-orm";
+import { db, trace } from "@machora/shared";
 import {
   formatDateTime,
   formatDuration,
@@ -31,20 +32,22 @@ export default async function SessionsPage({
   const since = days > 0 ? new Date(Date.now() - days * DAY_MS) : undefined;
 
   const projectId = await getCurrentProjectId();
-  const traces = await prisma.trace.findMany({
-    where: {
-      projectId,
-      sessionId: { not: null },
-      ...(since ? { timestamp: { gte: since } } : {}),
-    },
-    select: {
+  const traces = await db.query.trace.findMany({
+    where: and(
+      eq(trace.projectId, projectId),
+      isNotNull(trace.sessionId),
+      ...(since ? [gte(trace.timestamp, since)] : []),
+    ),
+    columns: {
       id: true,
       sessionId: true,
       name: true,
       timestamp: true,
       environment: true,
+    },
+    with: {
       observations: {
-        select: {
+        columns: {
           startTime: true,
           endTime: true,
           totalTokens: true,
@@ -52,7 +55,7 @@ export default async function SessionsPage({
           level: true,
         },
       },
-      _count: { select: { scores: true } },
+      scores: { columns: { id: true } },
     },
   });
 

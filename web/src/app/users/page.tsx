@@ -1,6 +1,7 @@
 import { Link } from "../../components/NativeLink";
 import { EmptyIcon } from "../../components/EmptyIcon";
-import { prisma } from "@machora/shared";
+import { and, eq, isNotNull } from "drizzle-orm";
+import { db, trace } from "@machora/shared";
 import {
   formatRelative,
   formatDateTime,
@@ -15,19 +16,17 @@ export const dynamic = "force-dynamic";
 export default async function UsersPage() {
   await requireUser();
   const projectId = await getCurrentProjectId();
-  const traces = await prisma.trace.findMany({
-    where: { projectId, userId: { not: null } },
-    select: {
-      userId: true,
-      timestamp: true,
+  const traces = await db.query.trace.findMany({
+    where: and(eq(trace.projectId, projectId), isNotNull(trace.userId)),
+    columns: { userId: true, timestamp: true },
+    with: {
       observations: {
-        select: {
+        columns: {
           totalTokens: true,
           totalCost: true,
           level: true,
         },
       },
-      _count: { select: { scores: true } },
     },
   });
 

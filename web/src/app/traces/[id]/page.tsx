@@ -1,8 +1,8 @@
 import { Link } from "../../../components/NativeLink";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
-import type { Observation } from "@prisma/client";
-import { prisma } from "@machora/shared";
+import { and, asc, desc, eq } from "drizzle-orm";
+import { db, trace as traceTable, observation } from "@machora/shared";
 import {
   formatDateTime,
   formatDuration,
@@ -23,6 +23,7 @@ import {
 } from "../../../components/ObservationDetailPanel";
 
 // 调用树节点：observation + 子节点
+type Observation = typeof observation.$inferSelect;
 type ObsNode = Observation & { children: ObsNode[] };
 
 export const dynamic = "force-dynamic";
@@ -52,12 +53,12 @@ export default async function TraceDetailPage({
   const projectId = await getCurrentProjectId();
 
   // 用 findFirst + projectId 过滤，防止跨项目直接访问 trace 详情
-  const trace = await prisma.trace.findFirst({
-    where: { id, projectId },
-    include: {
-      observations: { orderBy: { startTime: "asc" } },
-      scores: { orderBy: { timestamp: "desc" } },
-      project: { select: { name: true } },
+  const trace = await db.query.trace.findFirst({
+    where: and(eq(traceTable.id, id), eq(traceTable.projectId, projectId)),
+    with: {
+      observations: { orderBy: (o, { asc }) => [asc(o.startTime)] },
+      scores: { orderBy: (s, { desc }) => [desc(s.timestamp)] },
+      project: { columns: { name: true } },
     },
   });
 

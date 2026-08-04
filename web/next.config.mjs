@@ -7,18 +7,18 @@ const projectRoot = resolve(__dirname);
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // @prisma/client 由运行时从项目 node_modules 直接加载，不打包进 .next：
-  // Turbopack 若把其复制为 web/.next/node_modules 下的唯一化副本，副本内
-  // require('.prisma/client/default') 在全新环境（发布包）解析不到生成的 client。
-  serverExternalPackages: ["@prisma/client"],
-
-  // 固定 Turbopack 的 workspace root：发布包（staging）里若误带 pnpm-workspace.yaml，
-  // Next.js 会向父目录遍历找 workspace root，可能跨越到解压目标目录外的其他项目，
-  // 导致找不到 web/app。明确指定当前项目根即可避免跨目录推断。
-  experimental: {
-    /** @type {any} */
-    turbopack: { root: projectRoot },
-  },
+  // pg 在 Next 内置默认 serverExternalPackages 列表中（config 只能追加不能移除），
+  // 会被 Turbopack 复制为 web/.next/node_modules/pg-<hash>/ 的外部副本，但副本不带
+  // 依赖链（pg-types 等）→ 发布环境 Cannot find module 'pg-types'。
+  // 用 transpilePackages 把 pg 从默认外部列表摘除，改为直接打进 server bundle。
+  transpilePackages: ["pg"],
+  // 纯 JS 驱动（pg/drizzle）直接打包进 .next，不 external：
+  // Turbopack 的 serverExternalPackages 只复制包本体，pg 的依赖链
+  // （pg-types 等）不随副本携带 → 发布环境 Cannot find module 'pg-types'。
+  // 固定 Turbopack 的 workspace root（Next 16 顶层配置）：源码仓库里 next 等
+  // 依赖位于仓库根 node_modules/.pnpm（web 外），root 必须指向仓库根，
+  // 否则 Turbopack 从 app 目录向上解析 next/package.json 时越过 root 边界失败。
+  turbopack: { root: resolve(projectRoot, "..") },
 };
 
 export default nextConfig;

@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { prisma, queueBus, QUEUES, getEvaluator } from "@machora/shared";
+import { and, count, desc, eq, lt, type SQL } from "drizzle-orm";
+import { db, evaluation, queueBus, QUEUES, getEvaluator, trace } from "@machora/shared";
 import { verifyApiKey } from "../../../../server/auth";
 import { listEnvelope, parseCommonQuery, timeWindow } from "../../../../server/publicQuery";
 
@@ -33,11 +34,11 @@ export async function POST(req: Request) {
   }
   const { traceId, name, evaluatorType, config } = parsed.data;
 
-  const trace = await prisma.trace.findUnique({
-    where: { id: traceId },
-    select: { id: true },
+  const traceRow = await db.query.trace.findFirst({
+    where: eq(trace.id, traceId),
+    columns: { id: true },
   });
-  if (!trace) {
+  if (!traceRow) {
     return Response.json({ error: "Trace not found" }, { status: 404 });
   }
 
@@ -49,23 +50,27 @@ export async function POST(req: Request) {
     );
   }
 
-  const evaluation = await prisma.evaluation.create({
-    data: {
+  // 注：drizzle schema 中 Evaluation.id 无默认值、updatedAt 无 default，需显式写入
+  const [evaluationRow] = await db
+    .insert(evaluation)
+    .values({
+      id: crypto.randomUUID(),
       projectId: auth.projectId,
       traceId,
       name: name ?? evaluatorType,
       evaluatorType,
       config: config ?? undefined,
       status: "PENDING",
-    },
-  });
+      updatedAt: new Date(),
+    })
+    .returning();
 
   await queueBus.enqueue(QUEUES.evaluation, {
     projectId: auth.projectId,
-    evaluationId: evaluation.id,
+    evaluationId: evaluationRow.id,
   });
 
-  return Response.json({ data: evaluation }, { status: 201 });
+  return Response.json({ data: evaluationRow }, { status: 201 });
 }
 
 // GET /api/public/evaluations?traceId&status&from&to&limit&cursor —— 查询评估任务列表
@@ -85,25 +90,30 @@ export async function GET(req: Request) {
   const traceId = sp.get("traceId") || undefined;
   const status = sp.get("status") || undefined;
 
-  const where = {
-    projectId: auth.projectId,
-    createdAt: timeWindow(from, to),
-    ...(traceId ? { traceId } : {}),
-    ...(status ? { status } : {}),
-  };
+  const conds: SQL<unknown>[] = [
+    eq(evaluation.projectId, auth.projectId),
+    ...timeWindow(evaluation.createdAt, from, to),
+  ];
+  if (traceId) conds.push(eq(evaluation.traceId, traceId));
+  if (status) conds.push(eq(evaluation.status, status));
+  if (cursor) conds.push(lt(evaluation.id, cursor));
 
   const [items, totalCount] = await Promise.all([
-    prisma.evaluation.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      take: limit + 1,
-      ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
-    }),
-    prisma.evaluation.count({ where }),
+    db
+      .select()
+      .from(evaluation)
+      .where(and(...conds))
+      .orderBy(desc(evaluation.createdAt))
+      .limit(limit + 1),
+    db.select({ c: count() }).from(evaluation).where(and(...conds)),
   ]);
 
   const nextCursor = items.length > limit ? items[items.length - 1].id : null;
   return Response.json(
-    listEnvelope(items.slice(0, limit), { limit, nextCursor, totalCount }),
+    listEnvelope(items.slice(0, limit), {
+      limit,
+      nextCursor,
+      totalCount: totalCount[0].c,
+    }),
   );
 }

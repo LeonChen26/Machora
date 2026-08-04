@@ -10,7 +10,8 @@ import {
   verifySessionToken,
   type SessionPayload,
 } from "@machora/shared";
-import { prisma } from "@machora/shared";
+import { eq } from "drizzle-orm";
+import { db, user } from "@machora/shared";
 
 export const SESSION_COOKIE = "machora_session";
 export const SESSION_MAX_AGE = 7 * 24 * 60 * 60; // 7 天（秒）
@@ -70,11 +71,12 @@ export async function getSessionPayload(): Promise<SessionPayload | null> {
 export async function getSessionUser(): Promise<SessionUser | null> {
   const payload = await getSessionPayload();
   if (!payload) return null;
-  const user = await prisma.user.findUnique({
-    where: { id: payload.uid },
-    select: { id: true, email: true, name: true },
-  });
-  return user;
+  const found = await db
+    .select({ id: user.id, email: user.email, name: user.name })
+    .from(user)
+    .where(eq(user.id, payload.uid))
+    .limit(1);
+  return found[0] ?? null;
 }
 
 // 页面级保护：无有效 session 时重定向到登录页（返回 next 便于登录后跳回）

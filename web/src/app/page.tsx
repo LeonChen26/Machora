@@ -1,6 +1,13 @@
 import { Link } from "../components/NativeLink";
 import { EmptyIcon } from "../components/EmptyIcon";
-import { prisma } from "@machora/shared";
+import { and, count, desc, eq, gte } from "drizzle-orm";
+import {
+  db,
+  trace,
+  observation,
+  score,
+  project as projectTable,
+} from "@machora/shared";
 import {
   formatRelative,
   formatDateTime,
@@ -40,45 +47,58 @@ export default async function Home() {
     topTraces,
   ] = await Promise.all([
     projectId
-      ? prisma.project.findUnique({ where: { id: projectId } })
+      ? db.query.project.findFirst({ where: eq(projectTable.id, projectId) })
       : Promise.resolve(null),
-    prisma.project.count(),
-    prisma.trace.count({ where: { projectId } }),
-    prisma.observation.count({ where: { projectId } }),
-    prisma.score.count({ where: { projectId } }),
-    prisma.trace.findMany({
-      where: { projectId },
-      orderBy: { timestamp: "desc" },
-      take: 6,
-      include: { _count: { select: { observations: true, scores: true } } },
-    }),
-    prisma.trace.findMany({
-      where: { projectId, timestamp: { gte: trendSince } },
-      select: { timestamp: true, environment: true },
-    }),
-    prisma.observation.findMany({
-      where: {
-        projectId,
-        type: "GENERATION",
-        startTime: { gte: trendSince },
-      },
-      select: {
-        startTime: true,
-        endTime: true,
-        totalTokens: true,
-        totalCost: true,
-        level: true,
-        model: true,
+    (await db.select({ c: count() }).from(projectTable))[0].c,
+    (await db
+      .select({ c: count() })
+      .from(trace)
+      .where(eq(trace.projectId, projectId)))[0].c,
+    (await db
+      .select({ c: count() })
+      .from(observation)
+      .where(eq(observation.projectId, projectId)))[0].c,
+    (await db
+      .select({ c: count() })
+      .from(score)
+      .where(eq(score.projectId, projectId)))[0].c,
+    db.query.trace.findMany({
+      where: eq(trace.projectId, projectId),
+      orderBy: (t, { desc }) => [desc(t.timestamp)],
+      limit: 6,
+      with: {
+        observations: { columns: { id: true } },
+        scores: { columns: { id: true } },
       },
     }),
-    prisma.trace.findMany({
-      where: { projectId, timestamp: { gte: trendSince } },
-      take: 200,
-      select: {
-        id: true,
-        name: true,
+    db
+      .select({ timestamp: trace.timestamp, environment: trace.environment })
+      .from(trace)
+      .where(and(eq(trace.projectId, projectId), gte(trace.timestamp, trendSince))),
+    db
+      .select({
+        startTime: observation.startTime,
+        endTime: observation.endTime,
+        totalTokens: observation.totalTokens,
+        totalCost: observation.totalCost,
+        level: observation.level,
+        model: observation.model,
+      })
+      .from(observation)
+      .where(
+        and(
+          eq(observation.projectId, projectId),
+          eq(observation.type, "GENERATION"),
+          gte(observation.startTime, trendSince),
+        ),
+      ),
+    db.query.trace.findMany({
+      where: and(eq(trace.projectId, projectId), gte(trace.timestamp, trendSince)),
+      orderBy: (t, { desc }) => [desc(t.timestamp)],
+      limit: 200,
+      with: {
         observations: {
-          select: {
+          columns: {
             totalCost: true,
             totalTokens: true,
             startTime: true,
@@ -87,7 +107,6 @@ export default async function Home() {
           },
         },
       },
-      orderBy: { timestamp: "desc" },
     }),
   ]);
 
@@ -95,12 +114,12 @@ export default async function Home() {
   const trendData = Array.from({ length: TREND_DAYS }, (_, i) => {
     const dayStart = new Date(trendSince.getTime() + i * DAY_MS);
     const dayEnd = new Date(dayStart.getTime() + DAY_MS);
-    const count = trendTraces.filter(
+    const dayCount = trendTraces.filter(
       (t) => t.timestamp >= dayStart && t.timestamp < dayEnd,
     ).length;
     return {
       label: `${dayStart.getMonth() + 1}/${dayStart.getDate()}`,
-      value: count,
+      value: dayCount,
     };
   });
 
@@ -367,11 +386,11 @@ export default async function Home() {
                     {formatRelative(t.timestamp)}
                   </td>
                   <td>
-                    <span className="badge blue">{t._count.observations}</span>
+                    <span className="badge blue">{t.observations.length}</span>
                   </td>
                   <td>
-                    {t._count.scores > 0 ? (
-                      <span className="badge amber">{t._count.scores}</span>
+                    {t.scores.length > 0 ? (
+                      <span className="badge amber">{t.scores.length}</span>
                     ) : (
                       <span className="mute2">—</span>
                     )}

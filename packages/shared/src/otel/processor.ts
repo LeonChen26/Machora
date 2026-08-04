@@ -1,7 +1,6 @@
 // OTLP Span → Machora Trace / Observation 映射处理器
 // 参考 Langfuse OtelIngestionProcessor + ObservationTypeMapperRegistry
 
-import { Prisma } from "@prisma/client";
 import {
   ATTR,
   AGENT_OPERATIONS,
@@ -14,7 +13,8 @@ import {
   type OtlpExportTraceServiceRequest,
   type OtlpSpan,
 } from "./types.ts";
-import { prisma } from "../db.ts";
+import { db } from "../db.ts";
+import { observation, trace } from "../drizzle/schema.ts";
 
 // ---------------------------------------------------------------------------
 // 类型与状态常量
@@ -586,27 +586,15 @@ export async function persistOtelRecords(
 ): Promise<OtelProcessResult> {
   const errors: { id: string; message: string }[] = [];
 
+  // Prisma.JsonNull 的 drizzle 等价：JSON 字段为 null 时写 SQL NULL（读取语义一致）
+  const jsonOrNull = (v: unknown) =>
+    (v ?? null) as unknown as typeof trace.$inferInsert["input"];
+
   for (const t of traces) {
     try {
-      await prisma.trace.upsert({
-        where: { id: t.id },
-        update: {
-          name: t.name,
-          timestamp: t.timestamp,
-          environment: t.environment,
-          // 分批导出（如 SimpleSpanProcessor 逐 span POST）时，后续批次的
-          // root span 可能没有这些语义属性；null 不覆盖已落库的非空值
-          userId: t.userId ?? undefined,
-          sessionId: t.sessionId ?? undefined,
-          agentName: t.agentName ?? undefined,
-          workflowName: t.workflowName ?? undefined,
-          skillName: t.skillName ?? undefined,
-          input: t.input ?? Prisma.JsonNull,
-          output: t.output ?? Prisma.JsonNull,
-          metadata: t.metadata ?? Prisma.JsonNull,
-          tags: t.tags,
-        },
-        create: {
+      await db
+        .insert(trace)
+        .values({
           id: t.id,
           projectId,
           name: t.name,
@@ -617,12 +605,30 @@ export async function persistOtelRecords(
           agentName: t.agentName,
           workflowName: t.workflowName,
           skillName: t.skillName,
-          input: t.input ?? Prisma.JsonNull,
-          output: t.output ?? Prisma.JsonNull,
-          metadata: t.metadata ?? Prisma.JsonNull,
+          input: jsonOrNull(t.input),
+          output: jsonOrNull(t.output),
+          metadata: jsonOrNull(t.metadata),
           tags: t.tags,
-        },
-      });
+        })
+        .onConflictDoUpdate({
+          target: trace.id,
+          set: {
+            name: t.name,
+            timestamp: t.timestamp,
+            environment: t.environment,
+            // 分批导出（如 SimpleSpanProcessor 逐 span POST）时，后续批次的
+            // root span 可能没有这些语义属性；null 不覆盖已落库的非空值
+            userId: t.userId ?? undefined,
+            sessionId: t.sessionId ?? undefined,
+            agentName: t.agentName ?? undefined,
+            workflowName: t.workflowName ?? undefined,
+            skillName: t.skillName ?? undefined,
+            input: jsonOrNull(t.input),
+            output: jsonOrNull(t.output),
+            metadata: jsonOrNull(t.metadata),
+            tags: t.tags,
+          },
+        });
     } catch (e) {
       errors.push({ id: t.id, message: (e as Error).message });
     }
@@ -630,29 +636,9 @@ export async function persistOtelRecords(
 
   for (const o of observations) {
     try {
-      await prisma.observation.upsert({
-        where: { id: o.id },
-        update: {
-          type: o.type,
-          name: o.name,
-          parentObservationId: o.parentObservationId,
-          startTime: o.startTime,
-          endTime: o.endTime,
-          model: o.model,
-          agentName: o.agentName ?? undefined,
-          workflowName: o.workflowName ?? undefined,
-          skillName: o.skillName ?? undefined,
-          input: o.input ?? Prisma.JsonNull,
-          output: o.output ?? Prisma.JsonNull,
-          metadata: o.metadata ?? Prisma.JsonNull,
-          level: o.level,
-          usage: o.usage ?? Prisma.JsonNull,
-          inputTokens: o.inputTokens,
-          outputTokens: o.outputTokens,
-          totalTokens: o.totalTokens,
-          totalCost: o.totalCost,
-        },
-        create: {
+      await db
+        .insert(observation)
+        .values({
           id: o.id,
           traceId: o.traceId,
           projectId,
@@ -665,17 +651,39 @@ export async function persistOtelRecords(
           agentName: o.agentName,
           workflowName: o.workflowName,
           skillName: o.skillName,
-          input: o.input ?? Prisma.JsonNull,
-          output: o.output ?? Prisma.JsonNull,
-          metadata: o.metadata ?? Prisma.JsonNull,
+          input: jsonOrNull(o.input),
+          output: jsonOrNull(o.output),
+          metadata: jsonOrNull(o.metadata),
           level: o.level,
-          usage: o.usage ?? Prisma.JsonNull,
+          usage: jsonOrNull(o.usage),
           inputTokens: o.inputTokens,
           outputTokens: o.outputTokens,
           totalTokens: o.totalTokens,
           totalCost: o.totalCost,
-        },
-      });
+        })
+        .onConflictDoUpdate({
+          target: observation.id,
+          set: {
+            type: o.type,
+            name: o.name,
+            parentObservationId: o.parentObservationId,
+            startTime: o.startTime,
+            endTime: o.endTime,
+            model: o.model,
+            agentName: o.agentName ?? undefined,
+            workflowName: o.workflowName ?? undefined,
+            skillName: o.skillName ?? undefined,
+            input: jsonOrNull(o.input),
+            output: jsonOrNull(o.output),
+            metadata: jsonOrNull(o.metadata),
+            level: o.level,
+            usage: jsonOrNull(o.usage),
+            inputTokens: o.inputTokens,
+            outputTokens: o.outputTokens,
+            totalTokens: o.totalTokens,
+            totalCost: o.totalCost,
+          },
+        });
     } catch (e) {
       errors.push({ id: o.id, message: (e as Error).message });
     }

@@ -2,12 +2,16 @@
 // 参考 Langfuse worker/src/app.ts 的 WorkerManager 模式
 // standalone 模式下被 start.ts 同进程 import，共享 queueBus 单例
 
+import { eq } from "drizzle-orm";
 import {
   queueBus,
   QUEUES,
-  prisma,
+  db,
   getEvaluator,
   selfMetrics,
+  evaluation as evaluationTable,
+  trace as traceTable,
+  score as scoreTable,
   type IngestionQueuePayload,
   type EvaluationQueuePayload,
 } from "@machora/shared";
@@ -31,8 +35,8 @@ export function registerQueueProcessors(): void {
  */
 async function runEvaluation(payload: EvaluationQueuePayload): Promise<void> {
   const start = Date.now();
-  const evaluation = await prisma.evaluation.findUnique({
-    where: { id: payload.evaluationId },
+  const evaluation = await db.query.evaluation.findFirst({
+    where: eq(evaluationTable.id, payload.evaluationId),
   });
   if (!evaluation || evaluation.projectId !== payload.projectId) return;
   if (evaluation.status === "COMPLETED" || evaluation.status === "ERROR") {
@@ -44,14 +48,14 @@ async function runEvaluation(payload: EvaluationQueuePayload): Promise<void> {
   });
 
   try {
-    await prisma.evaluation.update({
-      where: { id: evaluation.id },
-      data: { status: "RUNNING" },
-    });
+    await db
+      .update(evaluationTable)
+      .set({ status: "RUNNING" })
+      .where(eq(evaluationTable.id, evaluation.id));
 
-    const trace = await prisma.trace.findUnique({
-      where: { id: evaluation.traceId },
-      include: { observations: true },
+    const trace = await db.query.trace.findFirst({
+      where: eq(traceTable.id, evaluation.traceId),
+      with: { observations: true },
     });
     if (!trace) throw new Error(`trace not found: ${evaluation.traceId}`);
 
@@ -75,22 +79,23 @@ async function runEvaluation(payload: EvaluationQueuePayload): Promise<void> {
       (evaluation.config as Record<string, unknown>) ?? {},
     );
 
-    await prisma.score.create({
-      data: {
-        traceId: evaluation.traceId,
-        projectId: evaluation.projectId,
-        name: evaluation.name,
-        value: result.value,
-        dataType: result.dataType,
-        source: "EVALUATION",
-        comment: result.comment ?? null,
-      },
+    await db.insert(scoreTable).values({
+      traceId: evaluation.traceId,
+      projectId: evaluation.projectId,
+      name: evaluation.name,
+      value: result.value,
+      dataType: result.dataType,
+      source: "EVALUATION",
+      comment: result.comment ?? null,
     });
 
-    await prisma.evaluation.update({
-      where: { id: evaluation.id },
-      data: { status: "COMPLETED", result: result as object },
-    });
+    await db
+      .update(evaluationTable)
+      .set({
+        status: "COMPLETED",
+        result: result as unknown as typeof evaluationTable.$inferInsert["result"],
+      })
+      .where(eq(evaluationTable.id, evaluation.id));
     selfMetrics.inc("machora.evaluation.completed", 1, {
       type: evaluation.evaluatorType,
     });
@@ -98,10 +103,10 @@ async function runEvaluation(payload: EvaluationQueuePayload): Promise<void> {
       `[evaluation] completed id=${evaluation.id} type=${evaluation.evaluatorType} value=${result.value}`,
     );
   } catch (e: any) {
-    await prisma.evaluation.update({
-      where: { id: evaluation.id },
-      data: { status: "ERROR", error: String(e?.message ?? e) },
-    });
+    await db
+      .update(evaluationTable)
+      .set({ status: "ERROR", error: String(e?.message ?? e) })
+      .where(eq(evaluationTable.id, evaluation.id));
     selfMetrics.inc("machora.evaluation.failed", 1, {
       type: evaluation.evaluatorType,
     });

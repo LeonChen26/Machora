@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
-import { prisma, signSessionToken } from "@machora/shared";
+import { eq } from "drizzle-orm";
+import { db, user, signSessionToken } from "@machora/shared";
 import {
   SESSION_COOKIE,
   SESSION_MAX_AGE,
@@ -39,14 +40,14 @@ export async function POST(req: NextRequest) {
   const fail = () =>
     NextResponse.json({ error: "邮箱或密码错误" }, { status: 401 });
 
-  const user = await prisma.user.findUnique({ where: { email } });
-  if (!user) return fail();
+  const userRow = await db.query.user.findFirst({ where: eq(user.email, email) });
+  if (!userRow) return fail();
 
-  const ok = await bcrypt.compare(password, user.passwordHash);
+  const ok = await bcrypt.compare(password, userRow.passwordHash);
   if (!ok) return fail();
 
-  const token = await signSessionToken({ uid: user.id }, getSessionSecret());
-  const res = NextResponse.json({ ok: true, user: { email: user.email } });
+  const token = await signSessionToken({ uid: userRow.id }, getSessionSecret());
+  const res = NextResponse.json({ ok: true, user: { email: userRow.email } });
   res.cookies.set(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",

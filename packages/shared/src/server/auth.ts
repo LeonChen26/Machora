@@ -1,5 +1,7 @@
 import bcrypt from "bcryptjs";
-import { prisma } from "../db.ts";
+import { eq } from "drizzle-orm";
+import { db } from "../db.ts";
+import { apiKey as apiKeyTable } from "../drizzle/schema.ts";
 
 export interface ApiKeyAuth {
   projectId: string;
@@ -26,10 +28,15 @@ export async function verifyApiKey(
   const secretKey = decoded.slice(sep + 1);
   if (!publicKey || !secretKey) return null;
 
-  const apiKey = await prisma.apiKey.findUnique({
-    where: { publicKey },
-    select: { projectId: true, hashedSecret: true },
-  });
+  const found = await db
+    .select({
+      projectId: apiKeyTable.projectId,
+      hashedSecret: apiKeyTable.hashedSecret,
+    })
+    .from(apiKeyTable)
+    .where(eq(apiKeyTable.publicKey, publicKey))
+    .limit(1);
+  const apiKey = found[0];
   if (!apiKey) return null;
 
   const ok = await bcrypt.compare(secretKey, apiKey.hashedSecret);

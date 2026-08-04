@@ -1,4 +1,5 @@
-import { prisma, SYSTEM_PROJECT_ID, getSelfStartedAt } from "@machora/shared";
+import { and, desc, eq, gte } from "drizzle-orm";
+import { db, metricSample, SYSTEM_PROJECT_ID, getSelfStartedAt } from "@machora/shared";
 import { formatDateTime, formatRelative } from "../../lib/format";
 import { EmptyIcon } from "../../components/EmptyIcon";
 import { Link } from "../../components/NativeLink";
@@ -37,11 +38,17 @@ export default async function SystemPage({
   const range = RANGES.find((r) => r.key === raw) ?? RANGES[0]!;
 
   const since = new Date(Date.now() - range.ms);
-  const samples = await prisma.metricSample.findMany({
-    where: { projectId: SYSTEM_PROJECT_ID, timestamp: { gte: since } },
-    orderBy: { timestamp: "desc" },
-    take: MAX_SAMPLES,
-  });
+  const samples = await db
+    .select()
+    .from(metricSample)
+    .where(
+      and(
+        eq(metricSample.projectId, SYSTEM_PROJECT_ID),
+        gte(metricSample.timestamp, since),
+      ),
+    )
+    .orderBy(desc(metricSample.timestamp))
+    .limit(MAX_SAMPLES);
 
   // 状态卡：运行时长 / 最近落库 / 采样数 / 错误计数（status=error|unauthorized）
   const startedAt = getSelfStartedAt();

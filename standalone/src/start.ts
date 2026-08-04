@@ -8,11 +8,10 @@
  */
 
 import { resolve } from "node:path";
-import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { createRequire } from "node:module";
 import { createServer, type Server } from "node:http";
-import { ensureSystemProject, startSelfMetrics, markSelfStarted } from "@machora/shared";
 
 // ---------------------------------------------------------------------------
 // 配置
@@ -86,8 +85,6 @@ function setupEnvironment(): void {
     MACHORA_INIT_PROJECT_SECRET_KEY: "sk-machora-dev-000000000000000000000",
     MACHORA_INIT_USER_EMAIL: "admin@machora.local",
     MACHORA_INIT_USER_NAME: "Admin",
-    // prisma engine 镜像（避开 npmjs 网络问题）
-    PRISMA_ENGINES_MIRROR: "https://registry.npmmirror.com/-/binary/prisma",
   };
 
   for (const [k, v] of Object.entries(defaults)) {
@@ -140,13 +137,9 @@ async function startPgliteServer(): Promise<PgliteHandle> {
 // ---------------------------------------------------------------------------
 // Schema 同步（直接通过 PGlite 执行 packages/shared/prisma/schema.sql）
 //
-// 构建期（scripts/release.mjs）已做两件事，因此运行时零 prisma CLI 依赖：
-//   1) prisma generate 预生成 client，产物随包发布
-//   2) prisma migrate diff 导出 schema.sql，并处理成 IF NOT EXISTS 幂等
-//
-// 这里做最后一层兜底：SQL 按分号（;）拆分，单条 try/catch 执行，
-// CREATE TABLE / CREATE INDEX 已在构建期加了 IF NOT EXISTS，
-// ALTER ADD FOREIGN KEY 可能重复报错 → 单条吞错，达到整体幂等。
+// 表结构真源是 packages/shared/prisma/schema.sql（幂等：IF NOT EXISTS），
+// 数据访问走 drizzle-orm + pg（纯 JS，无引擎二进制），运行时零 ORM CLI。
+// SQL 按分号（;）拆分，单条 try/catch 执行，整体幂等。
 // ---------------------------------------------------------------------------
 
 // 轻量 SQL 语句拆分器：按 ';' 分段，跳过 '--' 注释与空段，单引号字符串内部不拆。
@@ -197,7 +190,7 @@ async function applySchemaSql(db: { exec(sql: string): Promise<unknown> }): Prom
   );
   if (!existsSync(sqlPath)) {
     // 本地开发模式（pnpm dev / start）未走 release 流程，
-    // schema.sql 不一定存在；此时回退到旧的 prisma CLI 流程（不强制依赖）。
+    // schema.sql 不一定存在；此时跳过 SQL 同步（不强制依赖）。
     console.warn("[Schema] 未找到 schema.sql，跳过 SQL 同步（开发模式可忽略）");
     return;
   }
@@ -228,52 +221,6 @@ async function applySchemaSql(db: { exec(sql: string): Promise<unknown> }): Prom
   console.log(`[Schema] 完成（成功 ${ok}，跳过/已存在 ${skipped}，共 ${stmts.length}）`);
 }
 
-/**
- * Turbopack 会把 @prisma/client 外部化为 web/.next/node_modules/@prisma/<hash> 副本，
- * 其 default.js 内是 require('.prisma/client/default')——注意该字符串不是相对路径
- * （缺少 ./ 前缀），Node 会把它当包名沿 node_modules 链向上解析。在全新环境（发布包
- * 解压后）这条链上不存在生成的 Prisma Client，页面会报 Cannot find module
- * '.prisma/client/default'。因此把生成的 client 补到 web/.next/node_modules/.prisma/client，
- * 该位置位于 default.js 的包解析链（副本/node_modules → .next/node_modules）上。
- *
- * v0.1.2+ 构建期（release.mjs）已经把 Prisma Client 预复制到此位置，这里仅做兜底
- * 检查（若缺失再从根 node_modules 找，适用于本地开发模式）。
- */
-async function ensureNextPrismaClientCopy(): Promise<void> {
-  const root = resolve(import.meta.dirname, "..", "..");
-  const nextNodeModules = resolve(root, "web", ".next", "node_modules");
-  if (!existsSync(nextNodeModules)) return;
-
-  const dest = resolve(nextNodeModules, ".prisma", "client");
-  if (existsSync(resolve(dest, "default.js"))) {
-    console.log("[Prisma] .next 已含生成的 client，跳过补全");
-    return;
-  }
-
-  // 兜底：构建期复制没到位（或本地开发模式）时沿常规路径找生成的 client。
-  const candidates = [
-    resolve(root, "node_modules", ".prisma", "client"),
-    resolve(root, "packages", "shared", "node_modules", ".prisma", "client"),
-    resolve(process.cwd(), "node_modules", ".prisma", "client"),
-  ];
-  const pnpmRoot = resolve(root, "node_modules", ".pnpm");
-  if (existsSync(pnpmRoot)) {
-    for (const d of readdirSync(pnpmRoot)) {
-      if (d.startsWith("@prisma+client")) {
-        candidates.push(resolve(pnpmRoot, d, "node_modules", ".prisma", "client"));
-      }
-    }
-  }
-  const src = candidates.find((c) => existsSync(resolve(c, "default.js")));
-  if (!src) {
-    console.warn("[Prisma] 未找到生成的 client 目录，跳过 .next 补全");
-    return;
-  }
-  mkdirSync(resolve(dest, ".."), { recursive: true });
-  cpSync(src, dest, { recursive: true });
-  console.log("[Prisma] 已把 client 补到 .next/node_modules/.prisma/client");
-}
-
 // ---------------------------------------------------------------------------
 // Seed 默认数据
 // ---------------------------------------------------------------------------
@@ -287,7 +234,13 @@ function generateRandomPassword(length = 16): string {
 
 async function seedStandaloneData(): Promise<void> {
   const bcryptjs = (await import("bcryptjs")).default;
-  const { prisma } = await import("@machora/shared");
+  const { eq } = await import("drizzle-orm");
+  const {
+    db,
+    project: projectTable,
+    apiKey: apiKeyTable,
+    user: userTable,
+  } = await import("@machora/shared");
 
   const projectName = process.env.MACHORA_INIT_PROJECT_NAME!;
   const publicKey = process.env.MACHORA_INIT_PROJECT_PUBLIC_KEY!;
@@ -297,19 +250,25 @@ async function seedStandaloneData(): Promise<void> {
   const password = process.env.MACHORA_INIT_USER_PASSWORD;
 
   // 1. Project
-  const project = await prisma.project.upsert({
-    where: { id: "project-standalone" },
-    update: { name: projectName },
-    create: { id: "project-standalone", name: projectName },
-  });
-  console.log("[Seed] Project:", project.id);
+  await db
+    .insert(projectTable)
+    .values({ id: "project-standalone", name: projectName })
+    .onConflictDoUpdate({
+      target: projectTable.id,
+      set: { name: projectName },
+    });
+  console.log("[Seed] Project: project-standalone");
 
   // 2. API Key（仅当不存在时创建）
-  const existing = await prisma.apiKey.findUnique({ where: { publicKey } });
+  const existing = await db.query.apiKey.findFirst({
+    where: eq(apiKeyTable.publicKey, publicKey),
+  });
   if (!existing) {
     const hashedSecret = await bcryptjs.hash(secretKey, 11);
-    await prisma.apiKey.create({
-      data: { projectId: project.id, publicKey, hashedSecret },
+    await db.insert(apiKeyTable).values({
+      projectId: "project-standalone",
+      publicKey,
+      hashedSecret,
     });
     console.log("[Seed] API Key 已创建");
   } else {
@@ -323,14 +282,18 @@ async function seedStandaloneData(): Promise<void> {
     password ?? generateRandomPassword(16);
   const passwordHash = await bcryptjs.hash(effectivePassword, 12);
   const isNewUser =
-    (await prisma.user.findUnique({ where: { email } })) === null;
-  let user = await prisma.user.upsert({
-    where: { email },
-    update: password
-      ? { passwordHash, name: userName }
-      : { name: userName },
-    create: { email, passwordHash, name: userName },
-  });
+    (await db.query.user.findFirst({
+      where: eq(userTable.email, email),
+    })) === null;
+  await db
+    .insert(userTable)
+    .values({ email, passwordHash, name: userName })
+    .onConflictDoUpdate({
+      target: userTable.email,
+      set: password
+        ? { passwordHash, name: userName }
+        : { name: userName },
+    });
   console.log("[Seed] User 已就绪:", email);
   if (password) {
     console.log("[Seed] 管理员密码来自 MACHORA_INIT_USER_PASSWORD（.env）");
@@ -426,10 +389,15 @@ async function main() {
 
   setupEnvironment();
 
+  // 延迟加载 @machora/shared：db.ts 的 Pg Pool 在模块加载时读取 DATABASE_URL，
+  // 必须先 setupEnvironment() 注入 env 再 import（否则连接串为 undefined，
+  // pg 默认连 localhost:5432 → ECONNREFUSED）。
+  const { markSelfStarted, ensureSystemProject, startSelfMetrics } =
+    await import("@machora/shared");
+
   const pglite = await startPgliteServer();
 
   await applySchemaSql(pglite.db);
-  await ensureNextPrismaClientCopy();
   await seedStandaloneData();
 
   // 自观测：确保 system 项目存在并启动周期落库（60s），队列/请求指标由此采集

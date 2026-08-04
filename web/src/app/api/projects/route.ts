@@ -3,7 +3,8 @@
 // 生产模式下 Server Action 的 flight reply 解码存在环境级不兼容。
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { prisma } from "@machora/shared";
+import { count, eq } from "drizzle-orm";
+import { db, project } from "@machora/shared";
 import { getApiUser } from "../../../server/session";
 
 const CreateSchema = z.object({
@@ -30,10 +31,13 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const project = await prisma.project.create({
-    data: { name: parsed.data.name },
+  const [created] = await db
+    .insert(project)
+    .values({ name: parsed.data.name })
+    .returning();
+  return NextResponse.json({
+    project: { id: created.id, name: created.name },
   });
-  return NextResponse.json({ project: { id: project.id, name: project.name } });
 }
 
 export async function DELETE(req: NextRequest) {
@@ -47,14 +51,14 @@ export async function DELETE(req: NextRequest) {
   }
 
   // 至少保留一个项目，避免空库状态（standalone seed 只负责重建默认项目）
-  const total = await prisma.project.count();
+  const total = (await db.select({ c: count() }).from(project))[0].c;
   if (total <= 1) {
     return NextResponse.json({ error: "至少保留一个项目" }, { status: 400 });
   }
 
   try {
     // 级联删除：apiKeys / traces（traces 再级联 observations、scores），schema 已配 onDelete: Cascade
-    await prisma.project.delete({ where: { id } });
+    await db.delete(project).where(eq(project.id, id));
     return NextResponse.json({ ok: true });
   } catch (e: any) {
     return NextResponse.json(

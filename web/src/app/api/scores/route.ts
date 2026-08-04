@@ -1,6 +1,7 @@
 // 内部评分 API（UI 标注用）：session 鉴权，归属校验到当前项目
 import { NextRequest } from "next/server";
-import { prisma, ScoreCreateSchema } from "@machora/shared";
+import { and, eq } from "drizzle-orm";
+import { db, observation, score, trace, ScoreCreateSchema } from "@machora/shared";
 import { getApiUser } from "../../../server/session";
 import { getCurrentProjectId } from "../../../server/project";
 
@@ -38,26 +39,30 @@ export async function POST(req: NextRequest) {
 
   // 归属校验：trace/observation 必须属于当前项目
   if (d.traceId) {
-    const trace = await prisma.trace.findFirst({
-      where: { id: d.traceId, projectId },
-      select: { id: true },
+    const traceRow = await db.query.trace.findFirst({
+      where: and(eq(trace.id, d.traceId), eq(trace.projectId, projectId)),
+      columns: { id: true },
     });
-    if (!trace) {
+    if (!traceRow) {
       return Response.json({ error: "Trace not found" }, { status: 404 });
     }
   }
   if (d.observationId) {
-    const obs = await prisma.observation.findFirst({
-      where: { id: d.observationId, projectId },
-      select: { id: true },
+    const obsRow = await db.query.observation.findFirst({
+      where: and(
+        eq(observation.id, d.observationId),
+        eq(observation.projectId, projectId),
+      ),
+      columns: { id: true },
     });
-    if (!obs) {
+    if (!obsRow) {
       return Response.json({ error: "Observation not found" }, { status: 404 });
     }
   }
 
-  const score = await prisma.score.create({
-    data: {
+  const [scoreRow] = await db
+    .insert(score)
+    .values({
       id: d.id ?? undefined,
       traceId: d.traceId ?? null,
       observationId: d.observationId ?? null,
@@ -67,8 +72,8 @@ export async function POST(req: NextRequest) {
       dataType: d.dataType,
       source: d.source,
       comment: d.comment ?? null,
-    },
-  });
+    })
+    .returning();
 
-  return Response.json({ data: score }, { status: 201 });
+  return Response.json({ data: scoreRow }, { status: 201 });
 }

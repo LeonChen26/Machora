@@ -1,6 +1,7 @@
 // 导出 traces 列表为 CSV（复用列表页筛选条件，session 鉴权）
 import { NextRequest } from "next/server";
-import { prisma } from "@machora/shared";
+import { and } from "drizzle-orm";
+import { db, trace } from "@machora/shared";
 import { getApiUser } from "../../../../server/session";
 import { getCurrentProjectId } from "../../../../server/project";
 import {
@@ -25,13 +26,13 @@ export async function GET(req: NextRequest) {
   for (const [k, v] of req.nextUrl.searchParams) sp[k] = v;
   const f = parseTraceFilters(sp);
 
-  const items = await prisma.trace.findMany({
-    where: buildTraceWhere(projectId, f),
-    orderBy: { timestamp: "desc" },
-    take: LIMIT,
-    include: {
+  const items = await db.query.trace.findMany({
+    where: and(...buildTraceWhere(projectId, f)),
+    orderBy: (t, { desc }) => [desc(t.timestamp)],
+    limit: LIMIT,
+    with: {
       observations: {
-        select: {
+        columns: {
           model: true,
           type: true,
           level: true,
@@ -40,14 +41,13 @@ export async function GET(req: NextRequest) {
           totalTokens: true,
           totalCost: true,
         },
-        orderBy: { startTime: "asc" },
+        orderBy: (o, { asc }) => [asc(o.startTime)],
       },
       scores: {
-        select: { name: true, value: true, dataType: true },
-        orderBy: { timestamp: "desc" },
-        take: 3,
+        columns: { name: true, value: true, dataType: true },
+        orderBy: (s, { desc }) => [desc(s.timestamp)],
+        limit: 3,
       },
-      _count: { select: { observations: true, scores: true } },
     },
   });
 
@@ -98,7 +98,7 @@ export async function GET(req: NextRequest) {
       latencyMs ?? "",
       tokens || "",
       cost ? cost.toFixed(6) : "",
-      t._count.observations,
+      t.observations?.length ?? 0,
       scores,
       t.environment ?? "",
       level,

@@ -1,7 +1,8 @@
 import { Link } from "../../components/NativeLink";
 import { EmptyIcon } from "../../components/EmptyIcon";
 import { Pager } from "../../components/Pager";
-import { prisma } from "@machora/shared";
+import { and, asc, count, desc, eq } from "drizzle-orm";
+import { db, observation } from "@machora/shared";
 import type { ReactNode } from "react";
 import {
   formatRelative,
@@ -46,20 +47,24 @@ export default async function GenerationsPage({
   const where = buildGenerationWhere(projectId, gf);
 
   // 模型下拉选项（当前项目去重）
-  const models = await prisma.observation.findMany({
-    where: { projectId, type: "GENERATION" },
-    select: { model: true },
-    distinct: ["model"],
-    orderBy: { model: "asc" },
-  });
+  const models = await db
+    .selectDistinct({ model: observation.model })
+    .from(observation)
+    .where(
+      and(
+        eq(observation.projectId, projectId),
+        eq(observation.type, "GENERATION"),
+      ),
+    )
+    .orderBy(asc(observation.model));
 
   const [items, total] = await Promise.all([
-    prisma.observation.findMany({
-      where,
-      orderBy: { startTime: "desc" },
-      skip: (page - 1) * PAGE_SIZE,
-      take: PAGE_SIZE,
-      select: {
+    db.query.observation.findMany({
+      where: and(...where),
+      orderBy: (o, { desc }) => [desc(o.startTime)],
+      offset: (page - 1) * PAGE_SIZE,
+      limit: PAGE_SIZE,
+      columns: {
         id: true,
         name: true,
         model: true,
@@ -68,10 +73,16 @@ export default async function GenerationsPage({
         totalTokens: true,
         totalCost: true,
         level: true,
-        trace: { select: { id: true, name: true } },
+      },
+      with: {
+        trace: { columns: { id: true, name: true } },
       },
     }),
-    prisma.observation.count({ where }),
+    db
+      .select({ c: count() })
+      .from(observation)
+      .where(and(...where))
+      .then((r) => r[0].c),
   ]);
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 

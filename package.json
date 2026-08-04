@@ -14,8 +14,6 @@
     "lint": "turbo run lint",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
-    "db:generate": "turbo run db:generate",
-    "db:migrate": "turbo run db:migrate",
     "standalone:dev": "pnpm --filter @machora/standalone dev",
     "standalone:start": "pnpm --filter @machora/standalone start",
     "release": "node scripts/release.mjs",

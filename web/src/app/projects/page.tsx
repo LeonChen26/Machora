@@ -1,6 +1,7 @@
 import { Link } from "../../components/NativeLink";
 import { EmptyIcon } from "../../components/EmptyIcon";
-import { prisma } from "@machora/shared";
+import { desc, count } from "drizzle-orm";
+import { db, project, observation, score, trace } from "@machora/shared";
 import { formatDateTime, formatRelative } from "../../lib/format";
 import { getCurrentProjectId } from "../../server/project";
 import { requireUser } from "../../server/session";
@@ -13,26 +14,35 @@ export const dynamic = "force-dynamic";
 export default async function ProjectsPage() {
   await requireUser();
   const [projects, currentId, obsGroups, scoreGroups] = await Promise.all([
-    prisma.project.findMany({
-      orderBy: { createdAt: "desc" },
-      include: {
-        _count: { select: { traces: true, apiKeys: true } },
-        apiKeys: { select: { publicKey: true, id: true } },
-      },
-    }),
+    (async () => {
+      const rows = await db.query.project.findMany({
+        orderBy: (p, { desc }) => [desc(p.createdAt)],
+        with: { apiKeys: { columns: { publicKey: true, id: true } } },
+      });
+      // _count.traces：trace 表按 projectId 聚合；_count.apiKeys 用 apiKeys.length
+      const traceGroups = await db
+        .select({ projectId: trace.projectId, c: count() })
+        .from(trace)
+        .groupBy(trace.projectId);
+      const traceCountBy = new Map(traceGroups.map((g) => [g.projectId, g.c]));
+      return rows.map((p) => ({
+        ...p,
+        _count: { traces: traceCountBy.get(p.id) ?? 0, apiKeys: p.apiKeys.length },
+      }));
+    })(),
     getCurrentProjectId(),
-    prisma.observation.groupBy({
-      by: ["projectId"],
-      _count: { _all: true },
-    }),
-    prisma.score.groupBy({
-      by: ["projectId"],
-      _count: { _all: true },
-    }),
+    db
+      .select({ projectId: observation.projectId, _all: count() })
+      .from(observation)
+      .groupBy(observation.projectId),
+    db
+      .select({ projectId: score.projectId, _all: count() })
+      .from(score)
+      .groupBy(score.projectId),
   ]);
 
-  const obsByProject = new Map(obsGroups.map((g) => [g.projectId, g._count._all]));
-  const scoreByProject = new Map(scoreGroups.map((g) => [g.projectId, g._count._all]));
+  const obsByProject = new Map(obsGroups.map((g) => [g.projectId, g._all]));
+  const scoreByProject = new Map(scoreGroups.map((g) => [g.projectId, g._all]));
   const canDelete = projects.length > 1;
 
   return (

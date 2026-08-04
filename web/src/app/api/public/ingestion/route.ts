@@ -1,5 +1,14 @@
-import { prisma, queueBus, IngestionBatchSchema, QUEUES, calculateCost, selfMetrics } from "@machora/shared";
-import { Prisma } from "@prisma/client";
+import {
+  db,
+  queueBus,
+  IngestionBatchSchema,
+  QUEUES,
+  calculateCost,
+  selfMetrics,
+  trace as traceTable,
+  observation as observationTable,
+  score as scoreTable,
+} from "@machora/shared";
 import { verifyApiKey } from "../../../../server/auth";
 
 export async function POST(req: Request) {
@@ -36,23 +45,21 @@ export async function POST(req: Request) {
   for (const [index, event] of batch.entries()) {
     try {
       if (event.type === "trace-create") {
-        await prisma.trace.create({
-          data: {
-            id: event.body.id,
-            projectId,
-            name: event.body.name ?? null,
-            timestamp: new Date(event.body.timestamp),
-            environment: event.body.environment,
-            userId: event.body.userId ?? null,
-            sessionId: event.body.sessionId ?? null,
-            agentName: event.body.agentName ?? null,
-            workflowName: event.body.workflowName ?? null,
-            skillName: event.body.skillName ?? null,
-            input: event.body.input ?? Prisma.JsonNull,
-            output: event.body.output ?? Prisma.JsonNull,
-            metadata: event.body.metadata ?? Prisma.JsonNull,
-            tags: event.body.tags,
-          },
+        await db.insert(traceTable).values({
+          id: event.body.id,
+          projectId,
+          name: event.body.name ?? null,
+          timestamp: new Date(event.body.timestamp),
+          environment: event.body.environment,
+          userId: event.body.userId ?? null,
+          sessionId: event.body.sessionId ?? null,
+          agentName: event.body.agentName ?? null,
+          workflowName: event.body.workflowName ?? null,
+          skillName: event.body.skillName ?? null,
+          input: (event.body.input ?? null) as unknown as typeof traceTable.$inferInsert["input"],
+          output: (event.body.output ?? null) as unknown as typeof traceTable.$inferInsert["output"],
+          metadata: (event.body.metadata ?? null) as unknown as typeof traceTable.$inferInsert["metadata"],
+          tags: event.body.tags,
         });
         queueBus.enqueue(QUEUES.ingestion, {
           projectId,
@@ -66,43 +73,39 @@ export async function POST(req: Request) {
           event.body.input ?? null,
           event.body.output ?? null,
         );
-        await prisma.observation.create({
-          data: {
-            id: event.body.id,
-            traceId: event.body.traceId,
-            projectId,
-            type: event.body.type,
-            name: event.body.name ?? null,
-            parentObservationId: event.body.parentObservationId ?? null,
-            startTime: new Date(event.body.startTime),
-            endTime: event.body.endTime ? new Date(event.body.endTime) : null,
-            model: event.body.model ?? null,
-            agentName: event.body.agentName ?? null,
-            workflowName: event.body.workflowName ?? null,
-            input: event.body.input ?? Prisma.JsonNull,
-            output: event.body.output ?? Prisma.JsonNull,
-            metadata: event.body.metadata ?? Prisma.JsonNull,
-            level: event.body.level,
-            usage: event.body.usage ?? Prisma.JsonNull,
-            inputTokens: billing.inputTokens,
-            outputTokens: billing.outputTokens,
-            totalTokens: billing.totalTokens,
-            totalCost: billing.totalCost,
-          },
+        await db.insert(observationTable).values({
+          id: event.body.id,
+          traceId: event.body.traceId,
+          projectId,
+          type: event.body.type,
+          name: event.body.name ?? null,
+          parentObservationId: event.body.parentObservationId ?? null,
+          startTime: new Date(event.body.startTime),
+          endTime: event.body.endTime ? new Date(event.body.endTime) : null,
+          model: event.body.model ?? null,
+          agentName: event.body.agentName ?? null,
+          workflowName: event.body.workflowName ?? null,
+          input: (event.body.input ?? null) as unknown as typeof observationTable.$inferInsert["input"],
+          output: (event.body.output ?? null) as unknown as typeof observationTable.$inferInsert["output"],
+          metadata: (event.body.metadata ?? null) as unknown as typeof observationTable.$inferInsert["metadata"],
+          level: event.body.level,
+          usage: (event.body.usage ?? null) as unknown as typeof observationTable.$inferInsert["usage"],
+          inputTokens: billing.inputTokens,
+          outputTokens: billing.outputTokens,
+          totalTokens: billing.totalTokens,
+          totalCost: billing.totalCost,
         });
       } else if (event.type === "score-create") {
-        await prisma.score.create({
-          data: {
-            id: event.body.id,
-            traceId: event.body.traceId ?? null,
-            observationId: event.body.observationId ?? null,
-            projectId,
-            name: event.body.name,
-            value: event.body.value,
-            dataType: event.body.dataType,
-            source: event.body.source,
-            comment: event.body.comment ?? null,
-          },
+        await db.insert(scoreTable).values({
+          id: event.body.id,
+          traceId: event.body.traceId ?? null,
+          observationId: event.body.observationId ?? null,
+          projectId,
+          name: event.body.name,
+          value: event.body.value,
+          dataType: event.body.dataType,
+          source: event.body.source,
+          comment: event.body.comment ?? null,
         });
       }
     } catch (e: any) {
