@@ -87,6 +87,10 @@ export interface OtlpMetric {
     dataPoints?: OtlpMetricDataPoint[];
     aggregationTemporality?: number;
   };
+  exponentialHistogram?: {
+    dataPoints?: OtlpMetricDataPoint[];
+    aggregationTemporality?: number;
+  };
   summary?: { dataPoints?: OtlpMetricDataPoint[] };
 }
 

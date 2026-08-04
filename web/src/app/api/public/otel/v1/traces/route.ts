@@ -19,14 +19,19 @@ export async function POST(req: Request) {
     const buf = await req.arrayBuffer();
     try {
       body = decodeOtlpProtobuf(new Uint8Array(buf));
-    } catch {
-      return Response.json({ error: "Invalid protobuf payload" }, { status: 400 });
+    } catch (e) {
+      const err = e instanceof Error ? e : new Error(String(e));
+      return Response.json(
+        { error: `Invalid protobuf payload: ${err.message}` },
+        { status: 400 },
+      );
     }
   } else {
     try {
       body = await req.json();
-    } catch {
-      return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+    } catch (e) {
+      const err = e instanceof Error ? e : new Error(String(e));
+      return Response.json({ error: `Invalid JSON body: ${err.message}` }, { status: 400 });
     }
   }
 

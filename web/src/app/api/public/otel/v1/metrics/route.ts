@@ -26,19 +26,21 @@ export async function POST(req: Request) {
     const buf = await req.arrayBuffer();
     try {
       body = decodeOtlpMetricsProtobuf(new Uint8Array(buf));
-    } catch {
+    } catch (e) {
+      const err = e instanceof Error ? e : new Error(String(e));
       selfMetrics.inc("machora.metrics.requests", 1, { status: "bad-protobuf" });
       return Response.json(
-        { error: "Invalid protobuf payload" },
+        { error: `Invalid protobuf payload: ${err.message}` },
         { status: 400 },
       );
     }
   } else {
     try {
       body = await req.json();
-    } catch {
+    } catch (e) {
+      const err = e instanceof Error ? e : new Error(String(e));
       selfMetrics.inc("machora.metrics.requests", 1, { status: "bad-json" });
-      return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+      return Response.json({ error: `Invalid JSON body: ${err.message}` }, { status: 400 });
     }
   }
 

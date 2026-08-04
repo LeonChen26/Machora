@@ -91,7 +91,10 @@ function buildFixture(): Uint8Array {
     vint(6, 2), // kind = SPAN_KIND_SERVER
     fixed64(7, 1_000_000_000_000n), // start_time_unix_nano
     fixed64(8, 2_000_000_000_000n), // end_time_unix_nano
-    repeated(9, [ // attributes：每个 KeyValue 独立 tag
+    // 注意：Machora 旧实现 / 老 OpenClaw fixture 用错写的字段号 attributes=9
+    // 新 OTel 官方 SDK 是 attributes=10；protobuf schema 里同时声明了
+    // attributes=9 和 otel_attributes=10，两套都会解到 JS 侧 attributes。
+    repeated(9, [
       keyValue("gen_ai.request.model", avString("gpt-4o")),
       keyValue("gen_ai.usage.input_tokens", avInt(42)),
       keyValue("custom", avKvList(keyValue("nested", avDouble(1.5)))),
@@ -99,7 +102,7 @@ function buildFixture(): Uint8Array {
       keyValue("ids", avArray(avInt(1), avString("two"))),
       keyValue("blob", avBytes(new Uint8Array([0xde, 0xad]))),
     ]),
-    ld(13, concat(str(2, "boom"), vint(3, 2))), // status{message, code=ERROR}
+    ld(13, concat(str(2, "boom"), vint(3, 2))), // 旧 schema status=13；新 schema otel_status=14
   );
 
   const scopeSpans = concat(
@@ -175,6 +178,47 @@ describe("decodeOtlpProtobuf", () => {
   it("畸形输入抛错（截断的 length-delimited）", () => {
     expect(() => decodeOtlpProtobuf(Uint8Array.from([0x0a, 0x05, 0x01]))).toThrow();
   });
+
+  it("string 字段含非法 UTF-8 字节不崩溃，替换成 U+FFFD", () => {
+    const traceId = Uint8Array.from({ length: 16 }, (_, i) => i + 1);
+    const spanId = Uint8Array.from({ length: 8 }, (_, i) => 0x11 + i);
+
+    // "he" + 非法 UTF-8 字节 [0xff, 0xfe] + "llo"
+    const badNameRaw = new Uint8Array([0x68, 0x65, 0xff, 0xfe, 0x6c, 0x6c, 0x6f]);
+    // Span.name = field 5, wire type 2 (length-delimited)
+    const nameBytes = ld(5, badNameRaw);
+
+    // AnyValue.stringValue=1 → KeyValue{ key=1, value=2 }
+    const badStringRaw = new Uint8Array([0xc3, 0x28]); // 无效两字节序列
+    const badAttr = keyValue("weird.data", ld(1, badStringRaw)); // =avString，但传 raw bytes 包装
+
+    const span = concat(
+      ld(1, traceId),
+      ld(2, spanId),
+      nameBytes,
+      vint(6, 1),
+      fixed64(7, 1_000_000_000_000n),
+      fixed64(8, 2_000_000_000_000n),
+      repeated(9, [badAttr]), // 旧 attributes=9
+    );
+    const scopeSpans = concat(ld(1, str(1, "scope-x")), ld(2, span));
+    const resourceSpans = concat(
+      ld(1, ld(1, keyValue("service.name", avString("test-svc")))),
+      ld(2, scopeSpans),
+    );
+    const payload = ld(1, resourceSpans);
+
+    const decoded = decodeOtlpProtobuf(payload);
+    const span0 = decoded.resourceSpans![0].scopeSpans![0].spans![0];
+
+    // 不崩溃 + 非法字节被替换成至少一个 replacement char
+    expect(span0.name).toContain("he");
+    expect(span0.name).toContain("llo");
+    expect(span0.name).toContain("\ufffd");
+    expect(span0.attributes!.some((a) => a.key === "weird.data")).toBeTruthy();
+    const weird = span0.attributes!.find((a) => a.key === "weird.data")!;
+    expect((weird.value?.stringValue as string).includes("\ufffd")).toBeTruthy();
+  });
 });
 
 describe("protobuf → parseOtelPayload 集成", () => {
@@ -234,9 +278,9 @@ function buildEventSpanFixture(): Uint8Array {
     vint(6, 1), // SPAN_KIND_INTERNAL
     fixed64(7, 1_000_000_000_000n),
     fixed64(8, 2_000_000_000_000n),
-    repeated(9, [keyValue("gen_ai.request.model", avString("gpt-4o"))]),
+    repeated(9, [keyValue("gen_ai.request.model", avString("gpt-4o"))]), // 旧 attributes=9
     repeated(11, [
-      // Event{ time_unix_nano=1, name=2, attributes=3 }
+      // 旧 events=11；新规范 events=12
       concat(
         fixed64(1, 1_100_000_000n),
         str(2, "gen_ai.choice"),
