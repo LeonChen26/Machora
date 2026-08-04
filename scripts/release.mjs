@@ -241,8 +241,16 @@ if (withDeps) {
     cpSync(resolve(staging, src), dest, { recursive: true });
   }
   for (const sub of ["standalone", "web", "worker"]) {
-    const link = resolve(staging, sub, "node_modules", "@machora");
-    if (existsSync(link)) rmSync(link, { recursive: true, force: true });
+    const subNm = resolve(staging, sub, "node_modules");
+    // 子包 node_modules 仅含 @machora junction，删掉整个空壳目录，避免打进 zip。
+    if (existsSync(subNm)) rmSync(subNm, { recursive: true, force: true });
+  }
+  // 固化到根 node_modules/@machora/ 的副本内部，pnpm 可能残留嵌套的 workspace
+  // 依赖（如 worker 的 @machora/shared 未被提升，复制时被解引用成真实目录）；
+  // 顶层已有 @machora/shared，嵌套副本纯冗余，删除。
+  for (const pkg of ["shared", "worker"]) {
+    const nestedNm = resolve(nmDir, "@machora", pkg, "node_modules");
+    if (existsSync(nestedNm)) rmSync(nestedNm, { recursive: true, force: true });
   }
   // 发布包仅需 node_modules，不再需要 workspace 元数据；删掉后 Next.js
   // 不会再把 staging 当成 monorepo workspace 的根，也就不会向父目录递归
@@ -261,6 +269,18 @@ if (withDeps) {
 
 // ---------------------------------------------------------------------------
 step(`${afterSchemaStep}/4 打包 zip`);
+// pnpm install / tar 可能在 staging 顶层残留空目录（如 _），打包前显式清掉，
+// 避免 zip 混入垃圾条目。_ 目录忽略空判断强制删除（来源不明，仅为空壳）。
+for (const d of readdirSync(staging)) {
+  const p = resolve(staging, d);
+  if (d === "_") {
+    rmSync(p, { recursive: true, force: true });
+    console.log(`[release] 已清理 staging 残留空目录: ${d}`);
+  } else if (existsSync(p) && statSync(p).isDirectory() && readdirSync(p).length === 0) {
+    rmSync(p, { recursive: true, force: true });
+    console.log(`[release] 已清理 staging 空目录: ${d}`);
+  }
+}
 rmSync(zipPath, { force: true });
 // 用系统 tar（libarchive，Windows 10+ 自带 System32\tar.exe）打 zip；避免 PowerShell
 // Compress-Archive 触发 Windows Recent 目录写入（沙箱环境会拦截）。
@@ -278,6 +298,14 @@ const r = spawnSync(
 if (r.status !== 0) {
   console.error(r.stderr || r.stdout);
   process.exit(1);
+}
+// 打包后复查 staging 顶层，确认 tar 未重新创建残留空目录（如 _）。
+const leftover = readdirSync(staging).filter((d) => {
+  const p = resolve(staging, d);
+  return existsSync(p) && statSync(p).isDirectory() && readdirSync(p).length === 0;
+});
+if (leftover.length > 0) {
+  console.warn(`[release] 打包后 staging 仍有空目录: ${leftover.join(", ")}（可能由 tar 创建）`);
 }
 
 // ---------------------------------------------------------------------------
