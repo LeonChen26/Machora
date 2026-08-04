@@ -17,7 +17,7 @@ export const envSchema = z.object({
   MACHORA_INIT_USER_PASSWORD: z.string().optional(),
   MACHORA_INIT_USER_NAME: z.string().default("Admin"),
 
-  NEXTAUTH_URL: z.string().default("http://localhost:3000"),
+  NEXTAUTH_URL: z.string().default("http://localhost:3100"),
   NEXTAUTH_SECRET: z.string(),
 });
 

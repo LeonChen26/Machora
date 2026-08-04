@@ -110,8 +110,7 @@ copy("web/tsconfig.json", "web/tsconfig.json");
 copy("web/next-env.d.ts", "web/next-env.d.ts");
 copy("web/public", "web/public");
 copy("web/.next", "web/.next"); // production next({ dev: false }) 依赖
-// web/.next/dev 是 dev 模式构建缓存（可能含旧 @prisma/client 副本、338MB+），
-// 生产运行不需要，排除以免进发布包
+// web/.next/dev 是 dev 模式构建缓存（体积大），生产运行不需要，排除以免进发布包
 rmSync(resolve(staging, "web", ".next", "dev"), { recursive: true, force: true });
 
 copy("standalone/package.json", "standalone/package.json");

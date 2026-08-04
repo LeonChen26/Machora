@@ -5,8 +5,6 @@
     "build": { "dependsOn": ["^build"], "outputs": ["dist/**", ".next/**"] },
     "lint": { "outputs": [] },
     "test": { "outputs": [] },
-    "typecheck": { "dependsOn": ["^build"], "outputs": [] },
-    "db:generate": { "cache": false, "outputs": ["node_modules/.prisma/**"] },
-    "db:migrate": { "cache": false }
+    "typecheck": { "dependsOn": ["^build"], "outputs": [] }
   }
 }

@@ -66,13 +66,13 @@ pnpm workspace monorepo，依赖方向：`standalone → web + worker + shared`�
 
 | 包 | 说明 |
 |---|---|
-| `packages/shared` | 领域模型（Zod）+ Prisma schema + OTel 解码/解析 + 鉴权 + 队列（单一真源） |
+| `packages/shared` | 领域模型（Zod）+ Drizzle schema（schema.sql 幂等建表）+ OTel 解码/解析 + 鉴权 + 队列（单一真源） |
 | `web` | Next.js App Router UI（force-dynamic SSR）+ tRPC + 公共 REST（ingestion / otel / health） |
 | `worker` | 队列处理器（standalone 进程内注册，共享 queueBus，无 Redis） |
-| `standalone` | 单进程入口：PGlite + Prisma push + seed + Next.js in-process |
+| `standalone` | 单进程入口：PGlite + schema.sql 建表 + seed + Next.js in-process |
 | `sdk/python` | Python SDK（httpx + pydantic，可选 langchain-core） |
 
-技术栈：TypeScript · Next.js · tRPC · Prisma · PGlite（进程内 Postgres）· Zod · OpenTelemetry（protobufjs）· bcryptjs
+技术栈：TypeScript · Next.js · tRPC · Drizzle ORM · PGlite（进程内 Postgres）· Zod · OpenTelemetry（protobufjs）· bcryptjs
 
 ## 开发命令（仓库根）
 
