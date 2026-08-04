@@ -262,15 +262,17 @@ step(withDeps ? "3/5 构建期 Prisma（预 generate + 导出 schema.sql）" : "
 
   // 把生成的 Prisma Client 也复制一份到 .next/node_modules/.prisma/client，
   // 绕开 Turbopack 外部化 default.js 向上解析找不到 .prisma/client/default 的问题。
+  // 注意：必须强制覆盖——next build 可能已在 web/.next/node_modules 放下旧版
+  // client（@prisma/client 包自带模板），若按 existsSync(default.js) 跳过会带旧
+  // 生成物进包，SSR 里 prisma.<最新模型>（如 metricSample）为 undefined 直接 500。
   const nextNodeModules = resolve(staging, "web", ".next", "node_modules");
   const nmDir = resolve(staging, "node_modules");
   const prismaOutSrc = resolve(nmDir, ".prisma", "client");
   if (existsSync(prismaOutSrc)) {
     const dest = resolve(nextNodeModules, ".prisma", "client");
-    if (!existsSync(resolve(dest, "default.js"))) {
-      mkdirSync(resolve(dest, ".."), { recursive: true });
-      cpSync(prismaOutSrc, dest, { recursive: true });
-    }
+    rmSync(dest, { recursive: true, force: true });
+    mkdirSync(resolve(dest, ".."), { recursive: true });
+    cpSync(prismaOutSrc, dest, { recursive: true });
   }
   console.log("[release] 预生成 Prisma Client + schema.sql 完成，运行时零 prisma CLI 调用");
 }
@@ -302,6 +304,30 @@ if (withDeps) {
   // 本地 store 仅构建时用，不随包发布（否则 zip 体积翻倍）。
   const localStore = resolve(staging, ".pnpm-store-local");
   if (existsSync(localStore)) rmSync(localStore, { recursive: true, force: true });
+  // pnpm install --prod 会重新铺 node_modules/.prisma/client（@prisma/client 包
+  // 自带的旧模板，不含最新模型如 MetricSample）→ 完整包运行时 prisma.metricSample
+  // 为 undefined。必须用构建期生成的 client 强制覆盖顶层与 web/.next 两份。
+  {
+    const pnpmRoot = resolve(root, "node_modules", ".pnpm");
+    const srcs = [];
+    if (existsSync(pnpmRoot)) {
+      for (const d of readdirSync(pnpmRoot)) {
+        if (d.startsWith("@prisma+client@")) {
+          srcs.push(resolve(pnpmRoot, d, "node_modules", ".prisma", "client"));
+        }
+      }
+    }
+    const freshSrc = srcs.find((c) => existsSync(resolve(c, "default.js")));
+    if (!freshSrc) throw new Error("pnpm install 后未找到构建期生成的 Prisma Client（.pnpm/@prisma+client@*）");
+    const topDest = resolve(staging, "node_modules", ".prisma", "client");
+    rmSync(topDest, { recursive: true, force: true });
+    cpSync(freshSrc, topDest, { recursive: true });
+    const nextDest = resolve(staging, "web", ".next", "node_modules", ".prisma", "client");
+    rmSync(nextDest, { recursive: true, force: true });
+    mkdirSync(resolve(nextDest, ".."), { recursive: true });
+    cpSync(freshSrc, nextDest, { recursive: true });
+    console.log("[release] pnpm install 后用构建期 client 覆盖顶层与 web/.next 的 .prisma/client");
+  }
   // 裁掉生产不需要的大体积 optional 依赖
   // 注意：@next 只能裁 swc-*（SWC 编译器二进制，仅 dev build 用）；
   // @next/env 是 Next.js 运行时依赖，必须保留。
