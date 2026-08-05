@@ -65,13 +65,14 @@ export function TraceTree({ rows, spanMs }: { rows: TraceRow[]; spanMs: number }
             <td></td>
           </tr>
         </thead>
-        {/* padding 撑出完整滚动高度，仅渲染可见窗口行 */}
-        <tbody
-          style={{
-            paddingTop: w0 * ROW_H,
-            paddingBottom: (rows.length - w1) * ROW_H,
-          }}
-        >
+        {/* spacer 行撑出完整滚动高度（tbody padding 在 border-collapse: collapse
+            下不生效），仅渲染可见窗口行 */}
+        <tbody>
+          {w0 > 0 && (
+            <tr aria-hidden="true" className="spacer" style={{ height: w0 * ROW_H }}>
+              <td colSpan={3} />
+            </tr>
+          )}
           {visible.map((o, i) => {
             const barTip =
               `${o.name || o.id}\n` +
@@ -147,6 +148,11 @@ export function TraceTree({ rows, spanMs }: { rows: TraceRow[]; spanMs: number }
               </tr>
             );
           })}
+          {rows.length - w1 > 0 && (
+            <tr aria-hidden="true" className="spacer" style={{ height: (rows.length - w1) * ROW_H }}>
+              <td colSpan={3} />
+            </tr>
+          )}
         </tbody>
       </table>
     </div>

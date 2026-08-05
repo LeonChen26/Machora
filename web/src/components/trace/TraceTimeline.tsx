@@ -54,6 +54,7 @@ export function TraceTimeline({
         <span className="tl-dur-col">耗时</span>
       </div>
       <div
+        className="tl-window"
         style={{
           paddingTop: w0 * ROW_H,
           paddingBottom: (rows.length - w1) * ROW_H,

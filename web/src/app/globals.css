@@ -1577,6 +1577,11 @@ pre.code,
 .tree-layout {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  /* 显式行轨道：内容少时自然高度（不出现幻影滚动条），内容多时封顶独立滚动。
+     auto 行轨道会无视容器 max-height 长到内容高度（大 trace 时间线被 padding
+     撑到几千 px，页面滚不到底）。注意 min 不能用 min-content——padding 撑起的
+     滚动高度会计入 min-content，导致轨道照样超过上限 */
+  grid-template-rows: minmax(auto, calc(100vh - 180px));
   gap: 1rem;
   align-items: stretch;
   /* 约束高度让两列独立滚动 */
@@ -1643,6 +1648,7 @@ pre.code,
 @media (max-width: 960px) {
   .tree-layout {
     grid-template-columns: 1fr;
+    grid-template-rows: none;
     max-height: none;
   }
   .tree-layout .tree-col > .table-wrap,
@@ -1887,6 +1893,17 @@ pre.code,
 .tl-view {
   display: flex;
   flex-direction: column;
+}
+/* 虚拟窗口：内容高过容器时不能被 flex-shrink 压缩，否则 padding 撑起的
+   滚动高度会被压回容器高度，时间线滚不动 */
+.tl-window {
+  flex-shrink: 0;
+}
+/* 调用树虚拟 spacer 行：撑高滚动区但不可见（tbody padding 在
+   border-collapse: collapse 下不生效，改用空行撑高） */
+.tree-virtual tbody tr.spacer td {
+  padding: 0;
+  border-bottom: none;
 }
 .tl-head {
   display: flex;
