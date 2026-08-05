@@ -17,12 +17,12 @@ import { JsonBlock } from "../../../components/JsonBlock";
 import ScoreForm from "../../../components/ScoreForm";
 import { getCurrentProjectId } from "../../../server/project";
 import {
-  ObservationDetailPanel,
   type ObservationView,
 } from "../../../components/ObservationDetailPanel";
 import { TraceStatsRow } from "../../../components/trace/TraceStatsRow";
 import { TraceTree } from "../../../components/trace/TraceTree";
 import { TraceTimeline } from "../../../components/trace/TraceTimeline";
+import { TraceDetailPanel } from "../../../components/trace/TraceDetailPanel";
 import {
   SelectionProvider,
   type TraceRow,
@@ -49,8 +49,9 @@ export default async function TraceDetailPage({
     Array.isArray(v) ? v[0] : v;
   // 仅显示异常分支（ERROR/WARNING）过滤开关
   const issuesOnly = str(sp.issues) === "1";
-  // Langfuse 式 tab：tree（调用树）/ timeline（时间线）/ chat（对话）/ scores（评分）/ details（详情 Trace kv + trace 级 IO + metadata）
-  const TAB_KEYS = ["tree", "timeline", "chat", "scores", "details"] as const;
+  // Langfuse 式 tab：tree（调用树）/ timeline（时间线）/ chat（对话）/ scores（评分）。
+  // trace 级详情（kv + IO + metadata）并入 tree/timeline 的右侧面板（选中根 trace 时显示，对齐 Langfuse TracePanelDetail）
+  const TAB_KEYS = ["tree", "timeline", "chat", "scores"] as const;
   type TabKey = (typeof TAB_KEYS)[number];
   const tabRaw = str(sp.tab)?.trim();
   const tab: TabKey = TAB_KEYS.includes(tabRaw as TabKey)
@@ -268,6 +269,122 @@ export default async function TraceDetailPage({
   const rows: TraceRow[] = [];
   flattenRows(visibleTree, 0, rows);
 
+  // Tab 链接保留当前选中行：切 Tab 是 RSC 导航会重挂载 Provider，
+  // URL 带上 ?selected= 才能恢复选中（sessionStorage 兜底之外的第二层保障）
+  const sel = str(sp.selected)?.trim();
+  const selectedParam = sel ? `&selected=${encodeURIComponent(sel)}` : "";
+  const treeQs = [
+    ...(issuesOnly ? ["issues=1"] : []),
+    ...(sel ? [`selected=${encodeURIComponent(sel)}`] : []),
+  ];
+  const treeHref = treeQs.length ? `/traces/${id}?${treeQs.join("&")}` : `/traces/${id}`;
+
+  // trace 级详情（对齐 Langfuse TraceDetailView Preview）：属性 kv + input/output/metadata。
+  // 由右侧 TraceDetailPanel 在"未选中 observation（选中根 trace）"时展示
+  const traceDetailContent = (
+    <div style={{ padding: "4px 12px 12px" }}>
+      <dl className="kv">
+        <dt>Trace ID</dt>
+        <dd className="mono">
+          <span className="key-row">
+            {trace.id}
+            <CopyButton text={trace.id} />
+          </span>
+        </dd>
+        <dt>时间戳</dt>
+        <dd className="mono">{formatDateTime(trace.timestamp)}</dd>
+        <dt>环境</dt>
+        <dd>
+          <Link href={`/traces?env=${encodeURIComponent(trace.environment)}`} prefetch={false}>
+            <span className="badge">{trace.environment}</span>
+          </Link>
+        </dd>
+        <dt>用户</dt>
+        <dd className="mono">
+          {trace.userId ? (
+            <Link href={`/traces?user=${encodeURIComponent(trace.userId)}`} prefetch={false}>
+              {trace.userId}
+            </Link>
+          ) : (
+            <span className="mute2">—</span>
+          )}
+        </dd>
+        <dt>会话</dt>
+        <dd className="mono">
+          {trace.sessionId ? (
+            <Link href={`/sessions/${encodeURIComponent(trace.sessionId)}`} prefetch={false}>
+              {trace.sessionId}
+            </Link>
+          ) : (
+            <span className="mute2">—</span>
+          )}
+        </dd>
+        <dt>Agent</dt>
+        <dd>
+          {trace.agentName ? (
+            <Link href={`/traces?agent=${encodeURIComponent(trace.agentName)}`} prefetch={false}>
+              <span className="badge green">{trace.agentName}</span>
+            </Link>
+          ) : (
+            <span className="mute2">—</span>
+          )}
+        </dd>
+        <dt>工作流</dt>
+        <dd>
+          {trace.workflowName ? (
+            <span className="badge purple">{trace.workflowName}</span>
+          ) : (
+            <span className="mute2">—</span>
+          )}
+        </dd>
+        <dt>Skill</dt>
+        <dd>
+          {trace.skillName ? (
+            <span className="badge">{trace.skillName}</span>
+          ) : (
+            <span className="mute2">—</span>
+          )}
+        </dd>
+        <dt>标签</dt>
+        <dd>
+          {trace.tags.length > 0 ? (
+            trace.tags.map((t) => (
+              <Link
+                key={t}
+                href={`/traces?tag=${encodeURIComponent(t)}`}
+                prefetch={false}
+                className="mr-1"
+              >
+                <span className="badge">{t}</span>
+              </Link>
+            ))
+          ) : (
+            <span className="mute2">—</span>
+          )}
+        </dd>
+        <dt>总跨度</dt>
+        <dd className="mono">{formatDuration(traceEnd - traceStart)}</dd>
+      </dl>
+      <div style={{ marginTop: 14 }}>
+        {(trace.input != null || trace.output != null || trace.metadata != null) ? (
+          <>
+            {trace.input != null && (
+              <JsonBlock title="TRACE INPUT" json={prettyJson(trace.input)} bare />
+            )}
+            {trace.output != null && (
+              <JsonBlock title="TRACE OUTPUT" json={prettyJson(trace.output)} bare />
+            )}
+            {trace.metadata != null && (
+              <JsonBlock title="TRACE METADATA" json={prettyJson(trace.metadata)} bare />
+            )}
+          </>
+        ) : (
+          <div className="mute2">该 Trace 无 input / output / metadata。</div>
+        )}
+      </div>
+    </div>
+  );
+
   return (
     <>
       <div className="breadcrumb">
@@ -312,7 +429,7 @@ export default async function TraceDetailPage({
       {/* Langfuse 式 Tab 分区 */}
       <div className="detail-tabs" role="tablist">
         <Link
-          href={`/traces/${id}${issuesOnly ? "?issues=1" : ""}`}
+          href={treeHref}
           prefetch={false}
           className={tab === "tree" ? "tab active" : "tab"}
           role="tab"
@@ -322,7 +439,7 @@ export default async function TraceDetailPage({
           <span className="count">{trace.observations.length}</span>
         </Link>
         <Link
-          href={`/traces/${id}?tab=timeline`}
+          href={`/traces/${id}?tab=timeline${selectedParam}`}
           prefetch={false}
           className={tab === "timeline" ? "tab active" : "tab"}
           role="tab"
@@ -332,7 +449,7 @@ export default async function TraceDetailPage({
           <span className="count">{rows.length}</span>
         </Link>
         <Link
-          href={`/traces/${id}?tab=chat`}
+          href={`/traces/${id}?tab=chat${selectedParam}`}
           prefetch={false}
           className={tab === "chat" ? "tab active" : "tab"}
           role="tab"
@@ -342,7 +459,7 @@ export default async function TraceDetailPage({
           <span className="count">{chatMessages.length}</span>
         </Link>
         <Link
-          href={`/traces/${id}?tab=scores`}
+          href={`/traces/${id}?tab=scores${selectedParam}`}
           prefetch={false}
           className={tab === "scores" ? "tab active" : "tab"}
           role="tab"
@@ -351,20 +468,12 @@ export default async function TraceDetailPage({
           评分
           <span className="count">{trace.scores.length}</span>
         </Link>
-        <Link
-          href={`/traces/${id}?tab=details`}
-          prefetch={false}
-          className={tab === "details" ? "tab active" : "tab"}
-          role="tab"
-          aria-selected={tab === "details"}
-        >
-          详情
-        </Link>
       </div>
 
-      {/* tab=tree：左树右详情（Langfuse 式），选中态经 SelectionProvider 共享 */}
-      {tab === "tree" && (
+      {/* tree/timeline 共享选中态：Provider 提到外层，切视图选中行保留（对齐 Langfuse） */}
+      {(tab === "tree" || tab === "timeline") && (
         <SelectionProvider>
+          {tab === "tree" && (
           <div className="tree-layout">
             <div className="tree-col">
               <div className="section-title">
@@ -411,15 +520,12 @@ export default async function TraceDetailPage({
               )}
             </div>
             <div className="panel-col">
-              <ObservationDetailPanel observations={obsViews} />
+              <TraceDetailPanel observations={obsViews}>{traceDetailContent}</TraceDetailPanel>
             </div>
           </div>
-        </SelectionProvider>
-      )}
+          )}
 
-      {/* tab=timeline：横条时间线视图（选中同样联动右侧面板） */}
-      {tab === "timeline" && (
-        <SelectionProvider>
+          {tab === "timeline" && (
           <div className="tree-layout">
             <div className="tree-col">
               <div className="section-title">
@@ -441,9 +547,10 @@ export default async function TraceDetailPage({
               )}
             </div>
             <div className="panel-col">
-              <ObservationDetailPanel observations={obsViews} />
+              <TraceDetailPanel observations={obsViews}>{traceDetailContent}</TraceDetailPanel>
             </div>
           </div>
+          )}
         </SelectionProvider>
       )}
 
@@ -544,117 +651,6 @@ export default async function TraceDetailPage({
               </div>
             </div>
           ))}
-        </div>
-      )}
-        </>
-      )}
-
-      {/* tab=details：Trace 详情（Langfuse 式 Details Tab）= 上半段 kv 属性 + 下半段 trace 级 Input / Output / Metadata */}
-      {tab === "details" && (
-        <>
-      <div className="section-title">属性</div>
-      <div className="card mb-3">
-        <dl className="kv">
-          <dt>Trace ID</dt>
-          <dd className="mono">
-            <span className="key-row">
-              {trace.id}
-              <CopyButton text={trace.id} />
-            </span>
-          </dd>
-          <dt>时间戳</dt>
-          <dd className="mono">{formatDateTime(trace.timestamp)}</dd>
-          <dt>环境</dt>
-          <dd>
-            <Link href={`/traces?env=${encodeURIComponent(trace.environment)}`} prefetch={false}>
-              <span className="badge">{trace.environment}</span>
-            </Link>
-          </dd>
-          <dt>用户</dt>
-          <dd className="mono">
-            {trace.userId ? (
-              <Link href={`/traces?user=${encodeURIComponent(trace.userId)}`} prefetch={false}>
-                {trace.userId}
-              </Link>
-            ) : (
-              <span className="mute2">—</span>
-            )}
-          </dd>
-          <dt>会话</dt>
-          <dd className="mono">
-            {trace.sessionId ? (
-              <Link href={`/sessions/${encodeURIComponent(trace.sessionId)}`} prefetch={false}>
-                {trace.sessionId}
-              </Link>
-            ) : (
-              <span className="mute2">—</span>
-            )}
-          </dd>
-          <dt>Agent</dt>
-          <dd>
-            {trace.agentName ? (
-              <Link href={`/traces?agent=${encodeURIComponent(trace.agentName)}`} prefetch={false}>
-                <span className="badge green">{trace.agentName}</span>
-              </Link>
-            ) : (
-              <span className="mute2">—</span>
-            )}
-          </dd>
-          <dt>工作流</dt>
-          <dd>
-            {trace.workflowName ? (
-              <span className="badge purple">{trace.workflowName}</span>
-            ) : (
-              <span className="mute2">—</span>
-            )}
-          </dd>
-          <dt>Skill</dt>
-          <dd>
-            {trace.skillName ? (
-              <span className="badge">{trace.skillName}</span>
-            ) : (
-              <span className="mute2">—</span>
-            )}
-          </dd>
-          <dt>标签</dt>
-          <dd>
-            {trace.tags.length > 0 ? (
-              trace.tags.map((t) => (
-                <Link
-                  key={t}
-                  href={`/traces?tag=${encodeURIComponent(t)}`}
-                  prefetch={false}
-                  className="mr-1"
-                >
-                  <span className="badge">{t}</span>
-                </Link>
-              ))
-            ) : (
-              <span className="mute2">—</span>
-            )}
-          </dd>
-          <dt>总跨度</dt>
-          <dd className="mono">{formatDuration(traceEnd - traceStart)}</dd>
-        </dl>
-      </div>
-
-      <div className="section-title">输入 / 输出 / 元数据</div>
-      {(trace.input != null || trace.output != null || trace.metadata != null) ? (
-        <div className="grid grid-3">
-          {trace.input != null && (
-            <JsonBlock title="TRACE INPUT" json={prettyJson(trace.input)} />
-          )}
-          {trace.output != null && (
-            <JsonBlock title="TRACE OUTPUT" json={prettyJson(trace.output)} />
-          )}
-          {trace.metadata != null && (
-            <JsonBlock title="TRACE METADATA" json={prettyJson(trace.metadata)} />
-          )}
-        </div>
-      ) : (
-        <div className="card empty">
-          <EmptyIcon type="bolt" />
-          该 Trace 无 input / output / metadata。
         </div>
       )}
         </>

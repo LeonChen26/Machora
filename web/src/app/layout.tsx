@@ -23,6 +23,12 @@ const THEME_INIT_SCRIPT = `(function () {
   }
   apply();
   mq.addEventListener("change", function () { if (current() === "system") apply(); });
+  // Next.js RSC 导航协调 <html> 时会移除客户端脚本设置的 data-theme，
+  // CSS 变量随之回退到 :root 暗色默认（页面局部变暗）；监听属性变化，
+  // 被移除时立即重新应用（apply 重新赋值不再触发，无循环）。
+  new MutationObserver(function () {
+    if (!document.documentElement.dataset.theme) apply();
+  }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
   window.__machoraTheme = {
     current: current,
     cycle: function () {

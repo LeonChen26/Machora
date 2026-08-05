@@ -1588,6 +1588,11 @@ pre.code,
   display: flex;
   flex-direction: column;
   min-height: 0;
+  /* 面板卡主题：与全站 .card 一致（bg + border + radius），header 与表格连体 */
+  background: var(--bg-elev);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  overflow: hidden;
 }
 .tree-layout .tree-col > .section-title {
   flex-shrink: 0;
@@ -1596,23 +1601,44 @@ pre.code,
   padding: 8px 10px;
   font-size: 14px;
   font-weight: 600;
+  border-bottom: 1px solid var(--border-soft);
 }
 .tree-layout .tree-col > .table-wrap {
   flex: 1;
   overflow: auto;
   min-height: 0;
+  /* 表格融进列卡：去掉自身卡片外观，避免双重边框 */
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
 }
 .tree-layout .panel-col {
   min-width: 0;
   display: flex;
   flex-direction: column;
   min-height: 0;
+  /* 详情面板列卡，与左列一致 */
+  background: var(--bg-elev);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  overflow: hidden;
 }
 .tree-layout .panel-col .obs-detail-panel {
   flex: 1;
   display: flex;
   flex-direction: column;
   min-height: 0;
+}
+.tree-layout .panel-col .obs-panel-head {
+  /* 头部背景与列卡融合（原 var(--bg) 会透出页面底色） */
+  background: var(--bg-elev);
+}
+.tree-layout .card.empty {
+  /* 列已是卡片，空态提示不再套第二层卡 */
+  background: transparent;
+  border: none;
+  box-shadow: none;
 }
 @media (max-width: 960px) {
   .tree-layout {
@@ -1779,6 +1805,11 @@ pre.code,
   flex-wrap: wrap;
   gap: 0.5rem;
   margin-bottom: 1rem;
+  /* 卡片主题：与全站统计卡一致 */
+  background: var(--bg-elev);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  padding: 0.6rem 0.8rem;
 }
 .stat-chip {
   display: inline-flex;

@@ -35,11 +35,21 @@ const SelectionCtx = createContext<{
   select: (id: string | null) => void;
 } | null>(null);
 
+// 选中 id 的同会话兜底：Tab Link 导航（RSC）会让 Provider 重挂载，
+// 此时 URL 可能已被导航丢弃 ?selected=，从 sessionStorage 恢复避免丢选中
+const ssKey = () => `machora:trace-selected:${window.location.pathname}`;
+
 export function SelectionProvider({ children }: { children: ReactNode }) {
-  // 初始选中：URL ?selected=（刷新 / 分享可恢复）；无则 null，面板兜底选第一条
+  // 初始选中：URL ?selected= > sessionStorage 兜底 > null（面板兜底选第一条）
   const [selectedId, setSelectedId] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;
-    return new URLSearchParams(window.location.search).get("selected");
+    const fromUrl = new URLSearchParams(window.location.search).get("selected");
+    if (fromUrl) return fromUrl;
+    try {
+      return sessionStorage.getItem(ssKey());
+    } catch {
+      return null;
+    }
   });
 
   const select = useCallback((id: string | null) => {
@@ -49,6 +59,12 @@ export function SelectionProvider({ children }: { children: ReactNode }) {
     if (id) url.searchParams.set("selected", id);
     else url.searchParams.delete("selected");
     window.history.replaceState(null, "", url);
+    try {
+      if (id) sessionStorage.setItem(ssKey(), id);
+      else sessionStorage.removeItem(ssKey());
+    } catch {
+      // sessionStorage 不可用时忽略（如隐私模式），URL 兜底
+    }
   }, []);
 
   const value = useMemo(() => ({ selectedId, select }), [selectedId, select]);

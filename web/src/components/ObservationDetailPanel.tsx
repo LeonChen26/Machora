@@ -39,11 +39,12 @@ export function ObservationDetailPanel({
     [observations, selectedId],
   );
 
-  // 默认选中第一条：选中态缺失或已失效时兜底（保留原行为）
+  // 默认选中第一条：选中态缺失或已失效时兜底（保留原行为）。
+  // selectedId 为 null 是"选中根 trace"的合法状态（显示 Trace 详情），不兜底。
   useEffect(() => {
     if (observations.length === 0) return;
-    if (idx < 0) select(observations[0].id);
-  }, [idx, observations, select]);
+    if (selectedId !== null && idx < 0) select(observations[0].id);
+  }, [idx, observations, select, selectedId]);
 
   const go = useCallback(
     (next: number) => {
@@ -85,6 +86,14 @@ export function ObservationDetailPanel({
   return (
     <div className="obs-detail-panel">
       <div className="obs-panel-head">
+        <button
+          type="button"
+          className="btn-sm"
+          onClick={() => select(null)}
+          title="返回 Trace 详情"
+        >
+          ← Trace
+        </button>
         <span className="mute2">
           {idx + 1} / {observations.length}
         </span>
