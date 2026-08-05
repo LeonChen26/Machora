@@ -1,6 +1,5 @@
 import { Link } from "../../../components/NativeLink";
 import { notFound } from "next/navigation";
-import type { ReactNode } from "react";
 import { and, asc, desc, eq } from "drizzle-orm";
 import { db, trace as traceTable, observation } from "@machora/shared";
 import {
@@ -15,13 +14,19 @@ import { CopyButton } from "../../../components/CopyButton";
 import { EmptyIcon } from "../../../components/EmptyIcon";
 import { requireUser } from "../../../server/session";
 import { JsonBlock } from "../../../components/JsonBlock";
-import { StatCard } from "../../../components/StatCard";
 import ScoreForm from "../../../components/ScoreForm";
 import { getCurrentProjectId } from "../../../server/project";
 import {
   ObservationDetailPanel,
   type ObservationView,
 } from "../../../components/ObservationDetailPanel";
+import { TraceStatsRow } from "../../../components/trace/TraceStatsRow";
+import { TraceTree } from "../../../components/trace/TraceTree";
+import { TraceTimeline } from "../../../components/trace/TraceTimeline";
+import {
+  SelectionProvider,
+  type TraceRow,
+} from "../../../components/trace/contexts";
 
 // 调用树节点：observation + 子节点
 type Observation = typeof observation.$inferSelect;
@@ -44,8 +49,8 @@ export default async function TraceDetailPage({
     Array.isArray(v) ? v[0] : v;
   // 仅显示异常分支（ERROR/WARNING）过滤开关
   const issuesOnly = str(sp.issues) === "1";
-  // Langfuse 式 tab：tree（调用树）/ chat（对话）/ scores（评分）/ details（详情 Trace kv + trace 级 IO + metadata）
-  const TAB_KEYS = ["tree", "chat", "scores", "details"] as const;
+  // Langfuse 式 tab：tree（调用树）/ timeline（时间线）/ chat（对话）/ scores（评分）/ details（详情 Trace kv + trace 级 IO + metadata）
+  const TAB_KEYS = ["tree", "timeline", "chat", "scores", "details"] as const;
   type TabKey = (typeof TAB_KEYS)[number];
   const tabRaw = str(sp.tab)?.trim();
   const tab: TabKey = TAB_KEYS.includes(tabRaw as TabKey)
@@ -221,15 +226,9 @@ export default async function TraceDetailPage({
     return { left: Math.max(left, 0), width: Math.min(width, 100 - left) };
   }
 
-  // Observation type 显示缩写：GENERATION→GEN，其余保持原名
-  function typeLabel(t: string): string {
-    if (t === "GENERATION") return "GEN";
-    return t;
-  }
-
-  // 树形渲染：当前节点行 + 递归子节点（depth 控制名称缩进）
-  function renderObsRows(nodes: ObsNode[], depth: number): ReactNode[] {
-    return nodes.flatMap((o) => {
+  // 拍平调用树为行数据（含渲染所需全部计算值），供 client 树/时间线视图消费
+  function flattenRows(nodes: ObsNode[], depth: number, out: TraceRow[]) {
+    for (const o of nodes) {
       const dur = durationMs(o.startTime, o.endTime);
       const pos = barPos(o.startTime, o.endTime);
       const typeColor =
@@ -248,54 +247,26 @@ export default async function TraceDetailPage({
               : o.type === "SPAN"
                 ? "var(--accent)"
                 : "var(--amber)";
-      const barTip =
-        `${o.name || o.id}\n` +
-        `${formatDateTime(o.startTime)} → ${o.endTime ? formatDateTime(o.endTime) : "—"}\n` +
-        `耗时 ${formatDuration(dur)}`;
-      const row = (
-        <tr key={o.id} data-obs={o.id} data-level={o.level ?? undefined} tabIndex={0}>
-          <td>
-            <div style={{ paddingLeft: depth * 14, display: "flex", alignItems: "center", gap: "0.35rem", flexWrap: "wrap" }}>
-              {(o.level === "ERROR" || o.level === "WARNING") && (
-                <span
-                  className={`status-dot ${o.level === "ERROR" ? "danger" : "warn"}`}
-                  title={o.level}
-                  aria-label={`级别 ${o.level}`}
-                />
-              )}
-              <span className="obs-name">{o.name || <span className="mute2">（未命名）</span>}</span>
-              <span className={`badge ${typeColor}`}>{typeLabel(o.type)}</span>
-              {o.model && (
-                <span className="mono mute2 text-xs">{o.model}</span>
-              )}
-              <span className="mono mute2 text-xs" style={{ display: "inline-flex", alignItems: "center", gap: 2 }} title={o.id}>
-                {o.id.slice(0, 8)}
-                <span className="copy-btn-inline">
-                  <CopyButton text={o.id} />
-                </span>
-              </span>
-            </div>
-          </td>
-          <td>
-            <div className="gantt-col">
-              <div className="gantt-track" title={barTip}>
-                <div
-                  className="gantt-bar"
-                  style={{
-                    left: `${pos.left}%`,
-                    width: `${pos.width}%`,
-                    background: barColor,
-                  }}
-                />
-              </div>
-            </div>
-          </td>
-          <td className="mono">{formatDuration(dur)}</td>
-        </tr>
-      );
-      return [row, ...renderObsRows(o.children, depth + 1)];
-    });
+      out.push({
+        id: o.id,
+        name: o.name,
+        type: o.type,
+        level: o.level,
+        model: o.model,
+        depth,
+        start: o.startTime.getTime(),
+        end: o.endTime ? o.endTime.getTime() : null,
+        dur: dur ?? 0,
+        left: pos.left,
+        width: pos.width,
+        barColor,
+        typeColor,
+      });
+      flattenRows(o.children, depth + 1, out);
+    }
   }
+  const rows: TraceRow[] = [];
+  flattenRows(visibleTree, 0, rows);
 
   return (
     <>
@@ -325,51 +296,18 @@ export default async function TraceDetailPage({
         </Link>
       </div>
 
-      {/* 聚合指标卡 */}
-      <div className="grid grid-4 mb-3">
-        <StatCard
-          label="总耗时"
-          value={formatDuration(traceEnd - traceStart)}
-          hint="trace 时间跨度"
-          icon="clock"
-        />
-        <StatCard
-          label="总 Token"
-          value={formatTokens(totalTokens)}
-          hint={`${trace.observations.length} obs 合计`}
-          icon="hash"
-        />
-        <StatCard
-          label="总成本"
-          value={formatCost(totalCost)}
-          hint={`${costCount} 个 obs 含成本`}
-          tone="success"
-          icon="coin"
-        />
-        <StatCard
-          label="异常"
-          value={errorCount > 0 ? `${errorCount} ERROR` : "0 ERROR"}
-          hint={`${warningCount} WARNING`}
-          alert={errorCount > 0}
-          tone={errorCount > 0 ? "danger" : undefined}
-          icon="alert"
-        />
-        <StatCard
-          label="平均分"
-          value={avgScore != null ? avgScore.toFixed(3) : "—"}
-          hint={`${numericScores.length} 个 NUMERIC 评分`}
-          tone={
-            avgScore == null
-              ? undefined
-              : avgScore >= 0.8
-                ? "success"
-                : avgScore >= 0.5
-                  ? "warn"
-                  : "danger"
-          }
-          icon="star"
-        />
-      </div>
+      {/* 聚合指标徽章行（参照 Langfuse Header 思路，替代原 grid-4 统计卡） */}
+      <TraceStatsRow
+        spanMs={span}
+        obsCount={trace.observations.length}
+        totalTokens={totalTokens}
+        totalCost={totalCost}
+        costCount={costCount}
+        errorCount={errorCount}
+        warningCount={warningCount}
+        avgScore={avgScore}
+        scoreCount={numericScores.length}
+      />
 
       {/* Langfuse 式 Tab 分区 */}
       <div className="detail-tabs" role="tablist">
@@ -382,6 +320,16 @@ export default async function TraceDetailPage({
         >
           调用树
           <span className="count">{trace.observations.length}</span>
+        </Link>
+        <Link
+          href={`/traces/${id}?tab=timeline`}
+          prefetch={false}
+          className={tab === "timeline" ? "tab active" : "tab"}
+          role="tab"
+          aria-selected={tab === "timeline"}
+        >
+          时间线
+          <span className="count">{rows.length}</span>
         </Link>
         <Link
           href={`/traces/${id}?tab=chat`}
@@ -414,85 +362,89 @@ export default async function TraceDetailPage({
         </Link>
       </div>
 
-      {/* tab=tree：左树右详情（Langfuse 式） */}
+      {/* tab=tree：左树右详情（Langfuse 式），选中态经 SelectionProvider 共享 */}
       {tab === "tree" && (
-        <>
-        <div className="tree-layout">
-          <div className="tree-col">
-      {/* Observations 时间轴 */}
-      <div className="section-title">
-        Observations{" "}
-        <span className="count">
-          {issuesOnly
-            ? `${visibleIds.size} / ${trace.observations.length}`
-            : trace.observations.length}
-        </span>
-        <span className="spacer" />
-        <span className="seg">
-          <Link
-            href={`/traces/${trace.id}`}
-            prefetch={false}
-            className={issuesOnly ? "seg-btn" : "seg-btn active"}
-            aria-current={!issuesOnly ? "true" : undefined}
-          >
-            全部
-          </Link>
-          <Link
-            href={`/traces/${trace.id}?issues=1`}
-            prefetch={false}
-            className={issuesOnly ? "seg-btn active" : "seg-btn"}
-            aria-current={issuesOnly ? "true" : undefined}
-          >
-            仅异常
-            {issueCount > 0 && ` (${issueCount})`}
-          </Link>
-        </span>
-      </div>
+        <SelectionProvider>
+          <div className="tree-layout">
+            <div className="tree-col">
+              <div className="section-title">
+                Observations{" "}
+                <span className="count">
+                  {issuesOnly
+                    ? `${visibleIds.size} / ${trace.observations.length}`
+                    : trace.observations.length}
+                </span>
+                <span className="spacer" />
+                <span className="seg">
+                  <Link
+                    href={`/traces/${trace.id}`}
+                    prefetch={false}
+                    className={issuesOnly ? "seg-btn" : "seg-btn active"}
+                    aria-current={!issuesOnly ? "true" : undefined}
+                  >
+                    全部
+                  </Link>
+                  <Link
+                    href={`/traces/${trace.id}?issues=1`}
+                    prefetch={false}
+                    className={issuesOnly ? "seg-btn active" : "seg-btn"}
+                    aria-current={issuesOnly ? "true" : undefined}
+                  >
+                    仅异常
+                    {issueCount > 0 && ` (${issueCount})`}
+                  </Link>
+                </span>
+              </div>
 
-      {trace.observations.length === 0 ? (
-        <div className="card empty">
-          <EmptyIcon type="bolt" />
-          该 Trace 下暂无 Observation。
-        </div>
-      ) : visibleTree.length === 0 ? (
-        <div className="card empty">
-          <EmptyIcon type="bolt" />
-          无 ERROR / WARNING 分支。
-        </div>
-      ) : (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">名称 / 类型</th>
-                <th scope="col" className="col-gantt">时间轴</th>
-                <th scope="col" className="col-dur">耗时</th>
-              </tr>
-              {/* 统一刻度：只在表头显示一次，对齐时间轴列 */}
-              <tr className="gantt-scale-row" aria-hidden="true">
-                <td></td>
-                <td>
-                  <div className="gantt-scale">
-                    {[0, 50, 100].map((p) => (
-                      <span key={p} style={{ left: `${p}%` }}>
-                        {p === 0 ? "0" : p === 50 ? "50%" : formatDuration(span)}
-                      </span>
-                    ))}
-                  </div>
-                </td>
-                <td></td>
-              </tr>
-            </thead>
-            <tbody>{renderObsRows(visibleTree, 0)}</tbody>
-          </table>
-        </div>
+              {trace.observations.length === 0 ? (
+                <div className="card empty">
+                  <EmptyIcon type="bolt" />
+                  该 Trace 下暂无 Observation。
+                </div>
+              ) : rows.length === 0 ? (
+                <div className="card empty">
+                  <EmptyIcon type="bolt" />
+                  无 ERROR / WARNING 分支。
+                </div>
+              ) : (
+                <TraceTree rows={rows} spanMs={span} />
+              )}
+            </div>
+            <div className="panel-col">
+              <ObservationDetailPanel observations={obsViews} />
+            </div>
+          </div>
+        </SelectionProvider>
       )}
+
+      {/* tab=timeline：横条时间线视图（选中同样联动右侧面板） */}
+      {tab === "timeline" && (
+        <SelectionProvider>
+          <div className="tree-layout">
+            <div className="tree-col">
+              <div className="section-title">
+                Timeline{" "}
+                <span className="count">{rows.length}</span>
+              </div>
+              {trace.observations.length === 0 ? (
+                <div className="card empty">
+                  <EmptyIcon type="bolt" />
+                  该 Trace 下暂无 Observation。
+                </div>
+              ) : rows.length === 0 ? (
+                <div className="card empty">
+                  <EmptyIcon type="bolt" />
+                  无 ERROR / WARNING 分支。
+                </div>
+              ) : (
+                <TraceTimeline rows={rows} spanMs={span} />
+              )}
+            </div>
+            <div className="panel-col">
+              <ObservationDetailPanel observations={obsViews} />
+            </div>
           </div>
-          <div className="panel-col">
-            <ObservationDetailPanel observations={obsViews} />
-          </div>
-        </div>
-        </>
+        </SelectionProvider>
       )}
 
       {/* tab=scores：评分 */}

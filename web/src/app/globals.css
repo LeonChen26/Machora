@@ -1772,3 +1772,151 @@ pre.code,
     max-width: 96%;
   }
 }
+
+/* ===== Trace 详情：Header 指标徽章行（替代 grid-4 统计卡，参照 Langfuse） ===== */
+.trace-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+.stat-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  background: var(--bg-elev-1);
+  border: 1px solid var(--border-soft);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+.stat-chip-label {
+  color: var(--text-mute);
+}
+.stat-chip-value {
+  font-family: var(--mono);
+  font-weight: 600;
+  font-size: 12px;
+}
+.stat-chip.tone-success .stat-chip-value {
+  color: var(--green);
+}
+.stat-chip.tone-danger .stat-chip-value {
+  color: var(--red);
+}
+.stat-chip.tone-warn .stat-chip-value {
+  color: var(--amber);
+}
+
+/* ===== 虚拟化调用树：固定行高 + 窗口渲染（.table-wrap 即滚动容器） ===== */
+.tree-virtual table {
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+.tree-virtual tbody tr {
+  height: 36px;
+}
+.tree-virtual tbody td {
+  overflow: hidden;
+  vertical-align: middle;
+}
+.tree-virtual .obs-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  white-space: nowrap;
+  overflow: hidden;
+  min-width: 0;
+}
+.tree-virtual .obs-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex-shrink: 1;
+}
+.tree-virtual .obs-id {
+  flex-shrink: 0;
+}
+
+/* ===== 时间线视图（参照 Langfuse TraceTimeline） ===== */
+.tl-view {
+  display: flex;
+  flex-direction: column;
+}
+.tl-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 12px;
+  color: var(--text-mute);
+  flex-shrink: 0;
+}
+.tl-head .tl-name-col {
+  width: 42%;
+  min-width: 0;
+}
+.tl-head .tl-track-col {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+}
+.tl-head .tl-dur-col {
+  width: 80px;
+  text-align: right;
+}
+.tl-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  height: 36px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--border-soft);
+  cursor: pointer;
+}
+.tl-row[data-level="ERROR"] {
+  background: rgba(220, 60, 60, 0.08);
+}
+.tl-row[data-level="WARNING"] {
+  background: rgba(220, 160, 40, 0.08);
+}
+.tl-row.selected {
+  outline: 1px solid var(--accent);
+  background: var(--bg-elev-1);
+}
+.tl-name {
+  width: 42%;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.tl-name .obs-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.tl-track {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  height: 10px;
+  background: var(--bg-elev-2);
+  border-radius: 3px;
+}
+.tl-bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 3px;
+  opacity: 0.75;
+}
+.tl-dur {
+  width: 80px;
+  text-align: right;
+  flex-shrink: 0;
+}

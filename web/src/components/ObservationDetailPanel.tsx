@@ -1,11 +1,12 @@
 "use client";
 
-// 选中详览面板：点表格行（data-obs）选中一条 observation，面板只展示该条。
-// 调用链很长时不再把所有 observation 卡片平铺，避免详情区无限变长。
-import { useCallback, useEffect, useState } from "react";
+// 选中详览面板：选中态来自 SelectionContext（调用树 / 时间线点击联动），
+// 面板只展示选中的一条 observation，不再平铺，避免详情区无限变长。
+import { useCallback, useEffect, useMemo } from "react";
 import { formatCost, formatDateTime, formatTokens } from "../lib/format";
 import { JsonBlock } from "./JsonBlock";
 import { prettyJson } from "../lib/format";
+import { useSelection } from "./trace/contexts";
 
 export type ObservationView = {
   id: string;
@@ -25,69 +26,31 @@ export type ObservationView = {
   metadata: unknown;
 };
 
-function syncRowHighlight(id: string | null) {
-  document.querySelectorAll<HTMLElement>("[data-obs].selected").forEach((n) => {
-    n.classList.remove("selected");
-  });
-  if (id == null) return;
-  const row = Array.from(
-    document.querySelectorAll<HTMLElement>("[data-obs]"),
-  ).find((n) => n.dataset.obs === id);
-  row?.classList.add("selected");
-}
-
 export function ObservationDetailPanel({
   observations,
 }: {
   observations: ObservationView[];
 }) {
-  const [idx, setIdx] = useState(0);
+  const { selectedId, select } = useSelection();
 
-  // 点击表格行选中（事件委托，行是服务端渲染的静态 DOM）
-  useEffect(() => {
-    const onDocClick = (e: MouseEvent) => {
-      const el = (e.target as HTMLElement).closest<HTMLElement>("[data-obs]");
-      if (!el) return;
-      const i = observations.findIndex((o) => o.id === el.dataset.obs);
-      if (i < 0) return;
-      syncRowHighlight(observations[i].id);
-      setIdx(i);
-    };
-    document.addEventListener("click", onDocClick);
-    return () => document.removeEventListener("click", onDocClick);
-  }, [observations]);
+  // 选中 id → 在 observations 中的索引（不在列表内则为 -1）
+  const idx = useMemo(
+    () => observations.findIndex((o) => o.id === selectedId),
+    [observations, selectedId],
+  );
 
-  // 键盘选中：聚焦的行上按 Enter/Space 触发选中（与点击等价）
+  // 默认选中第一条：选中态缺失或已失效时兜底（保留原行为）
   useEffect(() => {
-    const onDocKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== "Enter" && e.key !== " ") return;
-      const el = (e.target as HTMLElement).closest<HTMLElement>("[data-obs]");
-      if (!el) return;
-      // 避免拦截按钮/链接自身的 Enter/Space
-      const tag = (e.target as HTMLElement).tagName;
-      if (tag === "BUTTON" || tag === "A" || tag === "INPUT") return;
-      e.preventDefault();
-      const i = observations.findIndex((o) => o.id === el.dataset.obs);
-      if (i < 0) return;
-      syncRowHighlight(observations[i].id);
-      setIdx(i);
-    };
-    document.addEventListener("keydown", onDocKeyDown);
-    return () => document.removeEventListener("keydown", onDocKeyDown);
-  }, [observations]);
-
-  // 挂载后默认高亮第一条
-  useEffect(() => {
-    syncRowHighlight(observations[0]?.id ?? null);
-  }, [observations]);
+    if (observations.length === 0) return;
+    if (idx < 0) select(observations[0].id);
+  }, [idx, observations, select]);
 
   const go = useCallback(
     (next: number) => {
       const clamped = Math.max(0, Math.min(next, observations.length - 1));
-      syncRowHighlight(observations[clamped].id);
-      setIdx(clamped);
+      select(observations[clamped].id);
     },
-    [observations],
+    [observations, select],
   );
 
   if (observations.length === 0) {
@@ -99,6 +62,20 @@ export function ObservationDetailPanel({
         </div>
         <div className="obs-detail-card">
           <div className="mute2" style={{ padding: "1rem 0" }}>暂无 Observation 详情。</div>
+        </div>
+      </div>
+    );
+  }
+  // 选中态未就绪（useEffect 兜底选第一条前的瞬间）
+  if (idx < 0) {
+    return (
+      <div className="obs-detail-panel">
+        <div className="obs-panel-head">
+          <span className="mute2">—</span>
+          <span className="spacer" />
+        </div>
+        <div className="obs-detail-card">
+          <div className="mute2" style={{ padding: "1rem 0" }}>加载中…</div>
         </div>
       </div>
     );
