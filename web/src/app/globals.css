@@ -1838,6 +1838,19 @@ pre.code,
 .tree-virtual .obs-id {
   flex-shrink: 0;
 }
+/* 树形缩进指南线：每层一根竖线，贯穿行高，向下一行延续时点亮 */
+.tree-virtual .tree-guides {
+  display: inline-flex;
+  align-self: stretch;
+  flex-shrink: 0;
+}
+.tree-virtual .guide {
+  width: 14px;
+  border-left: 1px solid var(--border-soft);
+}
+.tree-virtual .guide.off {
+  border-left-color: transparent;
+}
 
 /* ===== 时间线视图（参照 Langfuse TraceTimeline） ===== */
 .tl-view {
@@ -1855,7 +1868,7 @@ pre.code,
   flex-shrink: 0;
 }
 .tl-head .tl-name-col {
-  width: 42%;
+  width: 30%;
   min-width: 0;
 }
 .tl-head .tl-track-col {
@@ -1875,6 +1888,10 @@ pre.code,
   padding: 0 8px;
   border-bottom: 1px solid var(--border-soft);
   cursor: pointer;
+  transition: background 0.12s;
+}
+.tl-row:hover {
+  background: var(--bg-elev-1);
 }
 .tl-row[data-level="ERROR"] {
   background: rgba(220, 60, 60, 0.08);
@@ -1887,7 +1904,7 @@ pre.code,
   background: var(--bg-elev-1);
 }
 .tl-name {
-  width: 42%;
+  width: 30%;
   min-width: 0;
   display: inline-flex;
   align-items: center;
@@ -1904,16 +1921,27 @@ pre.code,
   flex: 1;
   min-width: 0;
   position: relative;
-  height: 10px;
-  background: var(--bg-elev-2);
-  border-radius: 3px;
+  height: 18px;
+  background: transparent;
+  border-radius: 4px;
 }
 .tl-bar {
   position: absolute;
   top: 0;
   bottom: 0;
-  border-radius: 3px;
-  opacity: 0.75;
+  border-radius: 4px;
+  opacity: 0.9;
+  transition: filter 0.12s;
+}
+.tl-bar:hover {
+  filter: brightness(1.2);
+}
+.tl-bar.err {
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(0, 0, 0, 0.22) 0 6px,
+    transparent 6px 12px
+  );
 }
 .tl-dur {
   width: 80px;

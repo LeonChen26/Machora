@@ -88,8 +88,13 @@ export function TraceTimeline({
             </span>
             <span className="tl-track">
               <span
-                className="tl-bar"
-                style={{ left: `${o.left}%`, width: `${o.width}%`, background: o.barColor }}
+                className={`tl-bar${o.level === "ERROR" ? " err" : ""}`}
+                style={{
+                  left: `${o.left}%`,
+                  width: `${o.width}%`,
+                  backgroundColor: o.barColor,
+                }}
+                title={`${o.name || o.id} · ${formatDuration(o.dur)}`}
               />
             </span>
             <span className="tl-dur mono">{formatDuration(o.dur)}</span>

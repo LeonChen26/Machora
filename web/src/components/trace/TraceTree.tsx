@@ -72,11 +72,13 @@ export function TraceTree({ rows, spanMs }: { rows: TraceRow[]; spanMs: number }
             paddingBottom: (rows.length - w1) * ROW_H,
           }}
         >
-          {visible.map((o) => {
+          {visible.map((o, i) => {
             const barTip =
               `${o.name || o.id}\n` +
               `${formatDateTime(new Date(o.start))} → ${o.end ? formatDateTime(new Date(o.end)) : "—"}\n` +
               `耗时 ${formatDuration(o.dur)}`;
+            // 下一行深度决定本行各层级竖线是否向下延续（窗口最后一行无 next 时全不画）
+            const nextDepth = rows[w0 + i + 1]?.depth ?? -1;
             return (
               <tr
                 key={o.id}
@@ -92,7 +94,18 @@ export function TraceTree({ rows, spanMs }: { rows: TraceRow[]; spanMs: number }
                 }}
               >
                 <td>
-                  <div className="obs-cell" style={{ paddingLeft: o.depth * 14 }}>
+                  <div className="obs-cell">
+                    {o.depth > 0 && (
+                      <span
+                        className="tree-guides"
+                        aria-hidden="true"
+                        style={{ width: o.depth * 14 }}
+                      >
+                        {Array.from({ length: o.depth }).map((_, g) => (
+                          <span key={g} className={nextDepth > g ? "guide" : "guide off"} />
+                        ))}
+                      </span>
+                    )}
                     {(o.level === "ERROR" || o.level === "WARNING") && (
                       <span
                         className={`status-dot ${o.level === "ERROR" ? "danger" : "warn"}`}
