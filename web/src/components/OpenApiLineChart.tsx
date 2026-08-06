@@ -24,7 +24,7 @@ export interface OpenApiAxisTick {
   label: string;
 }
 
-const W = 600;
+const W = 1200;
 const H = 220;
 const PAD = { top: 16, right: 42, bottom: 26, left: 14 };
 
@@ -162,13 +162,20 @@ export function OpenApiLineChart({
       </div>
       <svg
         viewBox={`0 0 ${W} ${H}`}
-        width="100%"
-        height={height}
         role="img"
         aria-label={series
           .map((s) => `${s.name} ${fmt(s.data.reduce((a, d) => a + d.value, 0))}`)
           .join("，")}
-        style={{ display: "block", fontFamily: "var(--mono)", fontSize: 10 }}
+        style={{
+          display: "block",
+          // 保持 viewBox 比例铺满容器宽度（height 由 aspect-ratio 推导），
+          // 否则默认 preserveAspectRatio=meet 会在宽卡片下居中留白，图不撑满
+          width: "100%",
+          height: "auto",
+          aspectRatio: `${W} / ${H}`,
+          fontFamily: "var(--mono)",
+          fontSize: 10,
+        }}
       >
         {grid.map((g) => (
           <g key={g.f}>
