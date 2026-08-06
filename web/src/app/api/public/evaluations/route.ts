@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { and, count, desc, eq, lt, type SQL } from "drizzle-orm";
-import { db, evaluation, queueBus, QUEUES, getEvaluator, trace } from "@machora/shared";
+import { db, evaluation, queueBus, QUEUES, getEvaluator, trace, selfMetrics } from "@machora/shared";
 import { verifyApiKey } from "../../../../server/auth";
-import { listEnvelope, parseCommonQuery, timeWindow } from "../../../../server/publicQuery";
+import { countOpenApiQuery, listEnvelope, parseCommonQuery, timeWindow } from "../../../../server/publicQuery";
 
 const EvaluationCreateSchema = z.object({
   traceId: z.string(),
@@ -15,6 +15,7 @@ const EvaluationCreateSchema = z.object({
 export async function POST(req: Request) {
   const auth = await verifyApiKey(req.headers.get("authorization") ?? undefined);
   if (!auth) {
+    selfMetrics.inc("machora.ingestion.requests", 1, { status: "unauthorized" });
     return Response.json({ error: "Invalid API key" }, { status: 401 });
   }
 
@@ -22,11 +23,13 @@ export async function POST(req: Request) {
   try {
     body = await req.json();
   } catch {
+    selfMetrics.inc("machora.ingestion.requests", 1, { status: "bad-json" });
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
   const parsed = EvaluationCreateSchema.safeParse(body);
   if (!parsed.success) {
+    selfMetrics.inc("machora.ingestion.requests", 1, { status: "bad-payload" });
     return Response.json(
       { error: "Invalid payload", details: parsed.error.flatten() },
       { status: 400 },
@@ -70,6 +73,7 @@ export async function POST(req: Request) {
     evaluationId: evaluationRow.id,
   });
 
+  selfMetrics.inc("machora.ingestion.requests", 1, { status: "ok" });
   return Response.json({ data: evaluationRow }, { status: 201 });
 }
 
@@ -77,12 +81,14 @@ export async function POST(req: Request) {
 export async function GET(req: Request) {
   const auth = await verifyApiKey(req.headers.get("authorization") ?? undefined);
   if (!auth) {
+    countOpenApiQuery("unauthorized");
     return Response.json({ error: "Invalid API key" }, { status: 401 });
   }
 
   const sp = new URL(req.url).searchParams;
   const parsed = parseCommonQuery(sp);
   if (!parsed.ok) {
+    countOpenApiQuery("bad-request");
     return Response.json({ error: parsed.error }, { status: 400 });
   }
   const { limit, cursor, from, to } = parsed.value;
@@ -109,6 +115,7 @@ export async function GET(req: Request) {
   ]);
 
   const nextCursor = items.length > limit ? items[items.length - 1].id : null;
+  countOpenApiQuery("ok");
   return Response.json(
     listEnvelope(items.slice(0, limit), {
       limit,

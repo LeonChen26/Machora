@@ -5,6 +5,7 @@ import {
   TRACE_COLUMNS,
   TRACE_SELECT_FIELDS,
   buildSelect,
+  countOpenApiQuery,
   listEnvelope,
   parseCommonQuery,
   pickColumns,
@@ -15,12 +16,14 @@ import {
 export async function GET(req: Request) {
   const auth = await verifyApiKey(req.headers.get("authorization") ?? undefined);
   if (!auth) {
+    countOpenApiQuery("unauthorized");
     return Response.json({ error: "Invalid API key" }, { status: 401 });
   }
 
   const sp = new URL(req.url).searchParams;
   const parsed = parseCommonQuery(sp);
   if (!parsed.ok) {
+    countOpenApiQuery("bad-request");
     return Response.json({ error: parsed.error }, { status: 400 });
   }
   const { limit, cursor, from, to, select } = parsed.value;
@@ -52,6 +55,7 @@ export async function GET(req: Request) {
   try {
     fields = buildSelect(select, TRACE_SELECT_FIELDS);
   } catch (e: any) {
+    countOpenApiQuery("bad-request");
     return Response.json({ error: e.message }, { status: 400 });
   }
   const cols = pickColumns(TRACE_COLUMNS, fields);
@@ -67,6 +71,7 @@ export async function GET(req: Request) {
   ]);
 
   const nextCursor = items.length > limit ? items[items.length - 1].id : null;
+  countOpenApiQuery("ok");
   return Response.json(
     listEnvelope(items.slice(0, limit), {
       limit,

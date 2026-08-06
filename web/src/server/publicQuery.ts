@@ -3,7 +3,15 @@
 
 import { gte, lte, type SQL } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
-import { observation, score, trace } from "@machora/shared";
+import { observation, score, trace, selfMetrics } from "@machora/shared";
+
+/** OpenAPI 查询流量计数（System 自运维折线图"查询"系列）。
+ * 仅公开查询端点调用；console 管理接口不埋点，天然不计入。 */
+export function countOpenApiQuery(
+  status: "ok" | "unauthorized" | "bad-request" = "ok",
+): void {
+  selfMetrics.inc("machora.query.requests", 1, { status });
+}
 
 export const TRACE_SELECT_FIELDS = [
   "id",

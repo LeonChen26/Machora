@@ -1,10 +1,11 @@
 import { and, count, desc, eq, lt, type SQL } from "drizzle-orm";
-import { db, observation, score, trace, ScoreCreateSchema } from "@machora/shared";
+import { db, observation, score, trace, ScoreCreateSchema, selfMetrics } from "@machora/shared";
 import { verifyApiKey } from "../../../../server/auth";
 import {
   SCORE_COLUMNS,
   SCORE_SELECT_FIELDS,
   buildSelect,
+  countOpenApiQuery,
   listEnvelope,
   parseCommonQuery,
   pickColumns,
@@ -15,12 +16,14 @@ import {
 export async function GET(req: Request) {
   const auth = await verifyApiKey(req.headers.get("authorization") ?? undefined);
   if (!auth) {
+    countOpenApiQuery("unauthorized");
     return Response.json({ error: "Invalid API key" }, { status: 401 });
   }
 
   const sp = new URL(req.url).searchParams;
   const parsed = parseCommonQuery(sp);
   if (!parsed.ok) {
+    countOpenApiQuery("bad-request");
     return Response.json({ error: parsed.error }, { status: 400 });
   }
   const { limit, cursor, from, to, select } = parsed.value;
@@ -42,6 +45,7 @@ export async function GET(req: Request) {
   try {
     fields = buildSelect(select, SCORE_SELECT_FIELDS);
   } catch (e: any) {
+    countOpenApiQuery("bad-request");
     return Response.json({ error: e.message }, { status: 400 });
   }
   const cols = pickColumns(SCORE_COLUMNS, fields);
@@ -57,6 +61,7 @@ export async function GET(req: Request) {
   ]);
 
   const nextCursor = items.length > limit ? items[items.length - 1].id : null;
+  countOpenApiQuery("ok");
   return Response.json(
     listEnvelope(items.slice(0, limit), {
       limit,
@@ -70,6 +75,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const auth = await verifyApiKey(req.headers.get("authorization") ?? undefined);
   if (!auth) {
+    selfMetrics.inc("machora.ingestion.requests", 1, { status: "unauthorized" });
     return Response.json({ error: "Invalid API key" }, { status: 401 });
   }
 
@@ -83,11 +89,13 @@ export async function POST(req: Request) {
   try {
     body = await req.json();
   } catch {
+    selfMetrics.inc("machora.ingestion.requests", 1, { status: "bad-json" });
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
   const parsed = AnnotationScoreSchema.safeParse(body);
   if (!parsed.success) {
+    selfMetrics.inc("machora.ingestion.requests", 1, { status: "bad-payload" });
     return Response.json(
       { error: "Invalid payload", details: parsed.error.flatten() },
       { status: 400 },
@@ -130,5 +138,6 @@ export async function POST(req: Request) {
     })
     .returning();
 
+  selfMetrics.inc("machora.ingestion.requests", 1, { status: "ok" });
   return Response.json({ data: scoreRow }, { status: 201 });
 }

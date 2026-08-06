@@ -4,13 +4,14 @@ import { formatDateTime, formatRelative } from "../../lib/format";
 import { EmptyIcon } from "../../components/EmptyIcon";
 import { Link } from "../../components/NativeLink";
 import { LineChart } from "../../components/LineChart";
+import { OpenApiLineChart } from "../../components/OpenApiLineChart";
 import {
   RANGES,
   MAX_SAMPLES,
   fmtNum,
   attrsText,
-  MetricCardGrid,
   bucketLabel,
+  MetricCardGrid,
 } from "../../components/metricsShared";
 import { requireUser } from "../../server/session";
 
@@ -31,6 +32,30 @@ function fmtBytes(n: number): string {
   if (n >= 1024 ** 2) return `${(n / 1024 ** 2).toFixed(1)} MB`;
   if (n >= 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${n} B`;
+}
+
+// OpenAPI 流量口径：接入 = 上报端点（ingestion / OTLP traces / metrics），
+// 查询 = public 查询端点。console 管理接口不埋点，天然不计入。
+const INGESTION_METRICS = new Set([
+  "machora.ingestion.requests",
+  "machora.traces.requests",
+  "machora.metrics.requests",
+]);
+const QUERY_METRICS = new Set(["machora.query.requests"]);
+
+/** 按时间桶聚合指定指标名的 SUM（合并同桶 value） */
+function bucketSums(
+  samples: { name: string; value: number | null; timestamp: Date }[],
+  names: Set<string>,
+  bucketMs: number,
+): Map<number, number> {
+  const out = new Map<number, number>();
+  for (const s of samples) {
+    if (!names.has(s.name)) continue;
+    const key = Math.floor(s.timestamp.getTime() / bucketMs) * bucketMs;
+    out.set(key, (out.get(key) ?? 0) + (s.value ?? 0));
+  }
+  return out;
 }
 
 // 平台自身健康面板：运行状态卡 + machora.* 指标趋势。
@@ -152,6 +177,30 @@ export default async function SystemPage({
   const statusSeries = toSeries(httpByStatus);
   const hasHttp = urlSeries.some((d) => d.series.length > 0);
 
+  // OpenAPI 流量折线：接入/查询两系列。x 轴按完整时间窗铺满，
+  // 折线只含有数据的桶（缺失不补点，折线自动断开）
+  const ingestion = bucketSums(samples, INGESTION_METRICS, range.bucketMs);
+  const query = bucketSums(samples, QUERY_METRICS, range.bucketMs);
+  const startKey = Math.floor(since.getTime() / range.bucketMs) * range.bucketMs;
+  const bucketCount = Math.ceil(range.ms / range.bucketMs);
+  const endKey = startKey + bucketCount * range.bucketMs;
+  const xTicks = Array.from({ length: bucketCount }, (_, i) => {
+    const ts = startKey + i * range.bucketMs;
+    return { ts, label: bucketLabel(new Date(ts), range) };
+  });
+  const toPoints = (m: Map<number, number>) =>
+    Array.from(m.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([ts, v]) => ({
+        ts,
+        value: v,
+        label: bucketLabel(new Date(ts), range),
+      }));
+  const openApiSeries = [
+    { name: "接入", color: "var(--accent)", data: toPoints(ingestion) },
+    { name: "查询", color: "var(--green)", data: toPoints(query) },
+  ];
+
   return (
     <>
       <div className="page-head">
@@ -212,6 +261,26 @@ export default async function SystemPage({
         </div>
       ) : (
         <>
+          <div className="card mb-3">
+            <div className="card-head">
+              <div>
+                <div className="card-title">OpenAPI 流量</div>
+                <div className="hint">
+                  接入 = /ingestion、/otel/v1/traces、/otel/v1/metrics 上报；查询 =
+                  public 查询接口。console 管理接口不计入。
+                </div>
+              </div>
+            </div>
+            <OpenApiLineChart
+              series={openApiSeries}
+              xDomain={[startKey, endKey]}
+              xTicks={xTicks}
+              gapMs={range.bucketMs}
+              height={220}
+              emptyText="近窗口无 OpenAPI 请求（上报/查询后约 60s 落库）"
+            />
+          </div>
+
           <MetricCardGrid samples={samples} range={range} />
 
           {hasHttp && (

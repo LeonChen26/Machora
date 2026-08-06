@@ -1,4 +1,4 @@
-import { verifyApiKey, processOtelTraces, decodeOtlpProtobuf } from "@machora/shared";
+import { verifyApiKey, processOtelTraces, decodeOtlpProtobuf, selfMetrics } from "@machora/shared";
 
 // OTLP HTTP 注入端点（Phase 0：JSON；Phase 2：protobuf）
 // LangChain / LangGraph / LlamaIndex 等框架通过
@@ -8,6 +8,7 @@ export async function POST(req: Request) {
     req.headers.get("authorization") ?? undefined,
   );
   if (!auth) {
+    selfMetrics.inc("machora.traces.requests", 1, { status: "unauthorized" });
     return Response.json({ error: "Invalid API key" }, { status: 401 });
   }
 
@@ -21,6 +22,7 @@ export async function POST(req: Request) {
       body = decodeOtlpProtobuf(new Uint8Array(buf));
     } catch (e) {
       const err = e instanceof Error ? e : new Error(String(e));
+      selfMetrics.inc("machora.traces.requests", 1, { status: "bad-protobuf" });
       return Response.json(
         { error: `Invalid protobuf payload: ${err.message}` },
         { status: 400 },
@@ -31,11 +33,13 @@ export async function POST(req: Request) {
       body = await req.json();
     } catch (e) {
       const err = e instanceof Error ? e : new Error(String(e));
+      selfMetrics.inc("machora.traces.requests", 1, { status: "bad-json" });
       return Response.json({ error: `Invalid JSON body: ${err.message}` }, { status: 400 });
     }
   }
 
   const result = await processOtelTraces(auth.projectId, body);
+  selfMetrics.inc("machora.traces.requests", 1, { status: "ok" });
   return Response.json({
     success: true,
     traces: result.traces,
