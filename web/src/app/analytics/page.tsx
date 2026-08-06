@@ -320,8 +320,18 @@ export default async function AnalyticsPage({
         </div>
       </div>
 
-      {/* 时间窗切换 */}
+      {/* 维度导航 */}
       <div className="seg">
+        <Link href="/analytics" prefetch={false} className="seg-btn active" aria-current="true">
+          总览
+        </Link>
+        <Link href="/analytics/topology" prefetch={false} className="seg-btn">
+          Agent 拓扑
+        </Link>
+      </div>
+
+      {/* 时间窗切换 */}
+      <div className="seg mt-1">
         {DAY_OPTIONS.map((d) => (
           <Link
             key={d}
