@@ -40,8 +40,18 @@ const LEVEL_ALIASES: Record<string, string> = {
 };
 
 // 已提取到专用字段 / 显式剔除的属性键，不再进 metadata
+// 语义键需保留在 metadata：虽在 ATTR 中，但无专用列，轨迹视图（推理轨迹）角色分类
+// 依赖它们；gen_ai.tool.name 同时已被提取为 observation.name，保留便于分类与审计。
+const RETAIN_IN_METADATA = new Set<string>([
+  ATTR.GEN_AI_SPAN_KIND,
+  ATTR.GEN_AI_OPERATION,
+  ATTR.GEN_AI_TOOL_NAME,
+  ATTR.GEN_AI_TOOL_CALL_ID,
+]);
 const EXTRACTED_KEYS = new Set<string>(
-  Object.values(ATTR).concat(["gen_ai.usage.input_tokens", "gen_ai.usage.output_tokens"]),
+  Object.values(ATTR)
+    .concat(["gen_ai.usage.input_tokens", "gen_ai.usage.output_tokens"])
+    .filter((k) => !RETAIN_IN_METADATA.has(k)),
 );
 // ---------------------------------------------------------------------------
 // 中间结构

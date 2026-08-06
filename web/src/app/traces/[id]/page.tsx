@@ -22,7 +22,9 @@ import {
 import { TraceStatsRow } from "../../../components/trace/TraceStatsRow";
 import { TraceTree } from "../../../components/trace/TraceTree";
 import { TraceTimeline } from "../../../components/trace/TraceTimeline";
+import { TrajectoryFlow } from "../../../components/trace/TrajectoryFlow";
 import { TraceDetailPanel } from "../../../components/trace/TraceDetailPanel";
+import { buildTrajectoryRows } from "../../../server/trajectory";
 import {
   SelectionProvider,
   type TraceRow,
@@ -49,9 +51,9 @@ export default async function TraceDetailPage({
     Array.isArray(v) ? v[0] : v;
   // 仅显示异常分支（ERROR/WARNING）过滤开关
   const issuesOnly = str(sp.issues) === "1";
-  // Langfuse 式 tab：tree（调用树）/ timeline（时间线）/ chat（对话）/ scores（评分）。
+  // Langfuse 式 tab：tree（调用树）/ timeline（时间线）/ trajectory（推理轨迹）/ chat（对话）/ scores（评分）。
   // trace 级详情（kv + IO + metadata）并入 tree/timeline 的右侧面板（选中根 trace 时显示，对齐 Langfuse TracePanelDetail）
-  const TAB_KEYS = ["tree", "timeline", "chat", "scores"] as const;
+  const TAB_KEYS = ["tree", "timeline", "trajectory", "chat", "scores"] as const;
   type TabKey = (typeof TAB_KEYS)[number];
   const tabRaw = str(sp.tab)?.trim();
   const tab: TabKey = TAB_KEYS.includes(tabRaw as TabKey)
@@ -269,6 +271,9 @@ export default async function TraceDetailPage({
   const rows: TraceRow[] = [];
   flattenRows(visibleTree, 0, rows);
 
+  // 推理轨迹：按 Agent 行为角色重组主链（event/other 聚合 + 循环检测）
+  const traj = buildTrajectoryRows(visibleTree);
+
   // Tab 链接保留当前选中行：切 Tab 是 RSC 导航会重挂载 Provider，
   // URL 带上 ?selected= 才能恢复选中（sessionStorage 兜底之外的第二层保障）
   const sel = str(sp.selected)?.trim();
@@ -388,7 +393,7 @@ export default async function TraceDetailPage({
   return (
     <div
       className={
-        tab === "tree" || tab === "timeline"
+        tab === "tree" || tab === "timeline" || tab === "trajectory"
           ? "trace-root tree-locked"
           : "trace-root"
       }
@@ -414,9 +419,14 @@ export default async function TraceDetailPage({
             )}
           </div>
         </div>
-        <Link className="btn" href="/traces" prefetch={false}>
-          ← 返回列表
-        </Link>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+          <Link href="/docs#semantic-conventions" prefetch={false}>
+            <span className="badge">语义规范</span>
+          </Link>
+          <Link className="btn" href="/traces" prefetch={false}>
+            ← 返回列表
+          </Link>
+        </div>
       </div>
 
       {/* 聚合指标徽章行（参照 Langfuse Header 思路，替代原 grid-4 统计卡） */}
@@ -455,6 +465,16 @@ export default async function TraceDetailPage({
           <span className="count">{rows.length}</span>
         </Link>
         <Link
+          href={`/traces/${id}?tab=trajectory${issuesOnly ? "&issues=1" : ""}${selectedParam}`}
+          prefetch={false}
+          className={tab === "trajectory" ? "tab active" : "tab"}
+          role="tab"
+          aria-selected={tab === "trajectory"}
+        >
+          轨迹
+          <span className="count">{traj.rows.length}</span>
+        </Link>
+        <Link
           href={`/traces/${id}?tab=chat${selectedParam}`}
           prefetch={false}
           className={tab === "chat" ? "tab active" : "tab"}
@@ -476,8 +496,8 @@ export default async function TraceDetailPage({
         </Link>
       </div>
 
-      {/* tree/timeline 共享选中态：Provider 提到外层，切视图选中行保留（对齐 Langfuse） */}
-      {(tab === "tree" || tab === "timeline") && (
+      {/* tree/timeline/trajectory 共享选中态：Provider 提到外层，切视图选中行保留（对齐 Langfuse） */}
+      {(tab === "tree" || tab === "timeline" || tab === "trajectory") && (
         <SelectionProvider>
           {tab === "tree" && (
           <div className="tree-layout">
@@ -550,6 +570,46 @@ export default async function TraceDetailPage({
                 </div>
               ) : (
                 <TraceTimeline rows={rows} spanMs={span} />
+              )}
+            </div>
+            <div className="panel-col">
+              <TraceDetailPanel observations={obsViews}>{traceDetailContent}</TraceDetailPanel>
+            </div>
+          </div>
+          )}
+
+          {tab === "trajectory" && (
+          <div className="tree-layout">
+            <div className="tree-col">
+              <div className="section-title">
+                推理轨迹 <span className="count">{traj.rows.length}</span>
+                {traj.longTask && (
+                  <span className="badge amber" style={{ marginLeft: 8 }}>
+                    长任务
+                  </span>
+                )}
+              </div>
+              {trace.observations.length === 0 ? (
+                <div className="card empty">
+                  <EmptyIcon type="bolt" />
+                  该 Trace 下暂无 Observation。
+                </div>
+              ) : traj.rows.length === 0 ? (
+                <div className="card empty">
+                  <EmptyIcon type="bolt" />
+                  {issuesOnly
+                    ? "无 ERROR / WARNING 分支。"
+                    : "该 Trace 无可展示的轨迹节点。"}
+                </div>
+              ) : (
+                <>
+                  {!traj.hasAgentSignal && (
+                    <div className="muted mb-1">
+                      该 Trace 无 Agent 语义数据（无思考 / 模型 / 工具等角色节点）。
+                    </div>
+                  )}
+                  <TrajectoryFlow rows={traj.rows} />
+                </>
               )}
             </div>
             <div className="panel-col">

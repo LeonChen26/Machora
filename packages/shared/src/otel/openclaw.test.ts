@@ -150,9 +150,11 @@ describe("OpenClaw 真实 trace fixture（2026-08-01 捕获，deepseek-v4-flash�
       "openclaw.toolName": "exec",
       "openclaw.tool.source": "core",
     });
-    expect(toolExec.metadata).not.toHaveProperty("gen_ai.tool.name");
-    expect(toolExec.metadata).not.toHaveProperty("gen_ai.tool.call.id");
-    expect(toolExec.metadata).not.toHaveProperty("gen_ai.operation.name");
+    // gen_ai.span.kind / operation.name / tool.name / tool.call.id 保留在 metadata：
+    // 无专用列，轨迹视图（推理轨迹）角色分类依赖；tool.name 同时已提取为 observation.name
+    expect(toolExec.metadata).toHaveProperty("gen_ai.tool.name");
+    expect(toolExec.metadata).toHaveProperty("gen_ai.tool.call.id");
+    expect(toolExec.metadata).toHaveProperty("gen_ai.operation.name");
   });
 
   it("liveness.warning 与 model.usage 作为独立 trace 正确映射", () => {

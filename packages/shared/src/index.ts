@@ -12,5 +12,6 @@ export * from "./otel/attributes.ts";
 export * from "./otel/processor.ts";
 export * from "./otel/protobuf.ts";
 export * from "./otel/metrics.ts";
+export * from "./otel/trajectory.ts";
 export * from "./self/index.ts";
 export * from "./eval/index.ts";
