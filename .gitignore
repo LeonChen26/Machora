@@ -21,6 +21,9 @@ __pycache__/
 # TRAE IDE 工作目录
 .trae/
 
+# CodeGraph 本地索引
+.codegraph/
+
 # 临时本地调试产物：部署脚本、ext payload 等
 .deploy/
 .ext.json
