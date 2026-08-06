@@ -7,6 +7,8 @@ import { classifyTrajectoryKind, type TrajectoryKind } from "@machora/shared";
 import { observation as observationTable } from "@machora/shared";
 import { durationMs } from "../lib/format";
 
+export type LoopLevel = "repeat" | "ineffective";
+
 export type TrajectoryRow = {
   id: string;
   name: string | null;
@@ -21,7 +23,8 @@ export type TrajectoryRow = {
   visibleChildren: number;
   events: number; // 子树内聚合的日志事件数
   others: number; // 子树内聚合的其它调用数
-  loop: boolean; // 重复工具调用标记
+  loop: boolean; // 重复工具调用 / 疑似无效循环标记
+  loopLevel: LoopLevel | null; // repeat=仅重复；ineffective=含无进展信号
   badge: string | null;
 };
 
@@ -39,11 +42,27 @@ const AGENTISH = new Set<TrajectoryKind>([
   "embedding",
 ]);
 
+// 无进展信号：输出显式为空（空串 / 空数组 / 空对象）。
+// null 视为“未采集”，不当作无进展，避免 SDK 未捕获 output 时误报。
+function isEmptyOutput(v: unknown): boolean {
+  if (v == null) return false;
+  if (typeof v === "string") return v.trim() === "";
+  if (Array.isArray(v)) return v.length === 0;
+  if (typeof v === "object") return Object.keys(v as object).length === 0;
+  return false;
+}
+
+function hasNoProgress(o: Obs): boolean {
+  return o.level === "ERROR" || isEmptyOutput(o.output);
+}
+
 export function buildTrajectoryRows(
   roots: ObsNode[],
 ): { rows: TrajectoryRow[]; longTask: boolean; hasAgentSignal: boolean } {
   const rows: TrajectoryRow[] = [];
 
+  // 收集含“无进展信号”的 tool 节点 id（供循环检测分级）
+  const noProgressIds = new Set<string>();
   function walk(nodes: ObsNode[], depth: number): { rowsCount: number; events: number; others: number } {
     let rowsCount = 0;
     let events = 0;
@@ -67,6 +86,7 @@ export function buildTrajectoryRows(
         others++;
         continue;
       }
+      if (kind === "tool" && hasNoProgress(node)) noProgressIds.add(node.id);
       const sub = walk(node.children, depth + 1);
       const dur = durationMs(node.startTime, node.endTime);
       rowsCount += 1 + sub.rowsCount;
@@ -85,6 +105,7 @@ export function buildTrajectoryRows(
         events: sub.events,
         others: sub.others,
         loop: false,
+        loopLevel: null,
         badge: null,
       });
     }
@@ -93,20 +114,31 @@ export function buildTrajectoryRows(
 
   walk(roots, 0);
 
-  // 循环检测：同名工具在决策序列中“连续”出现 ≥3 次。
+  // 循环检测（分级）：
+  // - 同名工具在决策序列中“连续”出现 ≥3 次 → 重复调用 ×N（仅重复）
+  // - 连续出现 ≥2 次且段内含“无进展信号”（ERROR / 输出显式为空）→ 疑似无效循环 ×N
   // 树序拍平下同名工具可能被 think/llm 等行隔开（ReAct 一轮含思考+工具+模型），
   // 因此只有出现【不同】工具时才重置计数，其它行不打断。
-  let prev: { name: string | null; streak: number } | null = null;
+  let prev: { name: string | null; streak: number; noProgress: boolean } | null = null;
   for (const r of rows) {
     if (r.kind === "tool") {
+      const np = noProgressIds.has(r.id);
       if (prev && prev.name === r.name) {
         prev.streak += 1;
+        prev.noProgress = prev.noProgress || np;
       } else {
-        prev = { name: r.name, streak: 1 };
+        prev = { name: r.name, streak: 1, noProgress: np };
       }
       if (prev.streak >= 3) {
         r.loop = true;
-        r.badge = `重复调用 ×${prev.streak}`;
+        r.loopLevel = prev.noProgress ? "ineffective" : "repeat";
+        r.badge = prev.noProgress
+          ? `疑似无效循环 ×${prev.streak}`
+          : `重复调用 ×${prev.streak}`;
+      } else if (prev.streak >= 2 && prev.noProgress) {
+        r.loop = true;
+        r.loopLevel = "ineffective";
+        r.badge = `疑似无效循环 ×${prev.streak}`;
       }
     }
   }

@@ -2076,6 +2076,9 @@ pre.code,
 .traj-row.is-warn .traj-name {
   color: var(--amber);
 }
+.traj-row.is-loop {
+  border-color: color-mix(in srgb, var(--red) 32%, transparent);
+}
 .traj-icon {
   width: 1.2em;
   text-align: center;

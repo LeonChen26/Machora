@@ -68,7 +68,7 @@ export function TrajectoryFlow({ rows }: { rows: TrajectoryRow[] }) {
             aria-expanded={r.container ? !isCollapsed : undefined}
             aria-selected={sel}
             tabIndex={0}
-            className={`traj-row${sel ? " selected" : ""}${isErr ? " is-error" : ""}${isWarn ? " is-warn" : ""}`}
+            className={`traj-row${sel ? " selected" : ""}${isErr ? " is-error" : ""}${isWarn ? " is-warn" : ""}${r.loop ? " is-loop" : ""}`}
             style={{ paddingLeft: r.depth * 20 }}
             onClick={() => select(r.id)}
             onKeyDown={(e) => {
@@ -83,7 +83,14 @@ export function TrajectoryFlow({ rows }: { rows: TrajectoryRow[] }) {
             <span className={`badge ${meta.badge}`}>{meta.label}</span>
             <span className="traj-name">{r.name || <span className="mute2">（未命名）</span>}</span>
             {r.model && <span className="mono mute2 text-xs">{r.model}</span>}
-            {r.loop && r.badge && <span className="badge amber">{r.badge}</span>}
+            {r.loop && r.badge && (
+              <span
+                className={`badge ${r.loopLevel === "ineffective" ? "red" : "amber"}`}
+                title={r.loopLevel === "ineffective" ? "含无进展信号（ERROR 或空输出）" : "仅重复调用"}
+              >
+                {r.badge}
+              </span>
+            )}
             {r.events > 0 && (
               <span className="badge" title="子树内日志事件">
                 📝 {r.events}

@@ -853,7 +853,9 @@ with tracer.start_as_current_span("pi.main") as s:
         trace 详情页「轨迹」tab 把 observation 按行为角色重组为主链视图；分类实现见{" "}
         <span className="mono">packages/shared/src/otel/trajectory.ts</span>（判定优先级从高到低）。
         <span className="mono">event / other</span> 不占行，聚合为父节点的计数徽标；
-        同名工具在决策序列中连续出现 ≥3 次标记「重复调用」，STEP 思考节点 ≥8 标记「长任务」。
+        同名工具在决策序列中连续出现 ≥3 次标记「重复调用」；若段内含无进展信号
+        （工具 ERROR 或输出显式为空）则 ≥2 次即升级标记「疑似无效循环」；
+        STEP 思考节点 ≥8 标记「长任务」。
       </div>
       <div className="table-wrap">
         <table>
