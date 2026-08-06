@@ -100,6 +100,11 @@ a:hover {
 /* 屏幕阅读器专用（视觉隐藏，保留可读性） */
 .sr-only {
   position: absolute;
+  /* 显式钉在左上角：无定位祖先时 absolute 会按静态位置落在
+     滚动容器内容深处（如虚拟化调用树底部的 CopyButton），
+     把 document 撑高产生整页滚动条，空白处滚动会带动整页 */
+  top: 0;
+  left: 0;
   width: 1px;
   height: 1px;
   padding: 0;
@@ -1577,16 +1582,18 @@ pre.code,
 .tree-layout {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
-  /* 显式行轨道：内容少时自然高度（不出现幻影滚动条），内容多时封顶独立滚动。
-     auto 行轨道会无视容器 max-height 长到内容高度（大 trace 时间线被 padding
-     撑到几千 px，页面滚不到底）。注意 min 不能用 min-content——padding 撑起的
-     滚动高度会计入 min-content，导致轨道照样超过上限 */
-  grid-template-rows: minmax(auto, calc(100vh - 180px));
+  /* 显式行轨道：内容少时自然高度，内容多时封顶独立滚动。
+     min 必须用 0（auto/min-content 会被表格行撑高，行轨道无视 max-height
+     长到内容高度，导致内部滚动失效、整页滚动）。 */
+  grid-template-rows: minmax(0, calc(100vh - 180px));
   gap: 1rem;
   align-items: stretch;
   /* 约束高度让两列独立滚动 */
   max-height: calc(100vh - 180px);
   min-height: 400px;
+  overflow: hidden;
+  /* 内部滚动到边界时不再链式带动 body（避免整页/侧边栏被滑走） */
+  overscroll-behavior: contain;
 }
 .tree-layout .tree-col {
   min-width: 0;
@@ -1617,6 +1624,7 @@ pre.code,
   border: none;
   border-radius: 0;
   box-shadow: none;
+  overscroll-behavior: contain;
 }
 .tree-layout .panel-col {
   min-width: 0;
@@ -1650,10 +1658,42 @@ pre.code,
     grid-template-columns: 1fr;
     grid-template-rows: none;
     max-height: none;
+    overflow: visible;
+  }
+  .tree-layout .tree-col,
+  .tree-layout .panel-col {
+    overflow: visible;
   }
   .tree-layout .tree-col > .table-wrap,
   .tree-layout .panel-col .obs-detail-panel {
     overflow: visible;
+  }
+}
+
+/* trace 详情 tree tab：整页锁定视口高度，仅调用树/详情列内部滚动。
+   否则页面内容总高超视口，在空白处滚动会带动整页（含侧边栏）滑走 */
+.trace-root.tree-locked {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  /* 负 margin 抵消 .main 的 padding，让 100vh 精确占满视口 */
+  margin: -1.75rem -2rem -4rem;
+  padding: 1.75rem 2rem 4rem;
+  overflow: hidden;
+}
+.trace-root.tree-locked > * {
+  flex-shrink: 0;
+}
+.trace-root.tree-locked > .tree-layout {
+  flex: 1 1 0;
+  min-height: 0;
+  max-height: none;
+  grid-template-rows: minmax(0, 1fr);
+}
+@media (max-width: 768px) {
+  .trace-root.tree-locked {
+    margin: -0.85rem -0.75rem -3.5rem;
+    padding: 0.85rem 0.75rem 3.5rem;
   }
 }
 
@@ -1727,6 +1767,7 @@ pre.code,
   overflow: auto;
   min-height: 0;
   max-height: none !important;
+  overscroll-behavior: contain;
   border-radius: 0;
   border: none;
   border-top: 1px solid var(--border-soft);

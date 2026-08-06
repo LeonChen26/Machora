@@ -386,7 +386,13 @@ export default async function TraceDetailPage({
   );
 
   return (
-    <>
+    <div
+      className={
+        tab === "tree" || tab === "timeline"
+          ? "trace-root tree-locked"
+          : "trace-root"
+      }
+    >
       <div className="breadcrumb">
         <Link href="/traces" prefetch={false}>Traces</Link>
         <span className="mute2">/</span>
@@ -656,6 +662,6 @@ export default async function TraceDetailPage({
         </>
       )}
 
-    </>
+    </div>
   );
 }
