@@ -11,6 +11,7 @@ export type LoopLevel = "repeat" | "ineffective";
 
 export type TrajectoryRow = {
   id: string;
+  parentId: string | null;
   name: string | null;
   kind: TrajectoryKind;
   level: string | null;
@@ -63,7 +64,11 @@ export function buildTrajectoryRows(
 
   // 收集含“无进展信号”的 tool 节点 id（供循环检测分级）
   const noProgressIds = new Set<string>();
-  function walk(nodes: ObsNode[], depth: number): { rowsCount: number; events: number; others: number } {
+  function walk(
+    nodes: ObsNode[],
+    depth: number,
+    parentId: string | null,
+  ): { rowsCount: number; events: number; others: number } {
     let rowsCount = 0;
     let events = 0;
     let others = 0;
@@ -87,11 +92,12 @@ export function buildTrajectoryRows(
         continue;
       }
       if (kind === "tool" && hasNoProgress(node)) noProgressIds.add(node.id);
-      const sub = walk(node.children, depth + 1);
       const dur = durationMs(node.startTime, node.endTime);
-      rowsCount += 1 + sub.rowsCount;
+      // 先入队父行（先序：入口在最前），再递归子树，最后回填聚合计数
+      const idx = rows.length;
       rows.push({
         id: node.id,
+        parentId,
         name: node.name,
         kind,
         level: node.level,
@@ -100,19 +106,26 @@ export function buildTrajectoryRows(
         start: node.startTime.getTime(),
         end: node.endTime ? node.endTime.getTime() : null,
         dur: dur ?? 0,
-        container: sub.rowsCount > 0,
-        visibleChildren: sub.rowsCount,
-        events: sub.events,
-        others: sub.others,
+        container: false,
+        visibleChildren: 0,
+        events: 0,
+        others: 0,
         loop: false,
         loopLevel: null,
         badge: null,
       });
+      const sub = walk(node.children, depth + 1, node.id);
+      const row = rows[idx];
+      row.container = sub.rowsCount > 0;
+      row.visibleChildren = sub.rowsCount;
+      row.events = sub.events;
+      row.others = sub.others;
+      rowsCount += 1 + sub.rowsCount;
     }
     return { rowsCount, events, others };
   }
 
-  walk(roots, 0);
+  walk(roots, 0, null);
 
   // 循环检测（分级）：
   // - 同名工具在决策序列中“连续”出现 ≥3 次 → 重复调用 ×N（仅重复）

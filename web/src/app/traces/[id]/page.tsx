@@ -22,11 +22,13 @@ import {
 import { TraceStatsRow } from "../../../components/trace/TraceStatsRow";
 import { TraceTree } from "../../../components/trace/TraceTree";
 import { TraceTimeline } from "../../../components/trace/TraceTimeline";
-import { TrajectoryFlow } from "../../../components/trace/TrajectoryFlow";
+import { TrajectoryGraph } from "../../../components/trace/TrajectoryGraph";
 import { TraceDetailPanel } from "../../../components/trace/TraceDetailPanel";
 import { buildTrajectoryRows } from "../../../server/trajectory";
+import { classifyTrajectoryKind } from "@machora/shared";
 import {
   SelectionProvider,
+  SelectionLayout,
   type TraceRow,
 } from "../../../components/trace/contexts";
 
@@ -230,42 +232,76 @@ export default async function TraceDetailPage({
   }
 
   // 拍平调用树为行数据（含渲染所需全部计算值），供 client 树/时间线视图消费
+  // 先序：先 push 父行（留空 container/childrenCount），再递归子树，最后回填父子结构信息。
   function flattenRows(nodes: ObsNode[], depth: number, out: TraceRow[]) {
     for (const o of nodes) {
       const dur = durationMs(o.startTime, o.endTime);
       const pos = barPos(o.startTime, o.endTime);
-      const typeColor =
-        o.type === "GENERATION"
-          ? "purple"
-          : o.type === "SPAN"
-            ? "blue"
-            : "amber";
-      const barColor =
-        o.level === "ERROR"
-          ? "var(--red)"
-          : o.level === "WARNING"
-            ? "var(--amber)"
-            : o.type === "GENERATION"
-              ? "var(--purple)"
-              : o.type === "SPAN"
-                ? "var(--accent)"
-                : "var(--amber)";
+      const kind = classifyTrajectoryKind({
+        type: o.type,
+        metadata: o.metadata,
+        model: o.model,
+        agentName: o.agentName,
+        workflowName: o.workflowName,
+        skillName: o.skillName,
+        hasParent: depth > 0,
+      });
+      // pill：从 name 提取 round:N / step:N / iter:N；未命中则 kind=think/retrieval/memory/skill → "STEP"（与截图风格对齐）
+      let pill: string | null = null;
+      const nm = o.name ?? "";
+      const m =
+        /\b(?:round|step|iter|iteration|try|retry|loop)[\s:\-_#]*(\d+)\b/i.exec(nm) ??
+        /\b(r\d+|s\d+)\b/i.exec(nm);
+      if (m) {
+        pill = m[0].replace(/[\s:\-_#]+/g, ":").replace(/^([a-z]+):(\d)/i, (_w, p, n) => `${p.toLowerCase()}:${n}`);
+        // 规整为 "round:1" "step:2" 样式首字母大写
+        pill = pill.charAt(0).toUpperCase() + pill.slice(1);
+      }
+      // TTFT：优先从 usage 里取常见字段；无则 null
+      let ttftMs: number | null = null;
+      const u = o.usage as Record<string, unknown> | null;
+      if (u && typeof u === "object") {
+        const candidates = [
+          "ttftMs",
+          "ttft_ms",
+          "timeToFirstTokenMs",
+          "time_to_first_token_ms",
+          "timeToFirstToken",
+          "time_to_first_token",
+          "firstTokenMs",
+          "first_token_ms",
+        ];
+        for (const k of candidates) {
+          const v = u[k];
+          if (typeof v === "number" && v >= 0) {
+            ttftMs = v;
+            break;
+          }
+        }
+      }
+      const idx = out.length;
       out.push({
         id: o.id,
         name: o.name,
         type: o.type,
         level: o.level,
         model: o.model,
+        kind,
+        pill,
+        totalTokens: typeof o.totalTokens === "number" ? o.totalTokens : null,
+        totalCost: typeof o.totalCost === "number" ? o.totalCost : null,
+        ttftMs,
         depth,
-        start: o.startTime.getTime(),
-        end: o.endTime ? o.endTime.getTime() : null,
         dur: dur ?? 0,
         left: pos.left,
         width: pos.width,
-        barColor,
-        typeColor,
+        container: false,
+        childrenCount: 0,
       });
       flattenRows(o.children, depth + 1, out);
+      const row = out[idx];
+      row.container = o.children.length > 0;
+      row.childrenCount = o.children.length;
     }
   }
   const rows: TraceRow[] = [];
@@ -500,7 +536,7 @@ export default async function TraceDetailPage({
       {(tab === "tree" || tab === "timeline" || tab === "trajectory") && (
         <SelectionProvider>
           {tab === "tree" && (
-          <div className="tree-layout">
+          <SelectionLayout>
             <div className="tree-col">
               <div className="section-title">
                 Observations{" "}
@@ -542,17 +578,17 @@ export default async function TraceDetailPage({
                   无 ERROR / WARNING 分支。
                 </div>
               ) : (
-                <TraceTree rows={rows} spanMs={span} />
+                <TraceTree rows={rows} />
               )}
             </div>
             <div className="panel-col">
               <TraceDetailPanel observations={obsViews}>{traceDetailContent}</TraceDetailPanel>
             </div>
-          </div>
+          </SelectionLayout>
           )}
 
           {tab === "timeline" && (
-          <div className="tree-layout">
+          <SelectionLayout>
             <div className="tree-col">
               <div className="section-title">
                 Timeline{" "}
@@ -569,17 +605,17 @@ export default async function TraceDetailPage({
                   无 ERROR / WARNING 分支。
                 </div>
               ) : (
-                <TraceTimeline rows={rows} spanMs={span} />
+                <TraceTimeline rows={rows} />
               )}
             </div>
             <div className="panel-col">
               <TraceDetailPanel observations={obsViews}>{traceDetailContent}</TraceDetailPanel>
             </div>
-          </div>
+          </SelectionLayout>
           )}
 
           {tab === "trajectory" && (
-          <div className="tree-layout">
+          <SelectionLayout>
             <div className="tree-col">
               <div className="section-title">
                 推理轨迹 <span className="count">{traj.rows.length}</span>
@@ -604,18 +640,18 @@ export default async function TraceDetailPage({
               ) : (
                 <>
                   {!traj.hasAgentSignal && (
-                    <div className="muted mb-1">
+                    <div className="muted mb-1" style={{ padding: "8px 14px" }}>
                       该 Trace 无 Agent 语义数据（无思考 / 模型 / 工具等角色节点）。
                     </div>
                   )}
-                  <TrajectoryFlow rows={traj.rows} />
+                  <TrajectoryGraph rows={traj.rows} />
                 </>
               )}
             </div>
             <div className="panel-col">
               <TraceDetailPanel observations={obsViews}>{traceDetailContent}</TraceDetailPanel>
             </div>
-          </div>
+          </SelectionLayout>
           )}
         </SelectionProvider>
       )}

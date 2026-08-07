@@ -31,7 +31,7 @@ export function ObservationDetailPanel({
 }: {
   observations: ObservationView[];
 }) {
-  const { selectedId, select } = useSelection();
+  const { selectedId, select, setPanelOpen } = useSelection();
 
   // 选中 id → 在 observations 中的索引（不在列表内则为 -1）
   const idx = useMemo(
@@ -113,6 +113,15 @@ export function ObservationDetailPanel({
           disabled={idx >= observations.length - 1}
         >
           下一个 ›
+        </button>
+        <button
+          type="button"
+          className="btn-sm"
+          onClick={() => setPanelOpen(false)}
+          title="隐藏详情，左侧铺满"
+          aria-label="隐藏详情"
+        >
+          ✕
         </button>
       </div>
       <div className="obs-detail-card">

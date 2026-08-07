@@ -19,7 +19,11 @@ export function TraceDetailPanel({
   observations: ObservationView[];
   children: ReactNode;
 }) {
-  const { selectedId } = useSelection();
+  const { selectedId, panelOpen, setPanelOpen } = useSelection();
+
+  // 面板收起时不渲染任何内容（含 ObservationDetailPanel）：
+  // 避免其"选中失效时兜底选第一条"的 effect 自动展开详情
+  if (!panelOpen) return null;
 
   if (selectedId === null) {
     return (
@@ -27,6 +31,15 @@ export function TraceDetailPanel({
         <div className="obs-panel-head">
           <span className="mute2">Trace</span>
           <span className="spacer" />
+          <button
+            type="button"
+            className="btn-sm"
+            onClick={() => setPanelOpen(false)}
+            title="隐藏详情，左侧铺满"
+            aria-label="隐藏详情"
+          >
+            ✕
+          </button>
         </div>
         <div className="obs-detail-card">{children}</div>
       </div>
