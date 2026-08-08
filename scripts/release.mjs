@@ -254,8 +254,14 @@ if (withDeps) {
   // workspace 包链接固化：pnpm 的 hoisted 布局把 @machora/* 链接放在各子包的
   // node_modules 下（Windows 上是 Junction），System32 tar 打 zip 时不解引用
   // junction，解压后链接变成空目录 → 运行时 Cannot find module '@machora/shared'。
-  // 这里把 workspace 包以真实目录复制到根 node_modules/@machora/（Node 从任何
-  // 子包向上解析 node_modules 都能命中），并删掉子包里的 junction，保证解压即用。
+  // 先把子包 node_modules 删掉（仅含 @machora junction），否则 cpSync 复制
+  // workspace 包时会解引用 junction 按相对路径找目标 → ENOENT；同时避免把
+  // 空壳 junction 打进 zip。再把 workspace 包以真实目录复制到根
+  // node_modules/@machora/（Node 从任何子包向上解析 node_modules 都能命中）。
+  for (const sub of ["standalone", "web", "worker"]) {
+    const subNm = resolve(staging, sub, "node_modules");
+    if (existsSync(subNm)) rmSync(subNm, { recursive: true, force: true });
+  }
   mkdirSync(resolve(nmDir, "@machora"), { recursive: true });
   const workspaceCopies = [
     ["@machora/shared", "packages/shared"],
@@ -265,11 +271,6 @@ if (withDeps) {
     const dest = resolve(nmDir, pkg);
     rmSync(dest, { recursive: true, force: true });
     cpSync(resolve(staging, src), dest, { recursive: true });
-  }
-  for (const sub of ["standalone", "web", "worker"]) {
-    const subNm = resolve(staging, sub, "node_modules");
-    // 子包 node_modules 仅含 @machora junction，删掉整个空壳目录，避免打进 zip。
-    if (existsSync(subNm)) rmSync(subNm, { recursive: true, force: true });
   }
   // 固化到根 node_modules/@machora/ 的副本内部，pnpm 可能残留嵌套的 workspace
   // 依赖（如 worker 的 @machora/shared 未被提升，复制时被解引用成真实目录）；
