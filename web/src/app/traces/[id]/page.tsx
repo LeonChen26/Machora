@@ -24,6 +24,7 @@ import { TraceTree } from "../../../components/trace/TraceTree";
 import { TraceTimeline } from "../../../components/trace/TraceTimeline";
 import { TrajectoryGraph } from "../../../components/trace/TrajectoryGraph";
 import { TraceDetailPanel } from "../../../components/trace/TraceDetailPanel";
+import { MessageView } from "../../../components/trace/MessageView";
 import { buildTrajectoryRows } from "../../../server/trajectory";
 import { classifyTrajectoryKind } from "@machora/shared";
 import {
@@ -410,10 +411,10 @@ export default async function TraceDetailPage({
         {(trace.input != null || trace.output != null || trace.metadata != null) ? (
           <>
             {trace.input != null && (
-              <JsonBlock title="TRACE INPUT" json={prettyJson(trace.input)} bare />
+              <MessageView title="TRACE INPUT" value={trace.input} />
             )}
             {trace.output != null && (
-              <JsonBlock title="TRACE OUTPUT" json={prettyJson(trace.output)} bare />
+              <MessageView title="TRACE OUTPUT" value={trace.output} />
             )}
             {trace.metadata != null && (
               <JsonBlock title="TRACE METADATA" json={prettyJson(trace.metadata)} bare />

@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo } from "react";
 import { formatCost, formatDateTime, formatTokens } from "../lib/format";
 import { JsonBlock } from "./JsonBlock";
 import { prettyJson } from "../lib/format";
+import { MessageView } from "./trace/MessageView";
 import { useSelection } from "./trace/contexts";
 
 export type ObservationView = {
@@ -149,10 +150,10 @@ export function ObservationDetailPanel({
           </div>
         )}
         {o.input != null && (
-          <JsonBlock title="INPUT" json={prettyJson(o.input)} bare />
+          <MessageView title="INPUT" value={o.input} />
         )}
         {o.output != null && (
-          <JsonBlock title="OUTPUT" json={prettyJson(o.output)} bare />
+          <MessageView title="OUTPUT" value={o.output} />
         )}
         {o.usage != null && (
           <JsonBlock title="USAGE" json={prettyJson(o.usage)} bare />

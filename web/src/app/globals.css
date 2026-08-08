@@ -45,6 +45,12 @@
   --fam-step-bg: color-mix(in srgb, var(--fam-step) 14%, var(--bg-elev));
   --fam-llm-bg: color-mix(in srgb, var(--fam-llm) 13%, var(--bg-elev));
   --fam-tool-bg: color-mix(in srgb, var(--fam-tool) 13%, var(--bg-elev));
+  /* 消息角色色（user/assistant/system/tool/developer）：Input/Output 按 role 展示用 */
+  --role-user: #4f8df7;
+  --role-assistant: #34d399;
+  --role-system: #8b9bb4;
+  --role-tool: #fbbf24;
+  --role-developer: #a78bfa;
 }
 
 html[data-theme="light"] {
@@ -67,6 +73,11 @@ html[data-theme="light"] {
   --sky: #0284c7;
   --rose: #e11d48;
   --slate: #64748b;
+  --role-user: #2f6fe4;
+  --role-assistant: #0d9f6e;
+  --role-system: #5b6b82;
+  --role-tool: #c2760a;
+  --role-developer: #7c5cd6;
   --shadow-sm: 0 1px 2px rgba(24, 39, 66, 0.05);
   --shadow-md: 0 4px 12px rgba(24, 39, 66, 0.07);
   --shadow-lg: 0 10px 26px rgba(24, 39, 66, 0.1);
@@ -2309,3 +2320,107 @@ pre.code,
 .traj-legend .dot.step { background: var(--fam-step); }
 .traj-legend .dot.llm { background: var(--fam-llm); }
 .traj-legend .dot.tool { background: var(--fam-tool); }
+
+/* ===== Trace 详情：Input/Output 消息视图（AgentLoop 风格，按 role 逐条独立展示） ===== */
+.msg-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.msg-card {
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 6px 10px 7px;
+  overflow-wrap: anywhere;
+}
+.msg-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+.msg-role {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  height: 18px;
+  border-radius: 999px;
+  border: 1px solid;
+  font: var(--weight-semibold) 10px/1 var(--font-mono);
+  letter-spacing: 0.3px;
+  flex-shrink: 0;
+}
+.msg-meta {
+  color: var(--text-mute);
+  font-size: 11px;
+}
+.msg-text {
+  font-size: 12.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.msg-json {
+  margin: 4px 0 0;
+  padding: 6px 8px;
+  background: var(--bg-elev-1);
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+}
+.msg-more {
+  display: inline-block;
+  margin: 4px 0 0 4px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font-size: 11.5px;
+  cursor: pointer;
+  vertical-align: baseline;
+}
+.msg-more:hover {
+  text-decoration: underline;
+}
+.msg-tool-card {
+  margin-top: 5px;
+  border: 1px solid;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.msg-tool-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding: 4px 8px;
+  background: var(--bg-elev-1);
+  font-size: 12px;
+}
+.msg-tool-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+  height: 15px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--role-tool) 14%, transparent);
+  color: var(--role-tool);
+  font: var(--weight-semibold) 10px/1 var(--font-mono);
+  letter-spacing: 0.2px;
+}
+.msg-tool-card .msg-json {
+  border: none;
+  border-top: 1px solid var(--border-soft);
+  border-radius: 0;
+  background: var(--bg-elev-2);
+}
+.msg-image {
+  margin-top: 5px;
+}

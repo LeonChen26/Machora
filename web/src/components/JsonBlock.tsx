@@ -1,7 +1,7 @@
 "use client";
 
 // JSON 折叠块：默认收起超过阈值的 JSON，支持展开/收起与一键复制。
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { CopyButton } from "./CopyButton";
 
 const COLLAPSE_LINES = 25;
@@ -12,10 +12,13 @@ export function JsonBlock({
   title,
   json,
   bare = false,
+  headerExtra,
 }: {
   title: string;
   json: string;
   bare?: boolean;
+  // 头部扩展按钮（如"返回视图"），渲染在展开/收起按钮左侧
+  headerExtra?: ReactNode;
 }) {
   const [expanded, setExpanded] = useState(false);
   const lines = json.split("\n").length;
@@ -38,6 +41,7 @@ export function JsonBlock({
         {title}
       </span>
       <span className="spacer" />
+      {headerExtra}
       {collapsible && (
         <button
           type="button"
