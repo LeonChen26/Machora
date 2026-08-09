@@ -1,0 +1,30 @@
+{
+  "id": "machora-openinference",
+  "name": "Machora OpenInference",
+  "description": "Export OpenClaw diagnostics as OpenInference spans to Machora",
+  "activation": {
+    "onStartup": true
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "endpoint": {
+        "type": "string",
+        "description": "Machora OTLP traces endpoint, e.g. http://localhost:3100/api/public/otel/v1/traces"
+      },
+      "headers": {
+        "type": "object",
+        "description": "Extra HTTP headers sent to the OTLP endpoint (e.g. Authorization)"
+      },
+      "serviceName": {
+        "type": "string",
+        "description": "OpenTelemetry service.name attribute (default: openclaw)"
+      },
+      "flushIntervalMs": {
+        "type": "number",
+        "description": "Batch span export interval in milliseconds (default: 5000)"
+      }
+    }
+  }
+}

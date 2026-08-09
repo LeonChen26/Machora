@@ -1,0 +1,26 @@
+{
+  "name": "@machora/openclaw-openinference",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenClaw probe that exports diagnostics as OpenInference spans to Machora",
+  "type": "module",
+  "main": "./index.ts",
+  "dependencies": {
+    "@opentelemetry/api": "1.9.1",
+    "@opentelemetry/exporter-trace-otlp-proto": "0.221.0",
+    "@opentelemetry/resources": "2.10.0",
+    "@opentelemetry/sdk-trace-base": "2.10.0",
+    "@opentelemetry/semantic-conventions": "1.43.0"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.4.25"
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "compat": {
+      "pluginApi": ">=2026.7.2"
+    }
+  }
+}
