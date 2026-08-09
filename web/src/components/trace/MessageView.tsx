@@ -47,10 +47,16 @@ function roleVar(role: string): string {
   return map[role] ?? "var(--text-dim)";
 }
 
-/** 探测消息语义：单条 {role,...} / {messages:[...]} / OpenAI {choices:[{message}]} */
+/** 探测消息语义：消息数组 / {messages:[...]} / 单条 {role,...} / OpenAI {choices:[{message}]} */
 export function detectMessageShape(value: unknown): "message" | "messages" | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  if (!value || typeof value !== "object") return null;
   const v = value as Record<string, unknown>;
+  // 顶层数组：元素带 role（Hermes/OpenInference 消息列表形态）
+  if (Array.isArray(value)) {
+    return value.length > 0 && typeof (value[0] as Record<string, unknown>)?.role === "string"
+      ? "messages"
+      : null;
+  }
   if (Array.isArray(v.messages) && v.messages.length > 0) return "messages";
   if (typeof v.role === "string" && v.role.length > 0) return "message";
   if (Array.isArray(v.choices) && extractChoices(v.choices).length > 0) return "messages";
@@ -69,10 +75,14 @@ function extractChoices(choices: unknown[]): Msg[] {
   return out;
 }
 
-/** 提取消息列表：messages 数组 / 单条 role / choices[].message；无则 null */
+/** 提取消息列表：顶层数组 / messages 数组 / 单条 role / choices[].message；无则 null */
 function extractMessages(value: unknown): Msg[] | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  if (!value || typeof value !== "object") return null;
   const v = value as Record<string, unknown>;
+  // 顶层数组（Hermes/OpenInference 消息列表形态）
+  if (Array.isArray(value)) {
+    return value.map((m) => (m ?? {}) as Msg);
+  }
   if (Array.isArray(v.messages) && v.messages.length > 0) {
     return v.messages.map((m) => (m ?? {}) as Msg);
   }

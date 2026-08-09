@@ -151,8 +151,11 @@ export default async function TraceDetailPage({
       if (o.type !== "GENERATION") continue;
       let idx = 0;
       for (const src of [o.input, o.output]) {
-        if (!src || typeof src !== "object" || Array.isArray(src)) continue;
-        const messages = (src as Record<string, unknown>).messages;
+        if (!src || typeof src !== "object") continue;
+        // 顶层消息数组（Hermes/OpenInference input.value 形态）或 {messages:[...]}
+        const messages = Array.isArray(src)
+          ? src
+          : (src as Record<string, unknown>).messages;
         if (!Array.isArray(messages)) continue;
         for (const item of messages) {
           if (!item || typeof item !== "object") continue;
