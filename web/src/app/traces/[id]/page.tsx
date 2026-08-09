@@ -145,6 +145,40 @@ export default async function TraceDetailPage({
     tool: "工具",
     function: "工具",
   };
+  /** 提取消息可见文本：content 字符串 / parts|content 数组里的 text 块；无则空串 */
+  function chatMessageText(it: Record<string, unknown>): string {
+    if (typeof it.content === "string") return it.content;
+    const blocks = Array.isArray(it.parts)
+      ? it.parts
+      : Array.isArray(it.content)
+        ? it.content
+        : null;
+    if (blocks) {
+      const texts: string[] = [];
+      let hasTool = false;
+      for (const b of blocks) {
+        const bp = (b ?? {}) as Record<string, unknown>;
+        // 图片 blob 内容为 base64，不拼入对话文本
+        if (bp.type === "blob" && bp.modality === "image") continue;
+        const t =
+          typeof bp.text === "string"
+            ? bp.text
+            : typeof bp.content === "string"
+              ? bp.content
+              : bp.type === "tool_call_response" && typeof bp.response === "string"
+                ? bp.response
+                : null;
+        if (t) texts.push(t);
+        if (bp.type === "tool_call" || bp.type === "tool_use") {
+          hasTool = true;
+        }
+      }
+      if (hasTool) texts.push("⚙ 工具调用");
+      if (texts.length > 0) return texts.join("\n");
+    }
+    if (it.content != null) return prettyJson(it.content);
+    return "";
+  }
   function collectChatMessages(observations: Observation[]): ChatMsg[] {
     const out: ChatMsg[] = [];
     for (const o of observations) {
@@ -161,10 +195,7 @@ export default async function TraceDetailPage({
           if (!item || typeof item !== "object") continue;
           const it = item as Record<string, unknown>;
           const role = typeof it.role === "string" ? it.role : "unknown";
-          let content: string;
-          if (typeof it.content === "string") content = it.content;
-          else if (it.content == null) content = "";
-          else content = prettyJson(it.content);
+          let content = chatMessageText(it);
           if (Array.isArray(it.tool_calls) && it.tool_calls.length > 0) {
             content = (content ? content + "\n\n" : "") + "⚙ tool_calls: " + prettyJson(it.tool_calls);
           }

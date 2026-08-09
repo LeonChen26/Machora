@@ -144,7 +144,8 @@ function renderPart(part: ContentPart, key: string) {
   }
   if (type === "tool_use" || type === "tool_call") {
     const name = typeof part.name === "string" ? part.name : "tool";
-    const input = toolArgsJson(part.input);
+    // OpenClaw 用 arguments 字段；OpenAI/LangChain 形态用 input
+    const input = toolArgsJson(part.input ?? part.arguments);
     return (
       <div key={key} className="msg-tool-card" style={{ borderColor: "var(--role-tool)" }}>
         <div className="msg-tool-head">
@@ -156,10 +157,16 @@ function renderPart(part: ContentPart, key: string) {
       </div>
     );
   }
-  if (type === "tool_result" || type === "function_call_result") {
+  if (
+    type === "tool_result" ||
+    type === "function_call_result" ||
+    type === "tool_call_response"
+  ) {
     const id = typeof part.tool_call_id === "string" ? part.tool_call_id : typeof part.id === "string" ? part.id : null;
+    // OpenClaw tool_call_response 用 response 字段；其余形态用 content
+    const raw = type === "tool_call_response" ? part.response : part.content;
     const content =
-      typeof part.content === "string" ? part.content : part.content != null ? prettyJson(part.content) : null;
+      typeof raw === "string" ? raw : raw != null ? prettyJson(raw) : null;
     return (
       <div key={key} className="msg-tool-card msg-tool-result" style={{ borderColor: "var(--role-tool)" }}>
         <div className="msg-tool-head">
@@ -167,7 +174,7 @@ function renderPart(part: ContentPart, key: string) {
           {id && <span className="msg-meta mono">{id}</span>}
         </div>
         {content != null &&
-          (part.content != null && typeof part.content !== "string" ? (
+          (raw != null && typeof raw !== "string" ? (
             <JsonFold json={content} />
           ) : (
             <TextBlock text={content} />
@@ -175,13 +182,28 @@ function renderPart(part: ContentPart, key: string) {
       </div>
     );
   }
-  if (type === "image" || type === "image_url") {
+  if (type === "reasoning") {
+    return (
+      <div key={key} className="msg-tool-card msg-tool-result" style={{ borderColor: "var(--text-dim)" }}>
+        <div className="msg-tool-head">
+          <span className="msg-tool-badge">推理</span>
+          {part.redacted ? <span className="msg-meta mono">（已脱敏）</span> : null}
+        </div>
+        {typeof part.text === "string" ? <TextBlock text={part.text} /> : <JsonFold json={prettyJson(part)} />}
+      </div>
+    );
+  }
+  if (type === "image" || type === "image_url" || (type === "blob" && part.modality === "image")) {
     const url =
-      typeof part.image_url === "string"
-        ? part.image_url
-        : (part.image_url as { url?: string } | null)?.url ||
-          (part.source as { data?: string } | null)?.data ||
-          null;
+      type === "blob"
+        ? typeof part.content === "string" && part.content
+          ? `data:${(part.mime_type as string) ?? "image/png"};base64,${part.content}`
+          : null
+        : typeof part.image_url === "string"
+          ? part.image_url
+          : (part.image_url as { url?: string } | null)?.url ||
+            (part.source as { data?: string } | null)?.data ||
+            null;
     return (
       <div key={key} className="msg-image">
         {url ? (
