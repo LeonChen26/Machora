@@ -109,13 +109,6 @@ export const NOISE_PREFIXES = [
   "embedding.",
 ] as const;
 
-// OpenInference span kind（openinference.span.kind）→ Machora observation 类型
-// 规范见 https://github.com/Arize-ai/openinference/blob/main/spec/semantic_conventions.md
-export const OPENINFERENCE_GENERATION_KINDS = new Set<string>([
-  "LLM",
-  "EMBEDDING",
-]);
-
 export const OPENINFERENCE_SPAN_KINDS = new Set<string>([
   "CHAIN",
   "RETRIEVER",

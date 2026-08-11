@@ -46,7 +46,7 @@ function pushGeneration(traceId, start, durationMs, opts = {}) {
     body: {
       id: nextId("obs"),
       traceId,
-      type: "GENERATION",
+      type: "LLM",
       name: opts.name ?? "llm-call",
       startTime: start.toISOString(),
       endTime: new Date(start.getTime() + durationMs).toISOString(),

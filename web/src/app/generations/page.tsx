@@ -229,7 +229,7 @@ export default async function GenerationsPage({
       {items.length === 0 ? (
         <div className="card empty">
           <EmptyIcon type="list" />
-          该条件下没有 GENERATION 调用。试试放宽筛选，或先注入一条数据。
+          该条件下没有 LLM / Embedding 调用。试试放宽筛选，或先注入一条数据。
         </div>
       ) : (
         <div className="table-wrap">

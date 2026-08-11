@@ -1,4 +1,4 @@
-﻿# ============================================================================
+# ============================================================================
 # Machora API 全量验证脚本
 # 用法（本地）：
 #   powershell -ExecutionPolicy Bypass -File scripts\verify-api.ps1
@@ -146,7 +146,7 @@ Write-Step "B. 注入 API（ingestion + OTLP traces + OTLP metrics）"
 $ingBody = @{
   batch = @(
     @{ type = "trace-create"; body = @{ id = $traceId; name = "verify-ingestion"; timestamp = $now; environment = "verify"; input = "hello"; output = "world"; tags = @("verify") } },
-    @{ type = "observation-create"; body = @{ id = $obsId; traceId = $traceId; type = "GENERATION"; name = "llm-call"; startTime = $now; endTime = $now; model = "gpt-4o-mini"; input = "hi"; output = "bye"; level = "DEFAULT"; usage = @{ promptTokens = 10; completionTokens = 5 } } },
+    @{ type = "observation-create"; body = @{ id = $obsId; traceId = $traceId; type = "LLM"; name = "llm-call"; startTime = $now; endTime = $now; model = "gpt-4o-mini"; input = "hi"; output = "bye"; level = "DEFAULT"; usage = @{ promptTokens = 10; completionTokens = 5 } } },
     @{ type = "score-create"; body = @{ traceId = $traceId; name = "verify-score"; value = 0.9; dataType = "NUMERIC" } }
   )
 } | ConvertTo-Json -Depth 10

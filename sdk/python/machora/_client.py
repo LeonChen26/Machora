@@ -242,9 +242,9 @@ class MachoraClient:
         usage: Any = None,
         level: str = "DEFAULT",
     ) -> "Span":
-        """返回一个可 end() 的 handle；end 时创建 GENERATION 事件。"""
+        """返回一个可 end() 的 handle；end 时创建 LLM observation。"""
         return Span(self, trace_id, name=name, input=input, output=output,
-                    metadata=metadata, level=level, type="GENERATION",
+                    metadata=metadata, level=level, type="LLM",
                     model=model, usage=usage)
 
     # ------------------------------------------------------------------

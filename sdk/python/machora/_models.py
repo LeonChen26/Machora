@@ -31,7 +31,10 @@ class ObservationBody(BaseModel):
 
     id: str
     trace_id: str = Field(alias="traceId")
-    type: Literal["SPAN", "GENERATION", "EVENT"] = "SPAN"
+    type: Literal[
+        "ENTRY", "AGENT", "STEP", "LLM", "TOOL", "EMBEDDING",
+        "CHAIN", "RETRIEVER", "RERANKER", "EVENT", "SPAN",
+    ] = "SPAN"
     name: Optional[str] = None
     start_time: str = Field(alias="startTime")
     end_time: Optional[str] = Field(default=None, alias="endTime")

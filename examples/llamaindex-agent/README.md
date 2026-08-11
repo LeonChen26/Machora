@@ -11,23 +11,22 @@
 - **真实模型模式**（`OPENAI_API_KEY` 或 `OPENAI_BASE_URL`）：`AgentWorkflow` + 工具
 
   ```
-  agent_workflow（AGENT → SPAN）
-  ├── get_weather（TOOL → SPAN）
-  ├── add（TOOL → SPAN）
-  └── llm_call（LLM → GENERATION，含 token_count / model_name / cost）
+  agent_workflow（AGENT）
+  ├── get_weather（TOOL）
+  ├── add（TOOL）
+  └── llm_call（LLM，含 token_count / model_name / cost）
   ```
 
 - **离线 RAG 模式**（默认，无需 API key）：`VectorStoreIndex` + `MockEmbedding` + `MockLLM`
 
   ```
-  query_engine（CHAIN → SPAN）
-  ├── embed（EMBEDDING → GENERATION）
-  └── llm_call（LLM → GENERATION）
+  query_engine（CHAIN）
+  ├── embed（EMBEDDING）
+  └── llm_call（LLM）
   ```
 
 Machora 的 [OTel 处理器](../../packages/shared/src/otel/processor.ts) 会把
-`openinference.span.kind` 映射为 Observation 类型（LLM/EMBEDDING → GENERATION，
-AGENT/TOOL/CHAIN/RETRIEVER → SPAN），并提取 `input.value`/`output.value`（JSON 解码）、
+`openinference.span.kind` 直接落库为 Observation 类型（LLM/EMBEDDING/AGENT/TOOL/CHAIN/RETRIEVER 原样保存），并提取 `input.value`/`output.value`（JSON 解码）、
 `llm.token_count.*`、`llm.model_name`、`llm.cost.total`、`user.id`/`session.id`/`tag.tags`/`agent.name`
 到专用字段。
 
@@ -99,7 +98,7 @@ python agent.py
 ### 5. 查看结果
 
 打开 `http://localhost:3100/traces`，按时间排序可见 `llamaindex-demo` 的 trace；进入详情页
-可看到调用树缩进视图与 GENERATION 的模型/token/成本信息；Analytics 页「按 Agent 汇总」
+可看到调用树缩进视图与 LLM 的模型/token/成本信息；Analytics 页「按 Agent 汇总」
 会显示 `openinference.span.attributes.agent.name` 提取的 agent 名。
 
 ## 文件说明

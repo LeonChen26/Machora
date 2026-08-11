@@ -3,9 +3,9 @@
 构造一条多层级调用链（模拟真实 agent 一次运行）：
     agent (AGENT)
     ├─ search (TOOL)
-    │   └─ chat (GENERATION, gpt-4o-mini)
+    │   └─ chat (LLM, gpt-4o-mini)
     └─ plan (CHAIN)
-        ├─ chat (GENERATION, deepseek-v3)
+        ├─ chat (LLM, deepseek-v3)
         └─ embed (EMBEDDING, text-embedding-3-small)
 
 span 通过嵌套 context 自动建立 parent-child（OTLP parentSpanId），

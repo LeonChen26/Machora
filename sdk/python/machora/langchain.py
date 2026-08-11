@@ -1,7 +1,7 @@
 """LangChain 自动埋点回调处理器。
 
 一条链运行（顶层 chain run）对应一条 Machora trace；其内的 LLM 调用记为
-GENERATION、工具/子链调用记为 SPAN。事件在 run 结束时入队，顶层链结束时
+LLM、工具/子链调用记为 SPAN。事件在 run 结束时入队，顶层链结束时
 flush —— 保证 trace 先于 observation 落库。
 
 用法：
@@ -124,7 +124,7 @@ class MachoraCallbackHandler(BaseCallbackHandler):
             return
         self._end_span(str(run_id), output=str(error), level="ERROR")
 
-    # -- LLM = GENERATION ---------------------------------------------------
+    # -- LLM = LLM ------------------------------------------------------
 
     def on_llm_start(
         self,

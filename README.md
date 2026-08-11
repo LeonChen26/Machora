@@ -8,8 +8,8 @@
 
 ## 核心能力
 
-- **Traces / Observations / Scores**：SPAN、GENERATION、EVENT 三种观测类型，支持父子调用树（`parentObservationId` 嵌套层级）与详情选中详览
-- **Trace 详情 4 Tab**：Langfuse 式分区——调用树（左树右详情）、对话（从 GENERATION input/output.messages 提取气泡视图）、评分（ScoreForm + 评分表）、详情（kv 基本信息 + Trace input/output/metadata）
+- **Traces / Observations / Scores**：observation.type 与 span.kind 一致的多值角色（ENTRY/AGENT/STEP/LLM/TOOL/EMBEDDING/CHAIN/RETRIEVER/RERANKER/EVENT/SPAN），支持父子调用树（`parentObservationId` 嵌套层级）与详情选中详览
+- **Trace 详情 4 Tab**：Langfuse 式分区——调用树（左树右详情）、对话（从 LLM input/output.messages 提取气泡视图）、评分（ScoreForm + 评分表）、详情（kv 基本信息 + Trace input/output/metadata）
 - **Generations 页**：独立 LLM 调用列表，支持按模型/级别/时间窗筛选与排序（时间/耗时/Token/成本）
 - **CSV 导出**：`GET /api/export/traces`、`GET /api/export/generations`，按当前筛选条件导出
 - **Scores API**：UI 标注 `POST /api/scores`（session 鉴权）；公开查询/写入 `GET/POST /api/public/scores`（Basic Auth），支持人工/自动评分写入与查询
@@ -56,7 +56,7 @@ pnpm standalone:start   # 生产模式，默认 http://localhost:3100
 
 - `demo.py`：原生注入 + LangChain 回调两种用法
 - `call_chain_demo.py`：多层嵌套调用链（演示 parentObservationId 层级树）
-- `langgraph_demo.py`：LangGraph 走 OTel 通道（标准 `OTLPSpanExporter`，`openinference.span.kind` 属性映射 SPAN/GENERATION）
+- `langgraph_demo.py`：LangGraph 走 OTel 通道（标准 `OTLPSpanExporter`，`openinference.span.kind` 属性直接落库 type）
 
 上报时把环境变量 `MACHORA_HOST`（默认 `http://localhost:3100`）指向目标实例即可；凭据走 `MACHORA_PUBLIC_KEY` / `MACHORA_SECRET_KEY`。
 

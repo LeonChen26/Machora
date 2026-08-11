@@ -9,14 +9,15 @@ entry（session.id / user.id 染色整条链路）
     └── react_step（ReAct 单轮，round=1）
         ├── execute_tool: get_weather（gen_ai.skill.* → skillName 专用列）
         ├── execute_tool: add
-        └── llm（input/output 消息 → GENERATION）
+        └── llm（input/output 消息 → LLM）
 ```
 
 Machora 侧映射（2026-08-02 补齐）：
 
 | LoongSuite 语义 | Machora 呈现 |
 |---|---|
-| `gen_ai.operation.name=entry / react_step / rerank / invoke_skill` | SPAN（AGENT_OPERATIONS 显式枚举） |
+| `gen_ai.operation.name=entry / react_step / rerank` | ENTRY / STEP / RERANKER（operation 推断） |
+| `gen_ai.operation.name=invoke_skill / create_skill` | SPAN（通用节点） |
 | `gen_ai.skill.name`（挂在 execute_tool 上） | Trace/Observation `skillName` 专用列 + UI 徽章 + 查询 API `skill=` 过滤 |
 | `gen_ai.skill.id / description / version` | metadata 保留 |
 | `session.id` / `user.id` / `gen_ai.agent.name`（Baggage 传播） | trace 级 userId / sessionId / agentName |
@@ -45,8 +46,8 @@ python agent.py
 ```
 
 运行后在 Machora `/traces` 可见一条 `loongsuite-demo` 的 trace：详情页调用树 =
-entry(SPAN) → WeatherAssistant(SPAN) → step(SPAN) → get_weather(SPAN, skillName=weather)
-+ add(SPAN) + llm(GENERATION)，Agent 徽章 = WeatherAssistant、Skill 徽章 = weather、
+entry(ENTRY) → WeatherAssistant(AGENT) → step(STEP) → get_weather(TOOL, skillName=weather)
++ add(TOOL) + llm(LLM)，Agent 徽章 = WeatherAssistant、Skill 徽章 = weather、
 会话 = sess-loong-1、用户 = user-loong-1。
 
 > 注意：`loongsuite-otel-util-genai` 与社区 `opentelemetry-util-genai` 混装会触发依赖

@@ -1,6 +1,6 @@
-// OpenInference 语义补齐测试：span.kind 显式枚举（LLM/EMBEDDING→GENERATION，
-// CHAIN/AGENT/TOOL/RETRIEVER→SPAN）、input/output.value 解码、token_count/cost 提取、
-// trace 级 user/session/tags/agent 提取、metadata 噪声键剔除
+// OpenInference 语义补齐测试：span.kind 直接落库为 type（LLM/EMBEDDING/
+// CHAIN/AGENT/TOOL/RETRIEVER 原样保存）、input/output.value 解码、
+// token_count/cost 提取、trace 级 user/session/tags/agent 提取、metadata 噪声键剔除
 
 import { describe, it, expect } from "vitest";
 import { parseOtelPayload } from "./processor.ts";

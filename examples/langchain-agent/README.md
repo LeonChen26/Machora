@@ -10,7 +10,7 @@ Agent 调用树灌入 [Machora](../../design.md) 可观测平台。
 ```
 agent（根 span）
 ├── tools / get_weather（SPAN，工具调用）
-└── ChatOpenAI / FakeMessagesListChatModel（GENERATION，LLM 调用）
+└── ChatOpenAI / FakeMessagesListChatModel（LLM，模型调用）
 ```
 
 ## 接入原理
@@ -80,7 +80,7 @@ python agent.py
 ### 5. 查看结果
 
 打开 `http://localhost:3100/traces`，按时间排序可见 `langchain-demo` 的 trace；进入详情页
-可看到调用树缩进视图与 GENERATION 的 token/模型信息。
+可看到调用树缩进视图与 LLM 的 token/模型信息。
 
 ## 文件说明
 

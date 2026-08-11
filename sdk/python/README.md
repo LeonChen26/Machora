@@ -56,7 +56,7 @@ handler = MachoraCallbackHandler()  # 或传入已构造的 client
 CallbackManager.configure(handlers=[handler])
 ```
 
-一次顶层链 run = 一条 trace；LLM/chat 调用 = GENERATION；工具/子链 = SPAN；错误 → ERROR。
+一次顶层链 run = 一条 trace；LLM/chat 调用 = LLM；工具/子链 = SPAN；错误 → ERROR。
 
 > 注意：LangGraph 1.x 会把节点/模型子 run 合并进顶层 run，回调拿不到子级——
 > LangGraph 请走 OTel 通道（见 Machora 仓库 `examples/langchain-agent`）。

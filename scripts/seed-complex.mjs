@@ -44,7 +44,7 @@ function rel(ts, ms) {
   O(entry, { type: "SPAN", name: "entry", startTime: rel(ts, 0), endTime: rel(ts, 3800), metadata: { kind: "agent-entry" } });
   O(intent, { type: "SPAN", name: "agent:intent-classify", startTime: rel(ts, 10), endTime: rel(ts, 450), parentObservationId: entry });
   O(cls, {
-    type: "GENERATION", name: "llm:intent", startTime: rel(ts, 20), endTime: rel(ts, 400),
+    type: "LLM", name: "llm:intent", startTime: rel(ts, 20), endTime: rel(ts, 400),
     parentObservationId: intent, model: "gpt-4o-mini",
     usage: { prompt_tokens: 620, completion_tokens: 230, total_tokens: 850 },
     input: USER("订单 12345 申请退款，但系统说查不到订单"),
@@ -64,7 +64,7 @@ function rel(ts, ms) {
     metadata: { attempts: 2 },
   });
   O(analyze, {
-    type: "GENERATION", name: "llm:refund-analyze", startTime: rel(ts, 1550), endTime: rel(ts, 2650),
+    type: "LLM", name: "llm:refund-analyze", startTime: rel(ts, 1550), endTime: rel(ts, 2650),
     parentObservationId: refund, model: "claude-3-5-sonnet",
     usage: { prompt_tokens: 1900, completion_tokens: 500, total_tokens: 2400 },
     input: USER("订单已签收，用户申请退款，是否符合退货政策？"),
@@ -73,7 +73,7 @@ function rel(ts, ms) {
   O(ev, { type: "EVENT", name: "event:low-confidence", startTime: rel(ts, 1700), parentObservationId: analyze, level: "WARNING", metadata: { confidence: 0.41 } });
   O(esc, { type: "SPAN", name: "agent:escalate", startTime: rel(ts, 2700), endTime: rel(ts, 3600), parentObservationId: refund });
   O(draft, {
-    type: "GENERATION", name: "llm:draft-escalation", startTime: rel(ts, 2720), endTime: rel(ts, 3170),
+    type: "LLM", name: "llm:draft-escalation", startTime: rel(ts, 2720), endTime: rel(ts, 3170),
     parentObservationId: esc, model: "gpt-4o",
     usage: { prompt_tokens: 420, completion_tokens: 200, total_tokens: 620 },
     input: USER("生成人工客服工单内容"), output: ASSIST("工单：退款超期申请，需要人工复核。"),
@@ -108,7 +108,7 @@ function rel(ts, ms) {
   O(entry, { type: "SPAN", name: "entry", startTime: rel(ts, 0), endTime: rel(ts, 2400) });
   O(retr, { type: "SPAN", name: "agent:retrieve", startTime: rel(ts, 20), endTime: rel(ts, 1400), parentObservationId: entry });
   O(emb, {
-    type: "GENERATION", name: "embed:query", startTime: rel(ts, 30), endTime: rel(ts, 150),
+    type: "EMBEDDING", name: "embed:query", startTime: rel(ts, 30), endTime: rel(ts, 150),
     parentObservationId: retr, model: "text-embedding-3-small",
     usage: { prompt_tokens: 256, completion_tokens: 0, total_tokens: 256 },
     input: USER("Q3 产品线收入增长"), output: { embedding: { dim: 1536, truncated: true } },
@@ -119,7 +119,7 @@ function rel(ts, ms) {
   O(kw, { type: "SPAN", name: "keyword:search", startTime: rel(ts, 180), endTime: rel(ts, 530), parentObservationId: retr });
   O(rk, { type: "SPAN", name: "rerank", startTime: rel(ts, 900), endTime: rel(ts, 1280), parentObservationId: retr, metadata: { candidates: 15, keep: 4 } });
   O(ans, {
-    type: "GENERATION", name: "llm:answer", startTime: rel(ts, 1450), endTime: rel(ts, 2300),
+    type: "LLM", name: "llm:answer", startTime: rel(ts, 1450), endTime: rel(ts, 2300),
     parentObservationId: entry, model: "gpt-4o",
     usage: { prompt_tokens: 4800, completion_tokens: 800, total_tokens: 5600 },
     input: USER("基于检索结果回答：Q3 各产品线收入增长"), output: ASSIST("云业务 22%、企业服务 15%、广告 8%。"),
@@ -151,7 +151,7 @@ function rel(ts, ms) {
   O(entry, { type: "SPAN", name: "entry", startTime: rel(ts, 0), endTime: rel(ts, 9000) });
   O(chat, { type: "SPAN", name: "agent:chat", startTime: rel(ts, 10), endTime: rel(ts, 8900), parentObservationId: entry });
   O(t1, {
-    type: "GENERATION", name: "llm:turn-1", startTime: rel(ts, 20), endTime: rel(ts, 800),
+    type: "LLM", name: "llm:turn-1", startTime: rel(ts, 20), endTime: rel(ts, 800),
     parentObservationId: chat, model: "deepseek-chat",
     usage: { prompt_tokens: 450, completion_tokens: 250, total_tokens: 700 },
     input: { messages: [{ role: "user", content: "帮我查一下最近科技新闻" }] },
@@ -159,7 +159,7 @@ function rel(ts, ms) {
   });
   O(web, { type: "SPAN", name: "tool:search-web", startTime: rel(ts, 30), endTime: rel(ts, 300), parentObservationId: t1, skillName: "web-search", metadata: { query: "科技新闻 本周" } });
   O(t2, {
-    type: "GENERATION", name: "llm:turn-2", startTime: rel(ts, 1000), endTime: rel(ts, 3600),
+    type: "LLM", name: "llm:turn-2", startTime: rel(ts, 1000), endTime: rel(ts, 3600),
     parentObservationId: chat, model: "deepseek-chat",
     usage: { prompt_tokens: 900, completion_tokens: 300, total_tokens: 1200 },
     input: { messages: [
@@ -170,7 +170,7 @@ function rel(ts, ms) {
     output: { choices: [{ message: { role: "assistant", content: "本周 AI 芯片领域有三件大事：1) 英伟达 H 系列产能爬坡…" } }] },
   });
   O(t3, {
-    type: "GENERATION", name: "llm:turn-3", startTime: rel(ts, 3700), endTime: rel(ts, 8800),
+    type: "LLM", name: "llm:turn-3", startTime: rel(ts, 3700), endTime: rel(ts, 8800),
     parentObservationId: chat, model: "deepseek-chat",
     usage: { prompt_tokens: 700, completion_tokens: 250, total_tokens: 950 },
     input: { messages: [{ role: "user", content: "总结成三段给我" }] },
@@ -203,21 +203,21 @@ function rel(ts, ms) {
   O(batch2, { type: "SPAN", name: "agent:batch", startTime: rel(ts, 10), endTime: rel(ts, 4900), parentObservationId: entry });
   O(d1, { type: "SPAN", name: "chunk:doc-1", startTime: rel(ts, 20), endTime: rel(ts, 900), parentObservationId: batch2 });
   O(s1, {
-    type: "GENERATION", name: "llm:sum-1", startTime: rel(ts, 30), endTime: rel(ts, 880),
+    type: "LLM", name: "llm:sum-1", startTime: rel(ts, 30), endTime: rel(ts, 880),
     parentObservationId: d1, model: "gpt-4o-mini",
     usage: { prompt_tokens: 1400, completion_tokens: 400, total_tokens: 1800 },
     input: USER("摘要文档1"), output: ASSIST("文档1摘要：…"),
   });
   O(d2, { type: "SPAN", name: "chunk:doc-2", startTime: rel(ts, 1000), endTime: rel(ts, 3000), parentObservationId: batch2 });
   O(s2, {
-    type: "GENERATION", name: "llm:sum-2", startTime: rel(ts, 1010), endTime: rel(ts, 1600),
+    type: "LLM", name: "llm:sum-2", startTime: rel(ts, 1010), endTime: rel(ts, 1600),
     parentObservationId: d2, model: "gpt-4o-mini", level: "ERROR",
     usage: { prompt_tokens: 40000, completion_tokens: 0, total_tokens: 40000 },
     input: USER("摘要文档2"), output: { error: { type: "context_length_exceeded", message: "超过 32k 上下文" } },
     metadata: { errorType: "ContextLengthExceeded" },
   });
   O(s2b, {
-    type: "GENERATION", name: "llm:sum-2-retry", startTime: rel(ts, 1700), endTime: rel(ts, 2900),
+    type: "LLM", name: "llm:sum-2-retry", startTime: rel(ts, 1700), endTime: rel(ts, 2900),
     parentObservationId: d2, model: "gpt-4o",
     usage: { prompt_tokens: 2100, completion_tokens: 500, total_tokens: 2600 },
     input: USER("分块重试摘要文档2"), output: ASSIST("文档2摘要（重试成功）：…"),
@@ -225,14 +225,14 @@ function rel(ts, ms) {
   });
   O(d3, { type: "SPAN", name: "chunk:doc-3", startTime: rel(ts, 3100), endTime: rel(ts, 3800), parentObservationId: batch2 });
   O(s3, {
-    type: "GENERATION", name: "llm:sum-3", startTime: rel(ts, 3110), endTime: rel(ts, 3700),
+    type: "LLM", name: "llm:sum-3", startTime: rel(ts, 3110), endTime: rel(ts, 3700),
     parentObservationId: d3, model: "gpt-4o-mini",
     usage: { prompt_tokens: 1200, completion_tokens: 300, total_tokens: 1500 },
     input: USER("摘要文档3"), output: ASSIST("文档3摘要：…"),
   });
   O(mg, { type: "SPAN", name: "merge", startTime: rel(ts, 3900), endTime: rel(ts, 4800), parentObservationId: batch2 });
   O(mgl, {
-    type: "GENERATION", name: "llm:merge", startTime: rel(ts, 3910), endTime: rel(ts, 4700),
+    type: "LLM", name: "llm:merge", startTime: rel(ts, 3910), endTime: rel(ts, 4700),
     parentObservationId: mg, model: "claude-3-5-sonnet",
     usage: { prompt_tokens: 2400, completion_tokens: 800, total_tokens: 3200 },
     input: USER("合并三份摘要为最终报告"), output: ASSIST("最终报告：…"),

@@ -14,8 +14,9 @@ session   span.kind=AGENT  ← on_session_start / on_session_end
 subagent   span.kind=AGENT  ← subagent_start / subagent_stop
 ```
 
-`openinference.span.kind` drives backend classification (LLM/EMBEDDING →
-GENERATION, everything else → SPAN). Inputs/outputs use `input.value` /
+`openinference.span.kind` drives backend classification — Machora stores it
+directly as `observation.type` (LLM → LLM, AGENT → AGENT, CHAIN → CHAIN, ...).
+Inputs/outputs use `input.value` /
 `output.value` (JSON-encoded, `application/json` mime), models use
 `llm.model_name`, token counts use `llm.token_count.prompt/completion`, and
 tools use `tool.name` / `tool_call.id`. `session.id`, `user.id`, and

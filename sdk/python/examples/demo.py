@@ -42,7 +42,7 @@ def demo_native() -> None:
 
 
 def demo_langchain() -> None:
-    """LangChain 回调：一次链调用 = 一条 trace，LLM 调用 = GENERATION。"""
+    """LangChain 回调：一次链调用 = 一条 trace，LLM 调用 = LLM。"""
     from langchain_core.callbacks import CallbackManager
     from langchain_core.language_models.fake_chat_models import (
         FakeMessagesListChatModel,

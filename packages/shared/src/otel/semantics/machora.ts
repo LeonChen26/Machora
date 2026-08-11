@@ -32,12 +32,6 @@ export const MACHORA_ATTR = {
   LEVEL: "machora.level",
 } as const;
 
-/** machora.span.kind → 生成类（GENERATION）的取值 */
-export const MACHORA_GENERATION_KINDS = new Set<string>(["LLM", "EMBEDDING"]);
-
-/** machora.span.kind → 事件类（EVENT）的取值 */
-export const MACHORA_EVENT_KINDS = new Set<string>(["EVENT"]);
-
 /** machora.span.kind 全部合法取值（供文档与校验） */
 export const MACHORA_SPAN_KINDS = [
   "ENTRY",

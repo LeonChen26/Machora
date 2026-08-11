@@ -10,8 +10,8 @@
 //   （兼作其他测试的 mock 数据源）
 //
 // 断言覆盖：protobuf / JSON 双通道一致性、trace/observation 层级、
-// openclaw.model.call → GENERATION（模型 + token usage）、
-// exec / tool.execution → SPAN（metadata 保留 openclaw.* 与 resource）。
+// openclaw.model.call → LLM（模型 + token usage）、
+// exec / tool.execution → TOOL（metadata 保留 openclaw.* 与 resource）。
 
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";

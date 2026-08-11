@@ -31,7 +31,7 @@ class TestModels(unittest.TestCase):
         body = ObservationBody(
             id="o1",
             trace_id="t1",
-            type="GENERATION",
+            type="LLM",
             start_time="2026-08-02T00:00:00.000Z",
             end_time="2026-08-02T00:00:01.000Z",
             usage={"prompt_tokens": 10},

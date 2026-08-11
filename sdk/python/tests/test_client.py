@@ -85,7 +85,7 @@ class TestClient(unittest.TestCase):
         t.flush()
         batch = c.captured[0]["body"]["batch"]
         obs = batch[1]["body"]
-        self.assertEqual(obs["type"], "GENERATION")
+        self.assertEqual(obs["type"], "LLM")
         self.assertEqual(obs["model"], "gpt-4o-mini")
         self.assertEqual(obs["usage"], {"prompt_tokens": 10, "completion_tokens": 5})
         self.assertEqual(obs["output"], {"content": "hello"})

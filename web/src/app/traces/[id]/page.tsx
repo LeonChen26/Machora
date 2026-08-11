@@ -130,7 +130,7 @@ export default async function TraceDetailPage({
     (o) => o.level === "ERROR" || o.level === "WARNING",
   ).length;
 
-  // 对话视图：从 GENERATION 的 input/output.messages 提取消息流（按时间序）
+  // 对话视图：从 LLM 的 input/output.messages 提取消息流（按时间序）
   interface ChatMsg {
     id: string;
     role: string;
@@ -773,7 +773,7 @@ export default async function TraceDetailPage({
       {chatMessages.length === 0 ? (
         <div className="card empty">
           <EmptyIcon type="target" />
-          该 Trace 无对话消息（GENERATION 需带 input/output.messages）。
+          该 Trace 无对话消息（LLM 需带 input/output.messages）。
         </div>
       ) : (
         <div className="card chat-view" style={{ maxHeight: "none" }}>

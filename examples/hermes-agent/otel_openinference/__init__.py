@@ -16,7 +16,7 @@ backends like Machora classify spans without extra configuration:
 Attributes follow OpenInference keys (input.value, output.value,
 llm.model_name, llm.token_count.prompt/completion, tool.name, tool_call.id,
 session.id, user.id, agent.name). ``openinference.span.kind`` drives backend
-classification (LLM/EMBEDDING -> GENERATION, everything else -> SPAN).
+classification — Machora stores the kind directly as ``observation.type``.
 
 Activation is handled by the Hermes plugin system — standalone plugins only
 load when listed in ``plugins.enabled`` (via ``hermes plugins enable

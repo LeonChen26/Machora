@@ -10,7 +10,7 @@ import {
 } from "../lib/format";
 import { levelBadge } from "../lib/levelBadge";
 
-// analytics 下钻明细行（GENERATION 观测的子集）
+// analytics 下钻明细行（LLM/Embedding 观测的子集）
 export type DrilldownGen = {
   id: string;
   level: string | null;

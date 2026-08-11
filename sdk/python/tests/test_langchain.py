@@ -70,7 +70,7 @@ class TestLangchainHandler(unittest.TestCase):
         obs = [e for e in batch if e["type"] == "observation-create"]
         self.assertEqual(len(obs), 1)
         body = obs[0]["body"]
-        self.assertEqual(body["type"], "GENERATION")
+        self.assertEqual(body["type"], "LLM")
         self.assertEqual(body["name"], "llm")
         self.assertEqual(body["usage"], {"prompt_tokens": 3, "completion_tokens": 2})
         self.assertIsNotNone(body["endTime"])
