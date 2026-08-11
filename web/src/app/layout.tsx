@@ -134,9 +134,8 @@ export default async function RootLayout({
             <div className="nav-section">项目</div>
             <NavItem href="/projects" label="Projects" icon="projects" />
             <NavItem href="/api-keys" label="API Keys" icon="keys" />
-            <div className="nav-section">接入</div>
-            <NavItem href="/docs" label="Docs" icon="docs" />
             <div className="nav-section">系统</div>
+            <NavItem href="/docs" label="Docs" icon="docs" />
             <NavItem href="/system" label="System" icon="system" />
             {user && (
               <div className="sidebar-user">

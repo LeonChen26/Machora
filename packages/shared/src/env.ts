@@ -8,6 +8,9 @@ export const envSchema = z.object({
   DATA_DIR: z.string().default("./.machora-data"),
   NODE_ENV: z.string().default("development"),
 
+  // 接入认证开关：默认有认证；仅本地调试设为 "true" 跳过 Basic Auth（回退默认项目）
+  MACHORA_AUTH_DISABLED: z.enum(["true", "false"]).default("false"),
+
   // Seed
   MACHORA_INIT_PROJECT_NAME: z.string().default("Machora Project"),
   MACHORA_INIT_PROJECT_PUBLIC_KEY: z.string(),
