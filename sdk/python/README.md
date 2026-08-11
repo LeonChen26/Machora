@@ -61,6 +61,36 @@ CallbackManager.configure(handlers=[handler])
 > 注意：LangGraph 1.x 会把节点/模型子 run 合并进顶层 run，回调拿不到子级——
 > LangGraph 请走 OTel 通道（见 Machora 仓库 `examples/langchain-agent`）。
 
+## Machora 原生 OTel 探针（可选）
+
+`machora.otel` 提供基于 **machora.\*** 语义的 OTel 探针（安装 `machora-sdk[otel]`），
+span 经 `POST /api/public/otel/v1/traces` 上报，`machora.span.kind` 直接落库
+`observation.type`（ENTRY/AGENT/STEP/CHAIN/LLM/TOOL/RETRIEVER...）。
+
+LangChain 探针（`MachoraOtelCallbackHandler`）：
+
+```python
+from langchain_core.callbacks import CallbackManager
+from machora.otel import MachoraOtelCallbackHandler
+
+handler = MachoraOtelCallbackHandler()   # 凭据走 MACHORA_OTEL_* 环境变量
+CallbackManager.configure(handlers=[handler])
+```
+
+LangGraph 图级探针（`MachoraOtelGraphProbe`，graph → ENTRY、agent 节点 → AGENT、其余 → STEP）：
+
+```python
+from machora.otel import MachoraOtelGraphProbe
+
+probe = MachoraOtelGraphProbe()
+graph = probe.wrap(graph)                 # 注册节点监听
+result = probe.invoke(graph, {"messages": [...]})
+```
+
+环境变量：`MACHORA_OTEL_ENDPOINT`（默认 `http://localhost:3100/api/public/otel/v1/traces`）、
+`MACHORA_OTEL_HEADERS`（JSON 对象，如 `{"Authorization": "Basic <base64(pk:sk)>"}`）、
+`MACHORA_OTEL_SERVICE_NAME`。OTel SDK 缺失或端点不可用时探针静默禁用（fail-open）。
+
 ## 事件契约
 
 与 Machora 服务端 `IngestionBatchSchema` 对齐（trace-create / observation-create / score-create，

@@ -17,19 +17,20 @@ import type {
   DiagnosticEventPrivateData,
 } from "openclaw/plugin-sdk/diagnostic-runtime";
 import {
-  OPENINFERENCE_AGENT_NAME,
-  OPENINFERENCE_INPUT,
-  OPENINFERENCE_KIND,
-  OPENINFERENCE_LLM_MODEL,
-  OPENINFERENCE_LLM_TOKEN_COMPLETION,
-  OPENINFERENCE_LLM_TOKEN_PROMPT,
-  OPENINFERENCE_LLM_TOKEN_TOTAL,
-  OPENINFERENCE_OUTPUT,
-  OPENINFERENCE_SESSION_ID,
-  OPENINFERENCE_TOOL_ID,
-  OPENINFERENCE_TOOL_NAME,
+  MACHORA_AGENT_NAME,
+  MACHORA_INPUT,
+  MACHORA_LEVEL,
+  MACHORA_MODEL_NAME,
+  MACHORA_OUTPUT,
+  MACHORA_SESSION_ID,
+  MACHORA_SPAN_KIND,
+  MACHORA_TOKEN_INPUT,
+  MACHORA_TOKEN_OUTPUT,
+  MACHORA_TOKEN_TOTAL,
+  MACHORA_TOOL_CALL_ID,
+  MACHORA_TOOL_NAME,
   SPAN_KIND_AGENT,
-  SPAN_KIND_CHAIN,
+  SPAN_KIND_ENTRY,
   SPAN_KIND_LLM,
   SPAN_KIND_TOOL,
 } from "./attributes.js";
@@ -138,11 +139,11 @@ export function createMachoraOpenInferenceService(): OpenClawPluginService {
 
       const baseAttrs = (evt: DiagnosticEventPayload, kind: string): Record<string, string | number | boolean | undefined> => {
         const attrs: Record<string, string | number | boolean | undefined> = {
-          [OPENINFERENCE_KIND]: kind,
+          [MACHORA_SPAN_KIND]: kind,
         };
         const sid = sessionId(evt);
         if (sid) {
-          attrs[OPENINFERENCE_SESSION_ID] = sid;
+          attrs[MACHORA_SESSION_ID] = sid;
         }
         return attrs;
       };
@@ -154,19 +155,20 @@ export function createMachoraOpenInferenceService(): OpenClawPluginService {
       ) => {
         switch (evt.type) {
           case "harness.run.started": {
-            const attrs = baseAttrs(evt, SPAN_KIND_AGENT);
-            attrs[OPENINFERENCE_AGENT_NAME] = evt.harnessId;
+            const attrs = baseAttrs(evt, SPAN_KIND_ENTRY);
+            attrs[MACHORA_AGENT_NAME] = evt.harnessId;
             startSpan(`h:${evt.runId}`, `harness ${evt.harnessId}`, evt.ts, attrs);
             return;
           }
           case "harness.run.completed": {
             const key = `h:${evt.runId}`;
             const span = active.get(key)?.span ?? fallbackSpan(key, `harness ${evt.harnessId}`, evt, {
-              ...baseAttrs(evt, SPAN_KIND_AGENT),
-              [OPENINFERENCE_AGENT_NAME]: evt.harnessId,
+              ...baseAttrs(evt, SPAN_KIND_ENTRY),
+              [MACHORA_AGENT_NAME]: evt.harnessId,
             });
             if (evt.outcome === "error") {
               span.setStatus({ code: SpanStatusCode.ERROR, message: privateData.errorMessage ?? "error" });
+              span.setAttribute(MACHORA_LEVEL, "ERROR");
             }
             active.delete(key);
             span.end(evt.ts);
@@ -175,25 +177,27 @@ export function createMachoraOpenInferenceService(): OpenClawPluginService {
           case "harness.run.error": {
             const key = `h:${evt.runId}`;
             const span = active.get(key)?.span ?? fallbackSpan(key, `harness ${evt.harnessId}`, evt, {
-              ...baseAttrs(evt, SPAN_KIND_AGENT),
-              [OPENINFERENCE_AGENT_NAME]: evt.harnessId,
+              ...baseAttrs(evt, SPAN_KIND_ENTRY),
+              [MACHORA_AGENT_NAME]: evt.harnessId,
             });
             span.setStatus({ code: SpanStatusCode.ERROR, message: privateData.errorMessage ?? evt.errorCategory });
+            span.setAttribute(MACHORA_LEVEL, "ERROR");
             active.delete(key);
             span.end(evt.ts);
             return;
           }
           case "run.started": {
-            const attrs = baseAttrs(evt, SPAN_KIND_CHAIN);
+            const attrs = baseAttrs(evt, SPAN_KIND_AGENT);
             const parent = active.get(`h:${evt.runId}`)?.span;
             startSpan(`r:${evt.runId}`, `run ${evt.model ?? evt.provider ?? ""}`.trim(), evt.ts, attrs, parent);
             return;
           }
           case "run.completed": {
             const key = `r:${evt.runId}`;
-            const span = active.get(key)?.span ?? fallbackSpan(key, `run ${evt.model ?? evt.provider ?? ""}`.trim(), evt, baseAttrs(evt, SPAN_KIND_CHAIN));
+            const span = active.get(key)?.span ?? fallbackSpan(key, `run ${evt.model ?? evt.provider ?? ""}`.trim(), evt, baseAttrs(evt, SPAN_KIND_AGENT));
             if (evt.outcome === "error") {
               span.setStatus({ code: SpanStatusCode.ERROR, message: privateData.errorMessage ?? evt.errorCategory ?? "error" });
+              span.setAttribute(MACHORA_LEVEL, "ERROR");
             }
             active.delete(key);
             span.end(evt.ts);
@@ -201,7 +205,7 @@ export function createMachoraOpenInferenceService(): OpenClawPluginService {
           }
           case "model.call.started": {
             const attrs = baseAttrs(evt, SPAN_KIND_LLM);
-            attrs[OPENINFERENCE_LLM_MODEL] = evt.model;
+            attrs[MACHORA_MODEL_NAME] = evt.model;
             const parent = active.get(`r:${evt.runId}`)?.span;
             startSpan(`m:${evt.callId}`, `model ${evt.model}`, evt.ts, attrs, parent);
             return;
@@ -211,31 +215,32 @@ export function createMachoraOpenInferenceService(): OpenClawPluginService {
             const key = `m:${evt.callId}`;
             const span = active.get(key)?.span ?? fallbackSpan(key, `model ${evt.model}`, evt, {
               ...baseAttrs(evt, SPAN_KIND_LLM),
-              [OPENINFERENCE_LLM_MODEL]: evt.model,
+              [MACHORA_MODEL_NAME]: evt.model,
             });
             const usage = evt.usage;
             if (usage) {
               span.setAttributes({
-                [OPENINFERENCE_LLM_TOKEN_PROMPT]: usage.input ?? usage.promptTokens ?? 0,
-                [OPENINFERENCE_LLM_TOKEN_COMPLETION]: usage.output ?? 0,
-                [OPENINFERENCE_LLM_TOKEN_TOTAL]: usage.total ?? (usage.input ?? 0) + (usage.output ?? 0),
+                [MACHORA_TOKEN_INPUT]: usage.input ?? usage.promptTokens ?? 0,
+                [MACHORA_TOKEN_OUTPUT]: usage.output ?? 0,
+                [MACHORA_TOKEN_TOTAL]: usage.total ?? (usage.input ?? 0) + (usage.output ?? 0),
               });
             }
             const input = jsonOrUndefined(privateData.modelContent?.inputMessages);
             const output = jsonOrUndefined(privateData.modelContent?.outputMessages);
-            if (input) span.setAttribute(OPENINFERENCE_INPUT, input);
-            if (output) span.setAttribute(OPENINFERENCE_OUTPUT, output);
+            if (input) span.setAttribute(MACHORA_INPUT, input);
+            if (output) span.setAttribute(MACHORA_OUTPUT, output);
             active.delete(key);
             if (evt.type === "model.call.error") {
               span.setStatus({ code: SpanStatusCode.ERROR, message: privateData.errorMessage ?? evt.errorCategory });
+              span.setAttribute(MACHORA_LEVEL, "ERROR");
             }
             span.end(evt.ts);
             return;
           }
           case "tool.execution.started": {
             const attrs = baseAttrs(evt, SPAN_KIND_TOOL);
-            attrs[OPENINFERENCE_TOOL_NAME] = evt.toolName;
-            if (evt.toolCallId) attrs[OPENINFERENCE_TOOL_ID] = evt.toolCallId;
+            attrs[MACHORA_TOOL_NAME] = evt.toolName;
+            if (evt.toolCallId) attrs[MACHORA_TOOL_CALL_ID] = evt.toolCallId;
             const parent = active.get(`r:${evt.runId}`)?.span;
             startSpan(`t:${evt.toolCallId ?? evt.toolName}`, `tool ${evt.toolName}`, evt.ts, attrs, parent);
             return;
@@ -245,16 +250,17 @@ export function createMachoraOpenInferenceService(): OpenClawPluginService {
             const key = `t:${evt.toolCallId ?? evt.toolName}`;
             const span = active.get(key)?.span ?? fallbackSpan(key, `tool ${evt.toolName}`, evt, {
               ...baseAttrs(evt, SPAN_KIND_TOOL),
-              [OPENINFERENCE_TOOL_NAME]: evt.toolName,
-              ...(evt.toolCallId ? { [OPENINFERENCE_TOOL_ID]: evt.toolCallId } : {}),
+              [MACHORA_TOOL_NAME]: evt.toolName,
+              ...(evt.toolCallId ? { [MACHORA_TOOL_CALL_ID]: evt.toolCallId } : {}),
             });
             const input = jsonOrUndefined(privateData.toolContent?.toolInput);
             const output = jsonOrUndefined(privateData.toolContent?.toolOutput);
-            if (input) span.setAttribute(OPENINFERENCE_INPUT, input);
-            if (output) span.setAttribute(OPENINFERENCE_OUTPUT, output);
+            if (input) span.setAttribute(MACHORA_INPUT, input);
+            if (output) span.setAttribute(MACHORA_OUTPUT, output);
             active.delete(key);
             if (evt.type === "tool.execution.error") {
               span.setStatus({ code: SpanStatusCode.ERROR, message: privateData.errorMessage ?? evt.errorCategory });
+              span.setAttribute(MACHORA_LEVEL, "ERROR");
             }
             span.end(evt.ts);
             return;

@@ -2,7 +2,7 @@
   "name": "@machora/openclaw-openinference",
   "version": "0.1.0",
   "private": true,
-  "description": "OpenClaw probe that exports diagnostics as OpenInference spans to Machora",
+  "description": "OpenClaw probe that exports diagnostics as machora.* spans to Machora",
   "type": "module",
   "main": "./index.ts",
   "dependencies": {

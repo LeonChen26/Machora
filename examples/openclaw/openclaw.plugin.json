@@ -1,7 +1,7 @@
 {
   "id": "machora-openinference",
   "name": "Machora OpenInference",
-  "description": "Export OpenClaw diagnostics as OpenInference spans to Machora",
+  "description": "Export OpenClaw diagnostics as machora.* spans to Machora",
   "activation": {
     "onStartup": true
   },

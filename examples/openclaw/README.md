@@ -1,8 +1,9 @@
-# OpenClaw → Machora OpenInference 探针
+# OpenClaw → Machora 原生探针
 
 将 OpenClaw 的[诊断事件](https://github.com/openclaw/openclaw)（`model.call.*`、`tool.execution.*`、`run.*`、`harness.run.*`）
-转换为 [OpenInference](https://github.com/Arize-ai/openinference) 语义 span，通过 OTLP HTTP 上报到
-Machora 的 trace 端点，使 OpenClaw 的 Agent 运行在 Machora 轨迹视图中按角色分类展示
+转换为 **machora.\*** 原生语义 span（`machora.span.kind` / `machora.model.name` /
+`machora.token.*` / `machora.tool.*`），通过 OTLP HTTP 上报到 Machora 的 trace 端点，
+使 OpenClaw 的 Agent 运行在 Machora 轨迹视图中按角色分类展示
 （ENTRY/AGENT/STEP/LLM/TOOL），并正确关联 session。
 
 本探针由 Machroa 仓库维护，不依赖 hermes-agent 或任何其他探针实现。
@@ -18,7 +19,7 @@ examples/openclaw/
 └── src/
     ├── service.ts        # 服务：订阅诊断事件 → 构建 span 树
     ├── exporter.ts       # 独立 OTel SDK + OTLP exporter
-    └── attributes.ts     # OpenInference 属性键常量
+    └── attributes.ts     # machora.* 语义键常量（与 shared/semantics 对齐）
 ```
 
 ## 安装
@@ -78,22 +79,23 @@ export MACHORA_OTEL_SERVICE_NAME=openclaw
 
 ## 工作原理
 
-| OpenClaw 诊断事件 | OpenInference span kind | 父链 | 关键属性 |
+| OpenClaw 诊断事件 | machora.span.kind | 父链 | 关键属性 |
 | --- | --- | --- | --- |
-| `harness.run.started/completed/error` | `AGENT` | 根 | `agent.name=harnessId`、`session.id` |
-| `run.started/completed` | `CHAIN` | 同 runId 的 harness | `session.id` |
-| `model.call.started/completed/error` | `LLM` | 同 runId 的 run | `llm.model_name`、`llm.token_count.*`、`input.value`/`output.value` |
-| `tool.execution.started/completed/error` | `TOOL` | 同 runId 的 run | `tool.name`、`tool_call.id`、`input.value`/`output.value` |
+| `harness.run.started/completed/error` | `ENTRY` | 根 | `machora.agent.name=harnessId`、`machora.session.id` |
+| `run.started/completed` | `AGENT` | 同 runId 的 harness | `machora.session.id` |
+| `model.call.started/completed/error` | `LLM` | 同 runId 的 run | `machora.model.name`、`machora.token.*`、`machora.input`/`machora.output` |
+| `tool.execution.started/completed/error` | `TOOL` | 同 runId 的 run | `machora.tool.name`、`machora.tool.call.id`、`machora.input`/`machora.output` |
 
 要点：
 
-- **session 关联**：span 直接写 `session.id` 属性（来自事件的 `sessionId`/`sessionKey`），
+- **session 关联**：span 直接写 `machora.session.id` 属性（来自事件的 `sessionId`/`sessionKey`），
   Machora 据此把同一会话的 span 归入同一 trace。
-- **角色分类**：所有 span 带 `openinference.span.kind`，Machora 的 processor 以它为
-  第 2 优先分类来源，轨迹视图即可显示 AGENT/LLM/TOOL 等角色。
-- **内容捕获**：`model.call` 与 `tool.execution` 的 `input.value`/`output.value` 来自
+- **角色分类**：所有 span 带 `machora.span.kind`，接入层 machora adapter（最高优先级）
+  直接落库 `observation.type`，轨迹视图即可显示 ENTRY/AGENT/LLM/TOOL 等角色。
+- **内容捕获**：`model.call` 与 `tool.execution` 的 `machora.input`/`machora.output` 来自
   `privateData.modelContent` / `privateData.toolContent`，按 JSON 字符串写入，Machora
   前端会解析为消息数组并渲染 parts 结构。
+- **错误级别**：completed/error 事件的失败分支额外写 `machora.level=ERROR`。
 - **独立 SDK**：探针使用独立的 `NodeSDK` 实例与专属 `BatchSpanProcessor`，不与
   `diagnostics-otel` 插件共享全局 exporter，互不干扰。
 - **事件丢失兜底**：若 `*_started` 事件因异步队列丢弃而未到达，`*_completed/error`
@@ -103,5 +105,5 @@ export MACHORA_OTEL_SERVICE_NAME=openclaw
 
 本地起 Machora（默认 `http://localhost:3100`）后运行一次 OpenClaw 会话，然后在
 Machora trace 列表页确认出现新的 trace，展开调用树应能看到：
-`AGENT (harness) → CHAIN (run) → LLM (model) / TOOL (tool)` 的层级，且各 span 名称、
+`ENTRY (harness) → AGENT (run) → LLM (model) / TOOL (tool)` 的层级，且各 span 名称、
 token 用量与输入输出内容正确。

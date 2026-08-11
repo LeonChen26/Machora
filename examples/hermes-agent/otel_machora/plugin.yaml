@@ -1,0 +1,16 @@
+name: otel_machora
+version: "1.0.0"
+description: "Machora 原生 OTLP observability for Hermes — exports session/turn/LLM/tool/subagent spans using machora.* semantic keys (machora.span.kind / machora.model.name / machora.token.* / machora.tool.*) to a Machora OTLP traces endpoint. Opt-in via `hermes plugins enable observability/otel_machora`."
+author: NousResearch
+hooks:
+  - on_session_start
+  - on_session_end
+  - pre_llm_call
+  - post_llm_call
+  - pre_api_request
+  - post_api_request
+  - api_request_error
+  - pre_tool_call
+  - post_tool_call
+  - subagent_start
+  - subagent_stop
