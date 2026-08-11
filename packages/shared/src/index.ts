@@ -10,6 +10,7 @@ export * from "./server/session.ts";
 export * from "./otel/types.ts";
 export * from "./otel/attributes.ts";
 export * from "./otel/processor.ts";
+export * from "./otel/semantics/index.ts";
 export * from "./otel/protobuf.ts";
 export * from "./otel/metrics.ts";
 export * from "./otel/trajectory.ts";

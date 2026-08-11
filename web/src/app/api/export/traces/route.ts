@@ -1,7 +1,7 @@
 // 导出 traces 列表为 CSV（复用列表页筛选条件，session 鉴权）
 import { NextRequest } from "next/server";
 import { and } from "drizzle-orm";
-import { db, trace } from "@machora/shared";
+import { db, trace, isGenerationType } from "@machora/shared";
 import { getApiUser } from "../../../../server/session";
 import { getCurrentProjectId } from "../../../../server/project";
 import {
@@ -72,7 +72,7 @@ export async function GET(req: NextRequest) {
       new Set(t.observations.map((o) => o.model).filter(Boolean) as string[]),
     ).join("|");
     const latency = t.observations.find(
-      (o) => o.type === "GENERATION" && o.endTime,
+      (o) => isGenerationType(o.type) && o.endTime,
     );
     const latencyMs = latency?.endTime
       ? latency.endTime.getTime() - latency.startTime.getTime()

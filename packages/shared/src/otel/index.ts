@@ -3,3 +3,4 @@ export * from "./attributes.ts";
 export * from "./processor.ts";
 export * from "./protobuf.ts";
 export * from "./trajectory.ts";
+export * from "./semantics/index.ts";

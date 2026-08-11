@@ -45,6 +45,20 @@
   --fam-step-bg: color-mix(in srgb, var(--fam-step) 14%, var(--bg-elev));
   --fam-llm-bg: color-mix(in srgb, var(--fam-llm) 13%, var(--bg-elev));
   --fam-tool-bg: color-mix(in srgb, var(--fam-tool) 13%, var(--bg-elev));
+  /* 扩展角色色族（type 与 span.kind 一致后：EMBEDDING/CHAIN/RETRIEVER/RERANKER/EVENT/SPAN）
+     与五色族同体系，详情面板 type 徽标按角色取色 */
+  --fam-embedding: #0f9d8f;
+  --fam-chain: #5b6ee1;
+  --fam-retriever: #06a6c4;
+  --fam-reranker: #3aa6e0;
+  --fam-event: #d97706;
+  --fam-span: #64748b;
+  --fam-embedding-bg: color-mix(in srgb, var(--fam-embedding) 13%, var(--bg-elev));
+  --fam-chain-bg: color-mix(in srgb, var(--fam-chain) 13%, var(--bg-elev));
+  --fam-retriever-bg: color-mix(in srgb, var(--fam-retriever) 13%, var(--bg-elev));
+  --fam-reranker-bg: color-mix(in srgb, var(--fam-reranker) 13%, var(--bg-elev));
+  --fam-event-bg: color-mix(in srgb, var(--fam-event) 13%, var(--bg-elev));
+  --fam-span-bg: color-mix(in srgb, var(--fam-span) 12%, var(--bg-elev));
   /* 消息角色色（user/assistant/system/tool/developer）：Input/Output 按 role 展示用 */
   --role-user: #4f8df7;
   --role-assistant: #34d399;
@@ -583,6 +597,18 @@ tbody tr[data-level="WARNING"]:hover {
   border-color: rgba(79, 141, 247, 0.3);
   background: rgba(79, 141, 247, 0.08);
 }
+/* type 角色徽标（与 span.kind 一致的 11 色族，同 --fam-* 体系） */
+.badge.entry { color: var(--fam-entry); border-color: color-mix(in srgb, var(--fam-entry) 35%, transparent); background: var(--fam-entry-bg); }
+.badge.agent { color: var(--fam-agent); border-color: color-mix(in srgb, var(--fam-agent) 35%, transparent); background: var(--fam-agent-bg); }
+.badge.step { color: var(--fam-step); border-color: color-mix(in srgb, var(--fam-step) 35%, transparent); background: var(--fam-step-bg); }
+.badge.llm { color: var(--fam-llm); border-color: color-mix(in srgb, var(--fam-llm) 35%, transparent); background: var(--fam-llm-bg); }
+.badge.tool { color: var(--fam-tool); border-color: color-mix(in srgb, var(--fam-tool) 35%, transparent); background: var(--fam-tool-bg); }
+.badge.embedding { color: var(--fam-embedding); border-color: color-mix(in srgb, var(--fam-embedding) 35%, transparent); background: var(--fam-embedding-bg); }
+.badge.chain { color: var(--fam-chain); border-color: color-mix(in srgb, var(--fam-chain) 35%, transparent); background: var(--fam-chain-bg); }
+.badge.retriever { color: var(--fam-retriever); border-color: color-mix(in srgb, var(--fam-retriever) 35%, transparent); background: var(--fam-retriever-bg); }
+.badge.reranker { color: var(--fam-reranker); border-color: color-mix(in srgb, var(--fam-reranker) 35%, transparent); background: var(--fam-reranker-bg); }
+.badge.event { color: var(--fam-event); border-color: color-mix(in srgb, var(--fam-event) 35%, transparent); background: var(--fam-event-bg); }
+.badge.span { color: var(--fam-span); border-color: color-mix(in srgb, var(--fam-span) 35%, transparent); background: var(--fam-span-bg); }
 
 /* ---------- Code block ---------- */
 pre.code {

@@ -27,6 +27,25 @@ export type ObservationView = {
   metadata: unknown;
 };
 
+/** type → 角色色族（与 span.kind 一致；badge 取 --fam-* 色，11 色） */
+const TYPE_FAM: Record<string, string> = {
+  ENTRY: "entry",
+  AGENT: "agent",
+  STEP: "step",
+  LLM: "llm",
+  TOOL: "tool",
+  EMBEDDING: "embedding",
+  CHAIN: "chain",
+  RETRIEVER: "retriever",
+  RERANKER: "reranker",
+  EVENT: "event",
+  SPAN: "span",
+};
+
+function obsTypeClass(type: string): string {
+  return TYPE_FAM[type] ?? "span";
+}
+
 export function ObservationDetailPanel({
   observations,
 }: {
@@ -128,10 +147,8 @@ export function ObservationDetailPanel({
       <div className="obs-detail-card">
         <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem", flexWrap: "wrap", marginBottom: 6 }}>
           <strong>{o.name || o.id}</strong>
-          <span
-            className={`badge ${o.type === "GENERATION" ? "purple" : o.type === "SPAN" ? "blue" : "amber"}`}
-          >
-            {o.type === "GENERATION" ? "GEN" : o.type}
+          <span className={`badge ${obsTypeClass(o.type)}`}>
+            {o.type}
           </span>
         </div>
         <div className="mono mute2 text-xs" style={{ marginBottom: 6 }}>

@@ -56,7 +56,7 @@ describe("classifyTrajectoryKind", () => {
     expect(
       classifyTrajectoryKind(inp({ metadata: { "gen_ai.tool.name": "web_search" } })),
     ).toBe("tool");
-    expect(classifyTrajectoryKind(inp({ type: "GENERATION", model: "text-embedding-v3" }))).toBe(
+    expect(classifyTrajectoryKind(inp({ type: "SPAN", model: "text-embedding-v3" }))).toBe(
       "embedding",
     );
   });
@@ -77,8 +77,25 @@ describe("classifyTrajectoryKind", () => {
     ).toBe("think");
   });
 
-  it("兜底：GENERATION → llm；无父 SPAN → entry；其余 → other", () => {
-    expect(classifyTrajectoryKind(inp({ type: "GENERATION" }))).toBe("llm");
+  it("落库 type 为 span.kind 多值时直接映射（新数据，无需反推）", () => {
+    expect(classifyTrajectoryKind(inp({ type: "ENTRY" }))).toBe("entry");
+    expect(classifyTrajectoryKind(inp({ type: "AGENT" }))).toBe("agent");
+    expect(classifyTrajectoryKind(inp({ type: "STEP" }))).toBe("think");
+    expect(classifyTrajectoryKind(inp({ type: "LLM" }))).toBe("llm");
+    expect(classifyTrajectoryKind(inp({ type: "TOOL" }))).toBe("tool");
+    expect(classifyTrajectoryKind(inp({ type: "EMBEDDING" }))).toBe("embedding");
+    expect(classifyTrajectoryKind(inp({ type: "CHAIN" }))).toBe("workflow");
+    expect(classifyTrajectoryKind(inp({ type: "RETRIEVER" }))).toBe("retrieval");
+    expect(classifyTrajectoryKind(inp({ type: "RERANKER" }))).toBe("retrieval");
+  });
+
+  it("新数据 type 优先于 metadata 反推（type=TOOL 与 metadata STEP 冲突时以落库 type 为准）", () => {
+    expect(
+      classifyTrajectoryKind(inp({ type: "TOOL", metadata: { "gen_ai.span.kind": "STEP" } })),
+    ).toBe("tool");
+  });
+
+  it("兜底：无父 SPAN → entry；其余 → other", () => {
     expect(classifyTrajectoryKind(inp({ hasParent: false }))).toBe("entry");
     expect(classifyTrajectoryKind(inp({}))).toBe("other");
   });

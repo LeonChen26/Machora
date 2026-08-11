@@ -49,7 +49,7 @@ describe("OTel GenAI 语义补齐", () => {
     ]));
 
     const obs = observations[0];
-    expect(obs.type).toBe("SPAN");
+    expect(obs.type).toBe("AGENT"); // operation=invoke_agent → span.kind=AGENT 直接落库
     expect(obs.agentName).toBe("my-agent");
     expect(obs.workflowName).toBe("wf-1");
     // 已提取专用列，不再进 metadata
@@ -72,7 +72,7 @@ describe("OTel GenAI 语义补齐", () => {
     expect(traces[0].workflowName).toBeNull();
   });
 
-  it("agent/workflow/plan/memory operation 显式枚举 → SPAN", () => {
+  it("agent/workflow/plan/memory operation → span.kind 直接落库（memory → SPAN 通用节点）", () => {
     const cases: Array<[string, string]> = [
       ["invoke_agent", "agent-run"],
       ["invoke_workflow", "wf-run"],
@@ -85,16 +85,20 @@ describe("OTel GenAI 语义补齐", () => {
         span(name, name, { "gen_ai.operation.name": op, "gen_ai.agent.name": op }),
       ),
     ));
-    for (const o of observations) {
-      expect(o.type).toBe("SPAN");
-    }
+    expect(observations.map((o) => o.type)).toEqual([
+      "AGENT",
+      "CHAIN",
+      "STEP",
+      "SPAN",
+      "SPAN",
+    ]);
   });
 
-  it("chat / embeddings 仍映射 GENERATION", () => {
+  it("chat → LLM", () => {
     const { observations } = parseOtelPayload("project-1", payload([
       span("s-llm", "chat", { "gen_ai.operation.name": "chat", "gen_ai.request.model": "gpt-4o" }),
     ]));
-    expect(observations[0].type).toBe("GENERATION");
+    expect(observations[0].type).toBe("LLM");
   });
 
   it("error.type 存在（无显式 level / status unset）→ level=ERROR", () => {

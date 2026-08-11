@@ -108,7 +108,7 @@ export const observation = pgTable(
       .notNull()
       .references(() => trace.id, { onDelete: "cascade", onUpdate: "cascade" }),
     projectId: text("projectId").notNull(),
-    type: text("type").notNull(), // SPAN | GENERATION | EVENT
+    type: text("type").notNull(), // span.kind 多值（ENTRY/AGENT/STEP/LLM/TOOL/EMBEDDING/CHAIN/RETRIEVER/RERANKER/EVENT/SPAN；GENERATION 为兼容旧值）
     name: text("name"),
     parentObservationId: text("parentObservationId"),
     startTime: ts("startTime").notNull(),

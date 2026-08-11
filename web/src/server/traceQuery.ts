@@ -1,6 +1,6 @@
 // 列表页筛选参数解析与 drizzle where 条件构建（页面与 CSV 导出共用）
 // 返回 SQL 条件数组，调用方用 and(...conds) 组装
-import { and, arrayContains, eq, exists, gte, ilike, lte, sql, type SQL } from "drizzle-orm";
+import { and, arrayContains, eq, exists, gte, ilike, inArray, lte, sql, type SQL } from "drizzle-orm";
 import { db, observation, trace } from "@machora/shared";
 
 const str = (v: string | string[] | undefined) =>
@@ -113,7 +113,8 @@ export function buildGenerationWhere(
 ): SQL<unknown>[] {
   const conds: SQL<unknown>[] = [
     eq(observation.projectId, projectId),
-    eq(observation.type, "GENERATION"),
+    // 模型调用 = LLM / EMBEDDING（type 与 span.kind 一致）
+    inArray(observation.type, ["LLM", "EMBEDDING"]),
   ];
   if (f.since) conds.push(gte(observation.startTime, f.since));
   if (f.level) conds.push(eq(observation.level, f.level));

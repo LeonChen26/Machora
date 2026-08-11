@@ -1,6 +1,6 @@
 import { Link } from "../components/NativeLink";
 import { EmptyIcon } from "../components/EmptyIcon";
-import { and, count, desc, eq, gte } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray } from "drizzle-orm";
 import {
   db,
   trace,
@@ -89,7 +89,7 @@ export default async function Home() {
       .where(
         and(
           eq(observation.projectId, projectId),
-          eq(observation.type, "GENERATION"),
+          inArray(observation.type, ["LLM", "EMBEDDING"]),
           gte(observation.startTime, trendSince),
         ),
       ),

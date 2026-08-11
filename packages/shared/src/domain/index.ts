@@ -31,7 +31,22 @@ export type TraceCreate = z.infer<typeof TraceCreateSchema>;
 // Observation
 // ---------------------------------------------------------------------------
 
-export const ObservationTypeEnum = z.enum(["SPAN", "GENERATION", "EVENT"]);
+// observation.type 与 span.kind 一致的多值：
+// span.kind 角色直接落库（ENTRY/AGENT/STEP/LLM/TOOL/EMBEDDING/CHAIN/RETRIEVER/RERANKER/EVENT），
+// SPAN=通用节点（无角色语义）
+export const ObservationTypeEnum = z.enum([
+  "ENTRY",
+  "AGENT",
+  "STEP",
+  "LLM",
+  "TOOL",
+  "EMBEDDING",
+  "CHAIN",
+  "RETRIEVER",
+  "RERANKER",
+  "EVENT",
+  "SPAN",
+]);
 export type ObservationType = z.infer<typeof ObservationTypeEnum>;
 
 export const ObservationCreateSchema = z.object({

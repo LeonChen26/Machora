@@ -1,7 +1,7 @@
 import { Link } from "../../components/NativeLink";
 import { EmptyIcon } from "../../components/EmptyIcon";
 import { Pager } from "../../components/Pager";
-import { and, asc, count, desc, eq } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray } from "drizzle-orm";
 import { db, observation } from "@machora/shared";
 import type { ReactNode } from "react";
 import {
@@ -53,7 +53,7 @@ export default async function GenerationsPage({
     .where(
       and(
         eq(observation.projectId, projectId),
-        eq(observation.type, "GENERATION"),
+        inArray(observation.type, ["LLM", "EMBEDDING"]),
       ),
     )
     .orderBy(asc(observation.model));

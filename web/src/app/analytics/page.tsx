@@ -1,6 +1,6 @@
 import { Link } from "../../components/NativeLink";
 import type { ReactNode } from "react";
-import { and, eq, gte } from "drizzle-orm";
+import { and, eq, gte, inArray } from "drizzle-orm";
 import { db, observation } from "@machora/shared";
 import { formatDuration, formatTokens, formatCost } from "../../lib/format";
 import { StackedBarChart } from "../../components/StackedBarChart";
@@ -102,7 +102,7 @@ export default async function AnalyticsPage({
     .where(
       and(
         eq(observation.projectId, projectId),
-        eq(observation.type, "GENERATION"),
+        inArray(observation.type, ["LLM", "EMBEDDING"]),
         gte(observation.startTime, prevSince),
       ),
     );

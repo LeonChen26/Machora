@@ -38,7 +38,7 @@ const payload = (spans: Record<string, unknown>[]): OtlpExportTraceServiceReques
 });
 
 describe("LoongSuite 语义", () => {
-  it("operation entry / react_step / rerank / invoke_skill / create_skill → SPAN（chat 对照 GENERATION）", () => {
+  it("operation entry / react_step / rerank → span.kind 落库；invoke_skill / create_skill → SPAN（chat 对照 LLM）", () => {
     const { observations } = parseOtelPayload("project-1", payload([
       span("s-entry", "entry", [["gen_ai.operation.name", str("entry")]]),
       span("s-step", "step-1", [["gen_ai.operation.name", str("react_step")]]),
@@ -48,12 +48,12 @@ describe("LoongSuite 语义", () => {
       span("s-llm", "llm", [["gen_ai.operation.name", str("chat")]]),
     ]));
     expect(observations.map((o) => o.type)).toEqual([
+      "ENTRY",
+      "STEP",
+      "RERANKER",
       "SPAN",
       "SPAN",
-      "SPAN",
-      "SPAN",
-      "SPAN",
-      "GENERATION",
+      "LLM",
     ]);
   });
 
@@ -115,7 +115,7 @@ describe("LoongSuite 语义", () => {
     expect(t.agentName).toBe("DemoAgent");
   });
 
-  it("gen_ai.span.kind：LLM/EMBEDDING→GENERATION，STEP/TOOL/AGENT/ENTRY→SPAN", () => {
+  it("gen_ai.span.kind 直接落库为 type：LLM/EMBEDDING/STEP/TOOL/AGENT/ENTRY", () => {
     const { observations } = parseOtelPayload("project-1", payload([
       span("s-llm", "chat", [["gen_ai.span.kind", str("LLM")]]),
       span("s-emb", "embed", [["gen_ai.span.kind", str("EMBEDDING")]]),
@@ -125,12 +125,12 @@ describe("LoongSuite 语义", () => {
       span("s-entry", "entry", [["gen_ai.span.kind", str("ENTRY")]]),
     ]));
     expect(observations.map((o) => o.type)).toEqual([
-      "GENERATION",
-      "GENERATION",
-      "SPAN",
-      "SPAN",
-      "SPAN",
-      "SPAN",
+      "LLM",
+      "EMBEDDING",
+      "STEP",
+      "TOOL",
+      "AGENT",
+      "ENTRY",
     ]);
   });
 

@@ -34,8 +34,8 @@ describe("TraceCreateSchema", () => {
 });
 
 describe("ObservationCreateSchema", () => {
-  it("接受 GENERATION/SPAN/EVENT", () => {
-    for (const type of ["GENERATION", "SPAN", "EVENT"]) {
+  it("接受 span.kind 多值 type", () => {
+    for (const type of ["ENTRY", "AGENT", "STEP", "LLM", "TOOL", "EMBEDDING", "CHAIN", "RETRIEVER", "RERANKER", "EVENT", "SPAN"]) {
       const r = ObservationCreateSchema.safeParse({
         id: "o1",
         traceId: "t1",
@@ -50,10 +50,17 @@ describe("ObservationCreateSchema", () => {
     const r = ObservationCreateSchema.safeParse({
       id: "o1",
       traceId: "t1",
-      type: "generation", // 必须大写
+      type: "generation", // 必须大写 span.kind 值
       startTime: "2026-08-01T00:00:00Z",
     });
     expect(r.success).toBe(false);
+    const g = ObservationCreateSchema.safeParse({
+      id: "o2",
+      traceId: "t1",
+      type: "GENERATION", // 已移除的旧三值
+      startTime: "2026-08-01T00:00:00Z",
+    });
+    expect(g.success).toBe(false);
   });
 
   it("默认 level 为 DEFAULT", () => {
@@ -99,7 +106,7 @@ describe("IngestionBatchSchema", () => {
           body: {
             id: "o",
             traceId: "t",
-            type: "GENERATION",
+            type: "LLM",
             startTime: "2026-08-01T00:00:00Z",
           },
         },
@@ -123,7 +130,7 @@ describe("IngestionBatchSchema", () => {
       batch: [
         {
           type: "trace-create",
-          body: { type: "GENERATION" }, // trace body 缺 id/timestamp
+          body: { type: "LLM" }, // trace body 缺 id/timestamp
         },
       ],
     });

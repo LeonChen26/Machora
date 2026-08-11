@@ -97,11 +97,11 @@ describe("OpenClaw 真实 trace fixture（2026-08-01 捕获，deepseek-v4-flash�
     );
   });
 
-  it("openclaw.model.call 映射为 GENERATION，带模型与 token usage", () => {
+  it("openclaw.model.call 映射为 LLM，带模型与 token usage", () => {
     const { observations } = parseFixture();
     const mc = observations.find((o) => o.id === "1915bab94bdc587c")!;
     expect(mc).toMatchObject({
-      type: "GENERATION",
+      type: "LLM",
       name: "openclaw.model.call",
       model: "deepseek-v4-flash",
       level: "DEFAULT",
@@ -176,10 +176,10 @@ describe("OpenClaw 真实 trace fixture（2026-08-01 捕获，deepseek-v4-flash�
       "openclaw.liveness.reason": "event_loop_delay",
     });
 
-    // model.usage 含 gen_ai.request.model + gen_ai.usage.* → GENERATION
+    // model.usage 含 gen_ai.request.model + gen_ai.usage.* → LLM
     const usage = observations.find((o) => o.name === "openclaw.model.usage")!;
     expect(usage).toMatchObject({
-      type: "GENERATION",
+      type: "LLM",
       model: "deepseek-v4-flash",
       inputTokens: 73804,
       outputTokens: 314,

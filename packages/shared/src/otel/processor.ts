@@ -1,13 +1,16 @@
 // OTLP Span → Machora Trace / Observation 映射处理器
-// 参考 Langfuse OtelIngestionProcessor + ObservationTypeMapperRegistry
+// 语义识别统一走 semantics/（adapter 接入层）：Machora / Langfuse /
+// OpenInference / GenAI / LoongSuite 多套语义归一化后由本文件落库。
 
 import {
   ATTR,
-  AGENT_OPERATIONS,
   NOISE_PREFIXES,
-  OPENINFERENCE_GENERATION_KINDS,
-  OPENINFERENCE_SPAN_KINDS,
 } from "./attributes.ts";
+import {
+  MACHORA_ATTR,
+  analyzeSpan,
+} from "./semantics/index.ts";
+import type { AnalyzedSpan } from "./semantics/index.ts";
 import {
   decodeAttributes,
   type OtlpExportTraceServiceRequest,
@@ -16,43 +19,9 @@ import {
 import { db } from "../db.ts";
 import { observation, trace } from "../drizzle/schema.ts";
 
-// ---------------------------------------------------------------------------
-// 类型与状态常量
-// ---------------------------------------------------------------------------
+// 类型兼容导出（历史 import 路径）
+export type { MachoraObservationType } from "./semantics/types.ts";
 
-export type MachoraObservationType = "SPAN" | "GENERATION" | "EVENT";
-
-const LEVEL_ALIASES: Record<string, string> = {
-  DEBUG: "DEBUG",
-  TRACE: "DEBUG",
-  VERBOSE: "DEBUG",
-  DEFAULT: "DEFAULT",
-  INFO: "DEFAULT",
-  LOG: "DEFAULT",
-  NOTICE: "DEFAULT",
-  OK: "DEFAULT",
-  SUCCESS: "DEFAULT",
-  WARNING: "WARNING",
-  WARN: "WARNING",
-  ERROR: "ERROR",
-  FATAL: "ERROR",
-  CRITICAL: "ERROR",
-};
-
-// 已提取到专用字段 / 显式剔除的属性键，不再进 metadata
-// 语义键需保留在 metadata：虽在 ATTR 中，但无专用列，轨迹视图（推理轨迹）角色分类
-// 依赖它们；gen_ai.tool.name 同时已被提取为 observation.name，保留便于分类与审计。
-const RETAIN_IN_METADATA = new Set<string>([
-  ATTR.GEN_AI_SPAN_KIND,
-  ATTR.GEN_AI_OPERATION,
-  ATTR.GEN_AI_TOOL_NAME,
-  ATTR.GEN_AI_TOOL_CALL_ID,
-]);
-const EXTRACTED_KEYS = new Set<string>(
-  Object.values(ATTR)
-    .concat(["gen_ai.usage.input_tokens", "gen_ai.usage.output_tokens"])
-    .filter((k) => !RETAIN_IN_METADATA.has(k)),
-);
 // ---------------------------------------------------------------------------
 // 中间结构
 // ---------------------------------------------------------------------------
@@ -78,7 +47,7 @@ export interface ObservationRecord {
   id: string;
   traceId: string;
   projectId: string;
-  type: MachoraObservationType;
+  type: AnalyzedSpan["type"];
   name: string | null;
   parentObservationId: string | null;
   startTime: Date;
@@ -114,245 +83,30 @@ interface FlattenedSpan {
 }
 
 // ---------------------------------------------------------------------------
-// 工具
+// metadata 构建
 // ---------------------------------------------------------------------------
 
-function asNumber(v: unknown): number | null {
-  if (typeof v === "number") return Number.isFinite(v) ? v : null;
-  if (typeof v === "string" && v.trim() !== "") {
-    const n = Number(v);
-    return Number.isFinite(n) ? n : null;
-  }
-  return null;
-}
-
-function asObject(v: unknown): Record<string, unknown> | null {
-  if (v && typeof v === "object" && !Array.isArray(v)) {
-    return v as Record<string, unknown>;
-  }
-  return null;
-}
-
-function asStringArray(v: unknown): string[] {
-  if (Array.isArray(v)) {
-    return v.filter((x): x is string => typeof x === "string");
-  }
-  return [];
-}
-
-function nanosToDate(ns: string | number | undefined): Date | null {
-  if (ns === undefined || ns === null || ns === "") return null;
-  const n = Number(ns);
-  if (!Number.isFinite(n)) return null;
-  return new Date(n / 1e6);
-}
-
-function parseLevel(attrs: Record<string, unknown>, statusCode: number): string {
-  const raw = attrs[ATTR.OBS_LEVEL];
-  if (typeof raw === "string" && LEVEL_ALIASES[raw.trim().toUpperCase()]) {
-    return LEVEL_ALIASES[raw.trim().toUpperCase()];
-  }
-  if (statusCode === 2) return "ERROR";
-  // OTel GenAI 语义：error.type 存在（且无显式 level / 非 OK status）→ ERROR
-  if (attrs[ATTR.GEN_AI_ERROR_TYPE] !== undefined) return "ERROR";
-  return "DEFAULT";
-}
-
-// ---------------------------------------------------------------------------
-// 类型映射（优先级从高到低，参考 Langfuse ObservationTypeMapperRegistry）
-// ---------------------------------------------------------------------------
-
-function mapObservationType(
-  attrs: Record<string, unknown>,
-  _scopeName: string | undefined,
-): MachoraObservationType {
-  // 1. langfuse.observation.type
-  const explicit = attrs[ATTR.OBS_TYPE];
-  if (typeof explicit === "string") {
-    const t = explicit.trim().toUpperCase();
-    if (t === "GENERATION" || t === "EVENT") return t;
-    return "SPAN";
-  }
-
-  // 2. OpenInference span kind（LlamaIndex 生态，required 属性）
-  const oi = attrs[ATTR.OPENINFERENCE_KIND];
-  if (typeof oi === "string" && oi.trim() !== "") {
-    const kind = oi.trim().toUpperCase();
-    if (OPENINFERENCE_GENERATION_KINDS.has(kind)) return "GENERATION";
-    if (OPENINFERENCE_SPAN_KINDS.has(kind)) return "SPAN";
-  }
-
-  // 3. GenAI operation name
-  const op = attrs[ATTR.GEN_AI_OPERATION];
-  if (typeof op === "string") {
-    const o = op.trim().toLowerCase();
-    if (
-      o === "chat" ||
-      o === "completion" ||
-      o === "text_completion" ||
-      o === "generate_content" ||
-      o === "generate" ||
-      o === "embeddings"
-    ) {
-      return "GENERATION";
-    }
-    // agent / workflow / plan / memory / retrieval 系列：显式枚举 → SPAN
-    // （语义保留在 SPAN.name / metadata，见 design.md §6.3）
-    if (AGENT_OPERATIONS.has(o)) {
-      return "SPAN";
-    }
-  }
-
-  // 4. LoongSuite gen_ai.span.kind（LLM/STEP/TOOL/AGENT/ENTRY 等，见 design.md §6.8）
-  const sk = attrs[ATTR.GEN_AI_SPAN_KIND];
-  if (typeof sk === "string" && sk.trim() !== "") {
-    const kind = sk.trim().toUpperCase();
-    if (kind === "LLM" || kind === "EMBEDDING") return "GENERATION";
-    return "SPAN";
-  }
-
-  // 5. 工具调用
-  if (
-    attrs[ATTR.GEN_AI_TOOL_NAME] !== undefined ||
-    attrs[ATTR.GEN_AI_TOOL_CALL_ID] !== undefined
-  ) {
-    return "SPAN"; // TOOL 语义暂落在 SPAN.name（见 design.md §6.3）
-  }
-
-  // 6. 含模型信息 → generation
-  if (
-    attrs[ATTR.OBS_MODEL] !== undefined ||
-    attrs[ATTR.GEN_AI_REQUEST_MODEL] !== undefined ||
-    attrs[ATTR.GEN_AI_RESPONSE_MODEL] !== undefined
-  ) {
-    return "GENERATION";
-  }
-
-  return "SPAN";
-}
-
-// ---------------------------------------------------------------------------
-// 字段提取
-// ---------------------------------------------------------------------------
-
-function extractModel(attrs: Record<string, unknown>): string | null {
-  for (const k of [
-    ATTR.OBS_MODEL,
-    ATTR.GEN_AI_REQUEST_MODEL,
-    ATTR.GEN_AI_RESPONSE_MODEL,
-    ATTR.OPENINFERENCE_LLM_MODEL,
-  ]) {
-    const v = attrs[k];
-    if (typeof v === "string" && v.trim() !== "") return v;
-  }
-  return null;
-}
-
-/** OpenInference 的 input/output.value 是字符串（mime_type 多为 application/json），尝试解码为对象 */
-function decodeOtelValue(
-  v: unknown,
-  mime: unknown,
-): unknown {
-  if (typeof v !== "string") return v;
-  const trimmed = v.trim();
-  if (trimmed === "") return v;
-  const mimeStr = typeof mime === "string" ? mime.toLowerCase() : "";
-  const looksJson =
-    (trimmed.startsWith("{") && trimmed.endsWith("}")) ||
-    (trimmed.startsWith("[") && trimmed.endsWith("]"));
-  if (mimeStr.includes("json") || looksJson) {
-    try {
-      return JSON.parse(trimmed);
-    } catch {
-      return v;
-    }
-  }
-  return v;
-}
-
-/** 提取 gen_ai.agent.name / gen_ai.workflow.name（空串视为无） */
-function extractSemanticName(
-  attrs: Record<string, unknown>,
-  key: string,
-): string | null {
-  const v = attrs[key];
-  return typeof v === "string" && v.trim() !== "" ? v : null;
-}
-
-function extractIo(
-  attrs: Record<string, unknown>,
-): { input: unknown; output: unknown } {
-  let input: unknown = null;
-  let output: unknown = null;
-
-  if (attrs[ATTR.OBS_INPUT] !== undefined) input = attrs[ATTR.OBS_INPUT];
-  else if (attrs[ATTR.GEN_AI_INPUT_MESSAGES] !== undefined)
-    // LoongSuite 等 SDK 可能把 messages 序列化为 JSON 字符串，尝试解码为数组
-    input = decodeOtelValue(attrs[ATTR.GEN_AI_INPUT_MESSAGES], undefined);
-  else if (attrs[ATTR.GEN_AI_TOOL_ARGS] !== undefined)
-    input = attrs[ATTR.GEN_AI_TOOL_ARGS];
-  else if (attrs[ATTR.GEN_AI_PROMPT] !== undefined)
-    input = attrs[ATTR.GEN_AI_PROMPT];
-  else if (attrs[ATTR.OPENINFERENCE_INPUT] !== undefined)
-    input = decodeOtelValue(
-      attrs[ATTR.OPENINFERENCE_INPUT],
-      attrs[ATTR.OPENINFERENCE_INPUT_MIME],
-    );
-
-  if (attrs[ATTR.OBS_OUTPUT] !== undefined) output = attrs[ATTR.OBS_OUTPUT];
-  else if (attrs[ATTR.GEN_AI_OUTPUT_MESSAGES] !== undefined)
-    output = decodeOtelValue(attrs[ATTR.GEN_AI_OUTPUT_MESSAGES], undefined);
-  else if (attrs[ATTR.GEN_AI_TOOL_RESULT] !== undefined)
-    output = attrs[ATTR.GEN_AI_TOOL_RESULT];
-  else if (attrs[ATTR.GEN_AI_COMPLETION] !== undefined)
-    output = attrs[ATTR.GEN_AI_COMPLETION];
-  else if (attrs[ATTR.OPENINFERENCE_OUTPUT] !== undefined)
-    output = decodeOtelValue(
-      attrs[ATTR.OPENINFERENCE_OUTPUT],
-      attrs[ATTR.OPENINFERENCE_OUTPUT_MIME],
-    );
-
-  return { input, output };
-}
-
-function extractUsage(attrs: Record<string, unknown>): {
-  usage: unknown;
-  inputTokens: number | null;
-  outputTokens: number | null;
-  totalTokens: number | null;
-  totalCost: number | null;
-} {
-  let inputTokens = asNumber(attrs[ATTR.GEN_AI_USAGE_INPUT_TOKENS]);
-  let outputTokens = asNumber(attrs[ATTR.GEN_AI_USAGE_OUTPUT_TOKENS]);
-  let totalCost: number | null = null;
-
-  const usageDetails = asObject(attrs[ATTR.OBS_USAGE_DETAILS]);
-  if (usageDetails) {
-    inputTokens ??= asNumber(usageDetails["input"]);
-    outputTokens ??= asNumber(usageDetails["output"]);
-  }
-  // OpenInference：llm.token_count.{prompt,completion,total}
-  inputTokens ??= asNumber(attrs[ATTR.OPENINFERENCE_LLM_TOKEN_PROMPT]);
-  outputTokens ??= asNumber(attrs[ATTR.OPENINFERENCE_LLM_TOKEN_COMPLETION]);
-  const costDetails = asObject(attrs[ATTR.OBS_COST_DETAILS]);
-  if (costDetails) totalCost = asNumber(costDetails["total"]);
-  totalCost ??= asNumber(attrs[ATTR.OPENINFERENCE_LLM_COST_TOTAL]);
-
-  // totalTokens 优先级：显式 total > input+output 推算
-  const explicitTotal = asNumber(attrs[ATTR.OPENINFERENCE_LLM_TOKEN_TOTAL]);
-  const totalTokens =
-    explicitTotal ?? (inputTokens !== null || outputTokens !== null
-      ? (inputTokens ?? 0) + (outputTokens ?? 0)
-      : null);
-
-  return {
-    usage: attrs[ATTR.OBS_USAGE_DETAILS] ?? null,
-    inputTokens,
-    outputTokens,
-    totalTokens,
-    totalCost,
-  };
-}
+// 已提取到专用字段 / 显式剔除的属性键，不再进 metadata
+// 语义键需保留在 metadata：虽在 ATTR 中，但无专用列，轨迹视图（推理轨迹）角色分类
+// 依赖它们；gen_ai.tool.name 同时已被提取为 observation.name，保留便于分类与审计。
+const RETAIN_IN_METADATA = new Set<string>([
+  ATTR.GEN_AI_SPAN_KIND,
+  ATTR.GEN_AI_OPERATION,
+  ATTR.GEN_AI_TOOL_NAME,
+  ATTR.GEN_AI_TOOL_CALL_ID,
+  MACHORA_ATTR.SPAN_KIND,
+  MACHORA_ATTR.OPERATION,
+  MACHORA_ATTR.TOOL_NAME,
+  MACHORA_ATTR.TOOL_CALL_ID,
+]);
+const EXTRACTED_KEYS = new Set<string>(
+  [
+    ...(Object.values(ATTR) as string[]),
+    ...(Object.values(MACHORA_ATTR) as string[]),
+    "gen_ai.usage.input_tokens",
+    "gen_ai.usage.output_tokens",
+  ].filter((k) => !RETAIN_IN_METADATA.has(k)),
+);
 
 function buildMetadata(
   attrs: Record<string, unknown>,
@@ -373,6 +127,20 @@ function buildMetadata(
 // ---------------------------------------------------------------------------
 // 解析：OTLP payload → Trace/Observation 记录
 // ---------------------------------------------------------------------------
+
+function nanosToDate(ns: string | number | undefined): Date | null {
+  if (ns === undefined || ns === null || ns === "") return null;
+  const n = Number(ns);
+  if (!Number.isFinite(n)) return null;
+  return new Date(n / 1e6);
+}
+
+function asStringArray(v: unknown): string[] {
+  if (Array.isArray(v)) {
+    return v.filter((x): x is string => typeof x === "string");
+  }
+  return [];
+}
 
 export function parseOtelPayload(
   projectId: string,
@@ -437,37 +205,37 @@ export function parseOtelPayload(
     const root = roots[0];
     if (!root) continue;
 
-    // 3. trace 级属性：整组内 langfuse.trace.* 优先，否则取根 span
-    const firstDefined = (key: string): unknown => {
+    // 3. 语义分析：每个 span 归一化一次（trace 级字段取整组内先定义者）
+    const analyzed = new Map<FlattenedSpan, AnalyzedSpan>();
+    for (const s of spans) {
+      analyzed.set(s, analyzeSpan(s.attrs, s.statusCode));
+    }
+    const firstDefinedSemantic = <K extends keyof AnalyzedSpan>(
+      key: K,
+    ): AnalyzedSpan[K] | undefined => {
       for (const s of spans) {
-        const v = s.attrs[key];
-        if (v !== undefined && v !== null) return v;
+        const v = analyzed.get(s)![key];
+        if (v !== null && v !== undefined && !(Array.isArray(v) && v.length === 0)) {
+          return v;
+        }
       }
       return undefined;
     };
-    const traceName = firstDefined(ATTR.TRACE_NAME);
-    const userId =
-      firstDefined(ATTR.TRACE_USER_ID) ??
-      firstDefined(ATTR.COMPAT_USER_ID) ??
-      firstDefined(ATTR.OPENINFERENCE_USER_ID) ??
-      firstDefined(ATTR.GEN_AI_USER_ID);
-    const sessionId =
-      firstDefined(ATTR.TRACE_SESSION_ID) ??
-      firstDefined(ATTR.COMPAT_SESSION_ID) ??
-      firstDefined(ATTR.OPENINFERENCE_SESSION_ID) ??
-      firstDefined(ATTR.GEN_AI_SESSION_ID);
-    const traceInput = firstDefined(ATTR.TRACE_INPUT);
-    const traceOutput = firstDefined(ATTR.TRACE_OUTPUT);
-    const traceMetadata = firstDefined(ATTR.TRACE_METADATA);
-    // OpenInference：metadata 为 JSON 字符串（精简键），解码后作为 trace 级 metadata
-    const oiMetadata = decodeOtelValue(
-      firstDefined(ATTR.OPENINFERENCE_METADATA),
-      "application/json",
-    );
-    const tags = asStringArray(firstDefined(ATTR.TRACE_TAGS));
-    const oiTags = asStringArray(firstDefined(ATTR.OPENINFERENCE_TAGS));
+
+    // trace 级属性
+    const traceName = firstDefinedSemantic("traceName");
+    const userId = firstDefinedSemantic("userId");
+    const sessionId = firstDefinedSemantic("sessionId");
+    const agentName = firstDefinedSemantic("agentName");
+    const workflowName = firstDefinedSemantic("workflowName");
+    const skillName = firstDefinedSemantic("skillName");
+    const tags = firstDefinedSemantic("tags") ?? [];
+    const traceInput = firstDefinedByAttr(spans, ATTR.TRACE_INPUT);
+    const traceOutput = firstDefinedByAttr(spans, ATTR.TRACE_OUTPUT);
+    const traceMetadata = firstDefinedByAttr(spans, ATTR.TRACE_METADATA);
+    const semanticMetadata = firstDefinedSemantic("metadata");
     const environment =
-      (firstDefined(ATTR.ENVIRONMENT) as string | undefined) ??
+      (firstDefinedByAttr(spans, ATTR.ENVIRONMENT) as string | undefined) ??
       (root.resourceAttrs["deployment.environment"] as string | undefined) ??
       "default";
 
@@ -483,67 +251,45 @@ export function parseOtelPayload(
       userId: typeof userId === "string" && userId !== "" ? userId : null,
       sessionId:
         typeof sessionId === "string" && sessionId !== "" ? sessionId : null,
-      agentName:
-        extractSemanticName(root.attrs, ATTR.GEN_AI_AGENT_NAME) ??
-        extractSemanticName(root.attrs, ATTR.OPENINFERENCE_AGENT_NAME) ??
-        (firstDefined(ATTR.GEN_AI_AGENT_NAME) as string | null) ??
-        (firstDefined(ATTR.OPENINFERENCE_AGENT_NAME) as string | null) ??
-        null,
+      agentName: typeof agentName === "string" && agentName !== "" ? agentName : null,
       workflowName:
-        extractSemanticName(root.attrs, ATTR.GEN_AI_WORKFLOW_NAME) ??
-        (firstDefined(ATTR.GEN_AI_WORKFLOW_NAME) as string | null) ??
-        null,
-      skillName:
-        extractSemanticName(root.attrs, ATTR.GEN_AI_SKILL_NAME) ??
-        (firstDefined(ATTR.GEN_AI_SKILL_NAME) as string | null) ??
-        null,
+        typeof workflowName === "string" && workflowName !== "" ? workflowName : null,
+      skillName: typeof skillName === "string" && skillName !== "" ? skillName : null,
       input: traceInput ?? null,
       output: traceOutput ?? null,
-      metadata: traceMetadata ?? oiMetadata ?? null,
-      tags: tags.length > 0 ? tags : oiTags,
+      metadata: traceMetadata ?? semanticMetadata ?? null,
+      tags,
     };
     traces.push(trace);
 
     // 4. span → observation
     for (const s of spans) {
-      const { input, output } = extractIo(s.attrs);
-      const usage = extractUsage(s.attrs);
-      const level = parseLevel(s.attrs, s.statusCode);
-      const obsName =
-        (typeof s.attrs[ATTR.GEN_AI_TOOL_NAME] === "string"
-          ? (s.attrs[ATTR.GEN_AI_TOOL_NAME] as string)
-          : null) ??
-        (typeof s.attrs[ATTR.OPENINFERENCE_TOOL_NAME] === "string"
-          ? (s.attrs[ATTR.OPENINFERENCE_TOOL_NAME] as string)
-          : null) ??
-        s.span.name ??
-        null;
+      const a = analyzed.get(s)!;
+      const obsName = a.toolName ?? s.span.name ?? null;
 
       observations.push({
         id: s.spanId,
         traceId,
         projectId,
-        type: mapObservationType(s.attrs, s.scopeName),
+        type: a.type,
         name: obsName,
         parentObservationId:
           s.parentSpanId && bySpanId.has(s.parentSpanId) ? s.parentSpanId : null,
         startTime: s.startTime,
         endTime: s.endTime,
-        model: extractModel(s.attrs),
-        agentName:
-          extractSemanticName(s.attrs, ATTR.GEN_AI_AGENT_NAME) ??
-          extractSemanticName(s.attrs, ATTR.OPENINFERENCE_AGENT_NAME),
-        workflowName: extractSemanticName(s.attrs, ATTR.GEN_AI_WORKFLOW_NAME),
-        skillName: extractSemanticName(s.attrs, ATTR.GEN_AI_SKILL_NAME),
-        input,
-        output,
+        model: a.model,
+        agentName: a.agentName,
+        workflowName: a.workflowName,
+        skillName: a.skillName,
+        input: a.input,
+        output: a.output,
         metadata: buildMetadata(s.attrs, s.resourceAttrs),
-        level,
-        usage: usage.usage,
-        inputTokens: usage.inputTokens,
-        outputTokens: usage.outputTokens,
-        totalTokens: usage.totalTokens,
-        totalCost: usage.totalCost,
+        level: a.level,
+        usage: s.attrs[ATTR.OBS_USAGE_DETAILS] ?? null,
+        inputTokens: a.inputTokens,
+        outputTokens: a.outputTokens,
+        totalTokens: a.totalTokens,
+        totalCost: a.totalCost,
       });
 
       // span events → EVENT observations（挂在该 span 下，时间=事件时间）
@@ -577,6 +323,18 @@ export function parseOtelPayload(
   }
 
   return { traces, observations };
+}
+
+/** 整组内按属性键取第一个定义值（trace 级专用键，语义层不提取） */
+function firstDefinedByAttr(
+  spans: FlattenedSpan[],
+  key: string,
+): unknown {
+  for (const s of spans) {
+    const v = s.attrs[key];
+    if (v !== undefined && v !== null) return v;
+  }
+  return undefined;
 }
 
 // ---------------------------------------------------------------------------

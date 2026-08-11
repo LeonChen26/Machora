@@ -26,7 +26,7 @@ import { TrajectoryGraph } from "../../../components/trace/TrajectoryGraph";
 import { TraceDetailPanel } from "../../../components/trace/TraceDetailPanel";
 import { MessageView } from "../../../components/trace/MessageView";
 import { buildTrajectoryRows } from "../../../server/trajectory";
-import { classifyTrajectoryKind } from "@machora/shared";
+import { classifyTrajectoryKind, isGenerationType } from "@machora/shared";
 import {
   SelectionProvider,
   SelectionLayout,
@@ -182,7 +182,7 @@ export default async function TraceDetailPage({
   function collectChatMessages(observations: Observation[]): ChatMsg[] {
     const out: ChatMsg[] = [];
     for (const o of observations) {
-      if (o.type !== "GENERATION") continue;
+      if (!isGenerationType(o.type)) continue;
       let idx = 0;
       for (const src of [o.input, o.output]) {
         if (!src || typeof src !== "object") continue;

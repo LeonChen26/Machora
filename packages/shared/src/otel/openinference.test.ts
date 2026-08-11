@@ -40,7 +40,7 @@ const payload = (spans: Record<string, unknown>[]): OtlpExportTraceServiceReques
 });
 
 describe("OpenInference 语义", () => {
-  it("span.kind=LLM / EMBEDDING → GENERATION；CHAIN / AGENT / TOOL / RETRIEVER → SPAN", () => {
+  it("span.kind 直接落库为 type：LLM/EMBEDDING/CHAIN/AGENT/TOOL/RETRIEVER", () => {
     const { observations } = parseOtelPayload("project-1", payload([
       span("s-llm", "llm-call", [["openinference.span.kind", str("LLM")]]),
       span("s-emb", "embed", [["openinference.span.kind", str("EMBEDDING")]]),
@@ -50,12 +50,12 @@ describe("OpenInference 语义", () => {
       span("s-ret", "retriever", [["openinference.span.kind", str("RETRIEVER")]]),
     ]));
     expect(observations.map((o) => o.type)).toEqual([
-      "GENERATION",
-      "GENERATION",
-      "SPAN",
-      "SPAN",
-      "SPAN",
-      "SPAN",
+      "LLM",
+      "EMBEDDING",
+      "CHAIN",
+      "AGENT",
+      "TOOL",
+      "RETRIEVER",
     ]);
   });
 

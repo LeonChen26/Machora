@@ -12,6 +12,7 @@ import {
 } from "../../lib/format";
 import { getCurrentProjectId } from "../../server/project";
 import { requireUser } from "../../server/session";
+import { isGenerationType } from "@machora/shared";
 import {
   parseTraceFilters,
   buildTraceWhere,
@@ -191,7 +192,7 @@ export default async function TracesPage({
 
   // 统计本页 latency（基于 observation 第一个 generation 的耗时）
   function firstGenLatency(t: (typeof shown)[number]): number | null {
-    const g = t.observations.find((o) => o.type === "GENERATION" && o.endTime);
+    const g = t.observations.find((o) => isGenerationType(o.type) && o.endTime);
     if (!g?.endTime) return null;
     return g.endTime.getTime() - g.startTime.getTime();
   }

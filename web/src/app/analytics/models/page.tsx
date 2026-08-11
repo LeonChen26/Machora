@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { and, count, desc, eq, gte } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray } from "drizzle-orm";
 import { db, observation } from "@machora/shared";
 import { getCurrentProjectId } from "../../../server/project";
 import { requireUser } from "../../../server/session";
@@ -36,7 +36,7 @@ export default async function ModelDrilldownPage({
   const gens = (await db.query.observation.findMany({
     where: and(
       eq(observation.projectId, projectId),
-      eq(observation.type, "GENERATION"),
+      inArray(observation.type, ["LLM", "EMBEDDING"]),
       eq(observation.model, model),
       gte(observation.startTime, prevSince),
     ),
@@ -52,7 +52,7 @@ export default async function ModelDrilldownPage({
       .where(
         and(
           eq(observation.projectId, projectId),
-          eq(observation.type, "GENERATION"),
+          inArray(observation.type, ["LLM", "EMBEDDING"]),
           eq(observation.model, model),
           gte(observation.startTime, since),
         ),

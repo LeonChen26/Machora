@@ -2,10 +2,9 @@
 // 纯函数：只依赖 observation 落库字段（type / metadata / model / 专用列 / 是否挂父），
 // 不改存储、不回填数据。判定优先级（最强语义 → 兜底）：
 //   1. type=EVENT → event
-//   2. metadata.gen_ai.span.kind（LoongSuite 六值）
-//   3. metadata.gen_ai.operation.name（操作枚举）
-//   4. 专用列启发式（skillName / workflowName / agentName / gen_ai.tool.name / model 含 embed）
-//   5. 兜底：GENERATION → llm；无父 SPAN → entry；其余 → other
+//   2. type 为 span.kind 多值（新数据，type 与 span.kind 一致）→ 直接映射角色
+//   3. 兼容：metadata.gen_ai.span.kind → operation → 专用列启发式（对 SPAN 兜底前尽力区分）
+//   4. 兜底：无父 SPAN → entry；其余 → other
 
 export const TRAJECTORY_KINDS = [
   "entry",
@@ -62,11 +61,30 @@ const LLM_OPS = new Set([
   "generate",
 ]);
 
+/** span.kind 多值 type → 轨迹角色（新数据直接落库，无需再推断） */
+const TYPE_ROLE: Record<string, TrajectoryKind> = {
+  ENTRY: "entry",
+  AGENT: "agent",
+  STEP: "think",
+  LLM: "llm",
+  TOOL: "tool",
+  EMBEDDING: "embedding",
+  CHAIN: "workflow",
+  RETRIEVER: "retrieval",
+  RERANKER: "retrieval",
+  EVENT: "event",
+};
+
 export function classifyTrajectoryKind(o: TrajectoryKindInput): TrajectoryKind {
   // 1. EVENT 固定为日志（不占主链行，聚合到父节点）
   if (o.type === "EVENT") return "event";
 
-  // 2. LoongSuite gen_ai.span.kind（最强语义，六值）
+  // 2. 落库 span.kind 直接映射（新数据：type 与 span.kind 一致）
+  const role = TYPE_ROLE[o.type];
+  if (role) return role;
+
+  // 3. 对 SPAN 通用节点尽力区分角色：从 metadata 反推（gen_ai.span.kind / operation / 专用列）
+  // 3.1 LoongSuite gen_ai.span.kind（最强语义，六值）
   const sk = metaStr(o.metadata, "gen_ai.span.kind")?.toUpperCase();
   if (sk) {
     switch (sk) {
@@ -87,7 +105,7 @@ export function classifyTrajectoryKind(o: TrajectoryKindInput): TrajectoryKind {
     }
   }
 
-  // 3. gen_ai.operation.name（操作枚举）
+  // 3.2 gen_ai.operation.name（操作枚举）
   const op = metaStr(o.metadata, "gen_ai.operation.name")?.toLowerCase();
   if (op) {
     if (op === "entry" || op === "invoke_agent" || op === "create_agent") return "agent";
@@ -100,15 +118,14 @@ export function classifyTrajectoryKind(o: TrajectoryKindInput): TrajectoryKind {
     if (LLM_OPS.has(op)) return "llm";
   }
 
-  // 4. 专用列 / 属性启发式
+  // 3.3 专用列 / 属性启发式
   if (o.skillName) return "skill";
   if (o.workflowName) return "workflow";
   if (o.agentName) return "agent";
   if (metaStr(o.metadata, "gen_ai.tool.name")) return "tool";
   if (o.model && /embed/i.test(o.model)) return "embedding";
 
-  // 5. 兜底
-  if (o.type === "GENERATION") return "llm";
+  // 3.4 兜底：无父 SPAN → entry；其余 → other
   if (o.type === "SPAN" && !o.hasParent) return "entry";
   return "other";
 }

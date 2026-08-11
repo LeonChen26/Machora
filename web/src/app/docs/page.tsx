@@ -15,12 +15,12 @@ const NAV_SECTIONS = [
     ],
   },
   {
-    label: "Agent / 框架接入",
+    label: "接入指南",
     items: [
-      { href: "#agents-otlp", label: "OTLP 通道" },
+      { href: "#agents-otlp", label: "OTLP 通道与认证" },
       { href: "#agents-openclaw", label: "OpenClaw" },
-      { href: "#agents-hermes", label: "Hermes 探针" },
-      { href: "#agents-openclaw-probe", label: "OpenClaw 探针" },
+      { href: "#agents-openllmetry", label: "OpenLLMetry" },
+      { href: "#agents-probes", label: "仓库探针（Hermes / OpenClaw）" },
       { href: "#agents-jiuwen", label: "JiuwenSwarm" },
       { href: "#agents-pi", label: "π-Agent" },
       { href: "#agents-examples", label: "LangChain / LlamaIndex / LoongSuite" },
@@ -29,6 +29,7 @@ const NAV_SECTIONS = [
   {
     label: "语义规范",
     items: [
+      { href: "#semantics-machora", label: "Machora 语义规范" },
       { href: "#semantics-type", label: "Observation 类型判定" },
       { href: "#semantics-attr", label: "属性 → 专用字段映射" },
       { href: "#semantics-loongsuite", label: "LoongSuite span.kind" },
@@ -66,7 +67,7 @@ export default async function DocsPage() {
       <div className="page-head">
         <div>
           <h1>Docs</h1>
-          <div className="sub">通过 REST API / OTLP 把 trace、observation、score 注入 Machora，并接入各类 Agent / 框架</div>
+          <div className="sub">推荐经 OTLP 通道（OpenInference 语义）接入各类 Agent / 框架；亦支持 REST API 注入 trace / observation / score</div>
         </div>
       </div>
 
@@ -86,12 +87,23 @@ export default async function DocsPage() {
             <div id="api-endpoint" className="docs-section">
               <div className="section-title">1.1 端点与认证</div>
               <div className="card">
-                <div className="label" style={{ marginBottom: 6 }}>批量注入端点</div>
+                <div className="label" style={{ marginBottom: 6 }}>OTLP 端点（推荐 · 零埋点接入）</div>
+                <pre className="code">{`POST ${baseUrl}/api/public/otel/v1/traces    # trace / span（JSON / Protobuf）
+POST ${baseUrl}/api/public/otel/v1/metrics   # metrics（JSON / Protobuf）`}</pre>
+                <div className="muted" style={{ marginTop: 8 }}>
+                  支持 OTLP JSON / Protobuf 双协议，多数 LLM 框架与探针（OpenLLMetry、OpenClaw、
+                  LangChain、JiuwenSwarm 等）直接指向该端点即可自动上报完整链路，零业务埋点。
+                  详细接入见「二、接入指南」。
+                </div>
+                <div className="label" style={{ margin: "12px 0 4px" }}>批量注入端点（REST API）</div>
                 <pre className="code">{`POST ${baseUrl}/api/public/ingestion`}</pre>
                 <div style={{ marginTop: 8 }}>
-                  <div className="label" style={{ marginBottom: 4 }}>认证（Basic Auth）</div>
+                  <div className="label" style={{ marginBottom: 4 }}>认证（Basic Auth，全部公开端点）</div>
                   <pre className="code">{`用户名: ${publicKey}
 密码:   ${secretKey}`}</pre>
+                  <div className="muted" style={{ marginTop: 6 }}>
+                    本地调试可设 <span className="mono">MACHORA_AUTH_DISABLED=true</span> 免认证（仅限本地，见 2.0）。
+                  </div>
                 </div>
               </div>
             </div>
@@ -131,7 +143,7 @@ export default async function DocsPage() {
                     <tr>
                       <td><span className="badge purple">observation-create</span></td>
                       <td className="mono">id, traceId, type, startTime</td>
-                      <td className="muted">type ∈ SPAN / GENERATION / EVENT（大小写敏感）</td>
+                      <td className="muted">type 与 span.kind 一致（ENTRY/AGENT/STEP/LLM/TOOL/EMBEDDING/CHAIN/RETRIEVER/RERANKER/EVENT/SPAN）</td>
                     </tr>
                     <tr>
                       <td><span className="badge amber">score-create</span></td>
@@ -164,7 +176,7 @@ export default async function DocsPage() {
         "body": {
           "id": "obs-1",
           "traceId": "trace-1",
-          "type": "GENERATION",
+          "type": "LLM",
           "name": "llm-call",
           "startTime": "${new Date().toISOString()}",
           "model": "gpt-4o-mini",
@@ -313,9 +325,9 @@ curl -u "${publicKey}:${secretKey}" \\
               <b>探针</b>（examples/ 下，输出 OpenInference 语义）。
             </div>
 
-            {/* ---------- OTLP 通道 ---------- */}
+            {/* ---------- OTLP 通道与认证 ---------- */}
             <div id="agents-otlp" className="docs-section">
-              <div className="section-title">2.0 OTLP 通道</div>
+              <div className="section-title">2.0 OTLP 通道与认证</div>
               <div className="card">
                 <div className="label" style={{ marginBottom: 6 }}>统一 OTLP 端点</div>
                 <pre className="code">{`POST ${baseUrl}/api/public/otel/v1/traces
@@ -327,10 +339,22 @@ Authorization: Basic <BASE64(pk:sk)>`}</pre>
                 <pre className="code">{`OTEL_EXPORTER_OTLP_ENDPOINT = "${baseUrl}/api/public/otel/v1/traces"
 OTEL_EXPORTER_OTLP_HEADERS  = "Authorization=Basic <BASE64(pk:sk)>"
 OTEL_SERVICE_NAME           = "my-agent"`}</pre>
+                <div className="label" style={{ margin: "12px 0 4px" }}>本地调试开关（免认证）</div>
+                <div className="muted" style={{ marginBottom: 8 }}>
+                  服务端设 <span className="mono">MACHORA_AUTH_DISABLED=true</span> 即跳过 Basic Auth
+                  （数据写入默认项目），本地调试探针 / curl 无需带凭据。
+                  <span className="text-danger">仅限本地</span>，云端保持默认有认证。
+                </div>
+                <pre className="code">{`# PowerShell 启动本地服务
+$env:MACHORA_AUTH_DISABLED = "true"
+pnpm standalone:start
+
+# 之后所有接入示例均可省略 Authorization / Basic Auth 相关配置`}</pre>
                 <div className="muted" style={{ marginTop: 8 }}>
                   <span className="text-danger">注意</span>：端点必须是完整路径含{" "}
                   <span className="mono">/api/public/otel/v1/traces</span>（部分 exporter 不自动拼接
                   /v1/traces，漏掉会 404）；进程结束前需等待 BatchSpanProcessor flush。
+                  下文各框架示例默认已配好认证，本地调试时按上述开关省略即可。
                 </div>
               </div>
             </div>
@@ -385,45 +409,86 @@ $env:OTEL_SERVICE_NAME = "openclaw"
                     <tbody>
                       <tr>
                         <td className="mono">openclaw.model.call</td>
-                        <td><span className="badge purple">GENERATION</span></td>
+                        <td><span className="badge llm">LLM</span></td>
                         <td className="muted">模型 / input/output/total tokens 提取；cache_read 保留 metadata</td>
                       </tr>
                       <tr>
                         <td className="mono">openclaw.harness.run / openclaw.run</td>
-                        <td><span className="badge blue">SPAN（父-子嵌套）</span></td>
+                        <td><span className="badge span">SPAN（父-子嵌套）</span></td>
                         <td className="muted">harness.run → run → model.call / tool.execution 层级完整还原</td>
                       </tr>
                       <tr>
                         <td className="mono">openclaw.exec / tool.execution</td>
-                        <td><span className="badge blue">SPAN</span></td>
+                        <td><span className="badge span">SPAN</span></td>
                         <td className="muted">工具名作为 observation.name，参数/结果进 metadata</td>
                       </tr>
                       <tr>
                         <td className="mono">openclaw.liveness.warning</td>
-                        <td><span className="badge blue">SPAN（独立 Trace）</span></td>
+                        <td><span className="badge span">SPAN（独立 Trace）</span></td>
                         <td className="muted">事件循环延迟等告警</td>
                       </tr>
                       <tr>
                         <td className="mono">openclaw.model.usage</td>
-                        <td><span className="badge purple">GENERATION（独立 Trace）</span></td>
+                        <td><span className="badge llm">LLM（独立 Trace）</span></td>
                         <td className="muted">汇总 token 用量</td>
                       </tr>
                     </tbody>
                   </table>
                 </div>
                 <div className="muted" style={{ marginTop: 6 }}>
-                  常见坑：① plugins.allow 漏加 diagnostics-otel → 插件不加载；② endpoint 漏前缀 → 404；
-                  ③ protocol 设为 http/json → 静默跳过（必须 http/protobuf）。
+                  常见坑：① plugins.allow 漏加 diagnostics-otel → 插件不加载；
+                  ② protocol 设为 http/json → 静默跳过（必须 http/protobuf）。
+                  认证与端点配置同 2.0（本地调试可用免认证开关）。
                 </div>
               </div>
             </div>
 
-            {/* ---------- Hermes 探针 ---------- */}
-            <div id="agents-hermes" className="docs-section">
-              <div className="section-title">2.2 Hermes 探针（examples/hermes-agent）</div>
+            {/* ---------- OpenLLMetry ---------- */}
+            <div id="agents-openllmetry" className="docs-section">
+              <div className="section-title">2.2 OpenLLMetry（traceloop-sdk · 一键打点）</div>
               <div className="card">
                 <div className="muted" style={{ marginBottom: 8 }}>
-                  面向 <b>Hermes Agent</b> 的可选可观测插件（仓库 <span className="mono">examples/hermes-agent/otel_openinference/</span>），
+                  Traceloop 出品的 <b>OpenTelemetry LLM 发行版</b>：一行初始化即可自动打点
+                  OpenAI / Anthropic / LangChain / LlamaIndex / 向量库等 100+ 集成，
+                  输出 <b>OpenInference 语义</b> span（LLM / EMBEDDING → type 原样落库、CHAIN / TOOL / AGENT 等 → type 原样落库），
+                  Machora 语义接入层归一化后 <span className="mono">type 与 span.kind 一致</span> 直接落库，零额外适配。
+                </div>
+                <pre className="code">{`pip install traceloop-sdk
+
+from traceloop.sdk import Traceloop
+
+Traceloop.init(
+    app_name="my-agent",                       # → OTEL_SERVICE_NAME
+    api_endpoint="${baseUrl}/api/public/otel", # → 导出端点（自动拼接 /v1/traces）
+    headers={"Authorization": "Basic <base64(pk:sk)>"},  # 自托管用 Basic Auth
+    telemetry_enabled=False,                   # 关闭向 Traceloop 云的匿名遥测
+)`}</pre>
+                <div className="muted" style={{ marginTop: 8 }}>
+                  等价环境变量：<span className="mono">TRACELOOP_BASE_URL</span>（端点）、{" "}
+                  <span className="mono">TRACELOOP_HEADERS</span>（形如{" "}
+                  <span className="mono">Authorization=Basic &lt;base64(pk:sk)&gt;</span>，字符串形式同样生效）、{" "}
+                  <span className="mono">TRACELOOP_API_KEY</span>（传了 headers 即忽略）。端点可省 /v1/traces
+                  （SDK 检测到缺后缀会自动拼接）；传了 headers 后不再发送 Bearer token。
+                </div>
+                <div className="label" style={{ margin: "12px 0 4px" }}>进程结束前 flush</div>
+                <pre className="code">{`from opentelemetry import trace
+trace.get_tracer_provider().shutdown()   # 等待 BatchSpanProcessor 导出，防止 trace 丢失`}</pre>
+                <div className="muted" style={{ marginTop: 8 }}>
+                  常见坑：① 未 flush 直接退出 → 最后一批 span 丢失；② 想控制打点范围可传{" "}
+                  <span className="mono">instruments</span> / <span className="mono">block_instruments</span>；
+                  ③ api_key 走 Bearer 认证，自托管必须用 headers 传 Basic Auth（本地调试可省略，见 2.0）。
+                </div>
+              </div>
+            </div>
+
+            {/* ---------- 仓库探针（Hermes / OpenClaw） ---------- */}
+            <div id="agents-probes" className="docs-section">
+              <div className="section-title">2.3 仓库探针（examples/hermes-agent / examples/openclaw）</div>
+
+              <div className="card" style={{ marginBottom: "0.75rem" }}>
+                <div className="label" style={{ marginBottom: 4 }}>Hermes 探针（examples/hermes-agent）</div>
+                <div className="muted" style={{ marginBottom: 8 }}>
+                  面向 <b>Hermes Agent</b> 的可选可观测插件（<span className="mono">examples/hermes-agent/otel_openinference/</span>），
                   按 OpenInference 规范导出 session / turn / LLM / tool / subagent span。
                   LLM 的 <span className="mono">input.value</span> / <span className="mono">output.value</span> 存消息数组，
                   前端按 role 渲染气泡（调用树详情面板 + 对话 Tab）。
@@ -434,20 +499,19 @@ hermes plugins enable observability/otel_openinference
 export HERMES_OTEL_OPENINFERENCE_ENDPOINT=${baseUrl}/api/public/otel/v1/traces
 export HERMES_OTEL_OPENINFERENCE_HEADERS=Authorization=Basic <base64(pk:sk)>`}</pre>
               </div>
-            </div>
 
-            {/* ---------- OpenClaw 探针 ---------- */}
-            <div id="agents-openclaw-probe" className="docs-section">
-              <div className="section-title">2.3 OpenClaw 探针（examples/openclaw）</div>
               <div className="card">
+                <div className="label" style={{ marginBottom: 4 }}>OpenClaw 探针（examples/openclaw）</div>
                 <div className="muted" style={{ marginBottom: 8 }}>
                   由 Machroa 维护的 OpenClaw 原生插件（<span className="mono">examples/openclaw/</span>），
-                  订阅诊断事件并输出 <b>OpenInference 语义</b> span：harness.run→AGENT、run→CHAIN、
-                  model.call→LLM、tool.execution→TOOL，带 <span className="mono">session.id</span> 关联与
-                  <span className="mono">input.value/output.value</span> 内容（需开启 captureContent）。
+                  订阅诊断事件并输出 <b>OpenInference 语义</b> span（harness.run→AGENT、run→CHAIN、
+                  model.call→LLM、tool.execution→TOOL），带 <span className="mono">session.id</span> 关联。
+                  与内置 diagnostics-otel 二选一即可；探针用独立 SDK 导出，互不干扰。
                 </div>
-                <pre className="code">{`# 安装（本地路径或 archive）
+                <div className="label" style={{ marginBottom: 4 }}>安装与配置</div>
+                <pre className="code">{`# 安装（本地路径或 archive；-l 链接模式，开发改动即时生效）
 openclaw plugins install <repo>/examples/openclaw
+# openclaw plugins install -l <repo>/examples/openclaw --force
 
 # openclaw.json 配置
 {
@@ -462,7 +526,47 @@ openclaw plugins install <repo>/examples/openclaw
   }
 }`}</pre>
                 <div className="muted" style={{ marginTop: 8 }}>
-                  与内置 diagnostics-otel 二选一即可；探针用独立 SDK 导出，互不干扰。
+                  <span className="mono">captureContent: true</span> 必须开启，否则 model / tool 的
+                  input/output 内容不随事件下发（探针取{" "}
+                  <span className="mono">privateData.modelContent / toolContent</span>）。
+                  也可用环境变量配置（与 config 等价，config 优先）：{" "}
+                  <span className="mono">MACHORA_OTEL_ENDPOINT</span> /{" "}
+                  <span className="mono">MACHORA_OTEL_HEADERS</span> /{" "}
+                  <span className="mono">MACHORA_OTEL_SERVICE_NAME</span>。
+                </div>
+                <div className="label" style={{ margin: "12px 0 4px" }}>事件 → span 映射</div>
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th scope="col">OpenClaw 诊断事件</th>
+                        <th scope="col">span.kind</th>
+                        <th scope="col">关键属性</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td className="mono">harness.run.*</td>
+                        <td><span className="badge agent">AGENT</span></td>
+                        <td className="muted">根 span · agent.name=harnessId · session.id</td>
+                      </tr>
+                      <tr>
+                        <td className="mono">run.*</td>
+                        <td><span className="badge chain">CHAIN</span></td>
+                        <td className="muted">挂到同 runId 的 harness 下</td>
+                      </tr>
+                      <tr>
+                        <td className="mono">model.call.*</td>
+                        <td><span className="badge llm">LLM</span></td>
+                        <td className="muted">llm.model_name / token_count / input.output.value</td>
+                      </tr>
+                      <tr>
+                        <td className="mono">tool.execution.*</td>
+                        <td><span className="badge tool">TOOL</span></td>
+                        <td className="muted">tool.name / tool_call.id / 参数与结果</td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </div>
@@ -511,8 +615,9 @@ debug_trace:
 # 对话里直接输入（仅本轮生效）：
 #   /debug 帮我修复 tests/test_login.py 里失败的用例`}</pre>
                 <div className="muted" style={{ marginTop: 8 }}>
-                  常见坑：① endpoint 漏写 /v1/traces 后缀 → 404；② 填 OTEL_* 环境变量不生效；
-                  ③ 混用 otlp_grpc → Machora 当前仅测过 HTTP JSON/Protobuf 双栈。
+                  常见坑：① 填 OTEL_* 环境变量不生效（必须写配置文件）；
+                  ② 混用 otlp_grpc → Machora 当前仅测过 HTTP JSON/Protobuf 双栈。
+                  认证与端点同 2.0（langfuse_* 键内部拼成 Basic Auth）。
                 </div>
               </div>
             </div>
@@ -525,21 +630,21 @@ debug_trace:
                   基于标准 OTel + OpenInference 语义（<span className="mono">openinference.span.kind</span>），
                   与 LlamaIndex / LangGraph 走同一套语义通道，Machora 无需额外适配器。
                 </div>
-                <pre className="code">{`# 3a) 根 Span（Agent 入口 → SPAN + trace 级属性提升）
+                <pre className="code">{`# 3a) 根 Span（Agent 入口 → type=AGENT + trace 级属性提升）
 with tracer.start_as_current_span("pi.main") as s:
     s.set_attribute("openinference.span.kind", "AGENT")
     s.set_attribute("user.id",    "user-pi-001")   # → trace.userId
     s.set_attribute("session.id", "sess-pi-001")   # → trace.sessionId
     s.set_attribute("agent.name", "PiScheduler")   # → trace.agentName
 
-    # 3b) 工具调用（TOOL → SPAN）
+    # 3b) 工具调用（TOOL → type=TOOL）
     with tracer.start_as_current_span("search") as t:
         t.set_attribute("openinference.span.kind", "TOOL")
         t.set_attribute("gen_ai.tool.name", "web_search")
         t.set_attribute("input.value",  '"2026年8月北京天气"')
         t.set_attribute("output.value", '{"temp":"32C"}')
 
-    # 3c) LLM 调用（LLM → GENERATION + token/成本）
+    # 3c) LLM 调用（LLM → type=LLM + token/成本）
     with tracer.start_as_current_span("llm.chat") as g:
         g.set_attribute("openinference.span.kind", "LLM")
         g.set_attribute("llm.model_name",           "deepseek-v4-flash")
@@ -549,8 +654,8 @@ with tracer.start_as_current_span("pi.main") as s:
         g.set_attribute("input.messages",           '[{"role":"user","content":"你好"}]')
         g.set_attribute("output.value",             '{"role":"assistant","content":"你好！"}')`}</pre>
                 <div className="muted" style={{ marginTop: 8 }}>
-                  常见坑：① endpoint 漏 /v1/traces → 404；② 未等待 BatchSpanProcessor flush → trace 丢失；
-                  ③ input.messages / output.value 传 dict 而非 JSON 字符串。
+                  常见坑：① input.messages / output.value 传 dict 而非 JSON 字符串；
+                  ② 端点与认证配置同 2.0（本地调试可省略认证）。
                 </div>
               </div>
             </div>
@@ -566,7 +671,7 @@ with tracer.start_as_current_span("pi.main") as s:
                 <div className="muted" style={{ marginBottom: 8 }}>
                   LangChain 1.x 内置 OTel（经 langsmith <span className="mono">tracing_mode="otel"</span>），
                   span 自带 <span className="mono">gen_ai.*</span> 属性。注意 langsmith 读{" "}
-                  <span className="mono">OTEL_EXPORTER_OTLP_ENDPOINT</span>（无 _TRACES_ 中缀）且需完整 /v1/traces 后缀。
+                  <span className="mono">OTEL_EXPORTER_OTLP_ENDPOINT</span>（无 _TRACES_ 中缀，与 2.0 写法不同）。
                 </div>
                 <pre className="code">{`$env:LANGSMITH_TRACING = "true"
 $env:LANGSMITH_TRACING_MODE = "otel"
@@ -612,41 +717,176 @@ python agent.py   # 离线模式无需 API key`}</pre>
           <section className="docs-section" id="semantics">
             <div className="section-title">三、语义规范（Semantic Conventions）</div>
             <div className="docs-subtitle">
-              OTLP 处理器按优先级从多套语义（Langfuse / OpenTelemetry GenAI / OpenInference / LoongSuite 增强）
-              识别 observation 类型并提取专用字段；其余原始属性保留在 metadata。
-              映射规则对应 <span className="mono">packages/shared/src/otel/attributes.ts</span> 与{" "}
-              <span className="mono">processor.ts</span>。
+              所有来源经 <b>统一语义接入层</b>（<span className="mono">packages/shared/src/otel/semantics/</span>）
+              归一化到统一模型后落库：Machora / Langfuse / OpenTelemetry GenAI / OpenInference /
+              LoongSuite 各一套 adapter（注册表见 <span className="mono">adapters.ts</span>），
+              按优先级合并；<span className="mono">processor.ts</span> 只消费归一化结果，不再感知具体键。
+            </div>
+
+            {/* ---------- Machora 语义规范 ---------- */}
+            <div id="semantics-machora" className="docs-section">
+              <div className="section-title">3.0 Machora 语义规范（推荐 · machora.*）</div>
+              <div className="card">
+                <div className="muted" style={{ marginBottom: 8 }}>
+                  Machora 自有的推荐语义（<span className="mono">machora.*</span>），参考 LoongSuite
+                  （ENTRY / STEP 等 Agent 角色）与 OpenInference（CHAIN / RETRIEVER 等）设计：
+                  一套与具体框架无关、粒度统一的语义。接入时直接写这些键即可获得完整分类与字段提取，
+                  无需依赖任何第三方语义约定。<b>observation.type 落库值与 span.kind 一一对应</b>
+                  （无角色/UNKNOWN 落库为 SPAN），渲染层按 type 直接分类，不再从 metadata 反推；
+                  显式 <span className="mono">machora.observation.type</span>（接受 span.kind 值，兼容旧三值）优先级最高。
+                </div>
+                <div className="label" style={{ marginBottom: 4 }}>span.kind 角色枚举（type 落库值与之一致）</div>
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th scope="col">machora.span.kind</th>
+                        <th scope="col">含义</th>
+                        <th scope="col">observation.type（落库值）</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td className="mono">ENTRY</td>
+                        <td className="muted">Agent 调用入口（还原最原始输入输出）</td>
+                        <td><span className="badge entry">ENTRY</span></td>
+                      </tr>
+                      <tr>
+                        <td className="mono">AGENT</td>
+                        <td className="muted">Agent 本体</td>
+                        <td><span className="badge agent">AGENT</span></td>
+                      </tr>
+                      <tr>
+                        <td className="mono">STEP</td>
+                        <td className="muted">ReAct 单轮循环</td>
+                        <td><span className="badge step">STEP</span></td>
+                      </tr>
+                      <tr>
+                        <td className="mono">LLM</td>
+                        <td className="muted">模型调用</td>
+                        <td><span className="badge llm">LLM</span></td>
+                      </tr>
+                      <tr>
+                        <td className="mono">TOOL</td>
+                        <td className="muted">工具调用（可挂 skillName）</td>
+                        <td><span className="badge tool">TOOL</span></td>
+                      </tr>
+                      <tr>
+                        <td className="mono">EMBEDDING</td>
+                        <td className="muted">嵌入调用</td>
+                        <td><span className="badge embedding">EMBEDDING</span></td>
+                      </tr>
+                      <tr>
+                        <td className="mono">CHAIN</td>
+                        <td className="muted">工作流 / 链条</td>
+                        <td><span className="badge chain">CHAIN</span></td>
+                      </tr>
+                      <tr>
+                        <td className="mono">RETRIEVER</td>
+                        <td className="muted">RAG 检索</td>
+                        <td><span className="badge retriever">RETRIEVER</span></td>
+                      </tr>
+                      <tr>
+                        <td className="mono">RERANKER</td>
+                        <td className="muted">重排</td>
+                        <td><span className="badge reranker">RERANKER</span></td>
+                      </tr>
+                      <tr>
+                        <td className="mono">EVENT</td>
+                        <td className="muted">日志 / 事件</td>
+                        <td><span className="badge event">EVENT</span></td>
+                      </tr>
+                      <tr>
+                        <td className="mono">（无角色 / UNKNOWN）</td>
+                        <td className="muted">通用节点</td>
+                        <td><span className="badge span">SPAN</span></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div className="label" style={{ margin: "12px 0 4px" }}>关键属性</div>
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th scope="col">属性</th>
+                        <th scope="col">提取字段</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td className="mono">machora.model.name / token.input / token.output / token.total / cost.total</td>
+                        <td className="mono">model · inputTokens · outputTokens · totalTokens · totalCost</td>
+                      </tr>
+                      <tr>
+                        <td className="mono">machora.input / output（JSON 字符串或对象）</td>
+                        <td className="mono">observation.input / output（JSON 自动解码）</td>
+                      </tr>
+                      <tr>
+                        <td className="mono">machora.tool.name / tool.call.id</td>
+                        <td className="mono">observation.name（工具节点名）· toolCallId</td>
+                      </tr>
+                      <tr>
+                        <td className="mono">machora.agent.name / workflow.name / skill.name</td>
+                        <td className="mono">agentName · workflowName · skillName</td>
+                      </tr>
+                      <tr>
+                        <td className="mono">machora.user.id / session.id</td>
+                        <td className="mono">trace.userId · trace.sessionId</td>
+                      </tr>
+                      <tr>
+                        <td className="mono">machora.trace.name / tags / metadata / level</td>
+                        <td className="mono">trace.name · tags · metadata · observation.level</td>
+                      </tr>
+                      <tr>
+                        <td className="mono">machora.observation.type</td>
+                        <td className="mono">显式覆盖 type（span.kind 值；langfuse.observation.type=GENERATION 映射为 LLM）</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
 
             <div id="semantics-type" className="docs-section">
-              <div className="section-title">3.1 Observation 类型判定（优先级从高到低）</div>
+              <div className="section-title">3.1 Observation 类型判定（type 与 span.kind 一致）</div>
               <div className="card">
+                <div className="muted" style={{ marginBottom: 8 }}>
+                  observation.type 由语义接入层归一化的 <span className="mono">span.kind</span>{" "}
+                  一一映射后<b>直接落库</b>：ENTRY / AGENT / STEP / LLM / TOOL / EMBEDDING / CHAIN /
+                  RETRIEVER / RERANKER / EVENT 原样写入，无角色（UNKNOWN）→ <span className="badge span">SPAN</span>。
+                  渲染层按 type 直接分类。判定流程（优先级从高到低）：
+                </div>
                 <ol className="muted" style={{ margin: 0, paddingLeft: 20 }}>
                   <li>
-                    <span className="mono">langfuse.observation.type</span> 显式指定 →{" "}
-                    <span className="badge purple">GENERATION</span> /{" "}
-                    <span className="badge amber">EVENT</span>，其余视为 <span className="badge blue">SPAN</span>
+                    <span className="mono">machora.observation.type</span> 显式指定（Machora 原生，最高）→
+                    接受 span.kind 值直接落库
                   </li>
                   <li>
-                    <span className="mono">openinference.span.kind</span>：LLM / EMBEDDING →{" "}
-                    <span className="badge purple">GENERATION</span>；CHAIN / AGENT / TOOL / RETRIEVER /
-                    RERANKER / GUARDRAIL / EVALUATOR / PROMPT → <span className="badge blue">SPAN</span>
+                    <span className="mono">langfuse.observation.type</span> 显式指定（Langfuse 兼容）→
+                    <span className="mono">GENERATION→LLM</span> / <span className="mono">EVENT</span> /{" "}
+                    <span className="mono">SPAN</span>
                   </li>
                   <li>
-                    <span className="mono">gen_ai.operation.name</span>：chat / completion / generate* /
-                    embeddings → <span className="badge purple">GENERATION</span>；agent / workflow / plan /
-                    memory / retrieval 系列 → <span className="badge blue">SPAN</span>
+                    各来源 <span className="mono">span.kind</span> 显式枚举（<span className="mono">machora.span.kind</span>{" "}
+                    / <span className="mono">openinference.span.kind</span> / <span className="mono">gen_ai.span.kind</span>）
+                    → 归一化后原样落库（LLM→LLM、TOOL→TOOL、…）
                   </li>
                   <li>
-                    LoongSuite <span className="mono">gen_ai.span.kind</span>：LLM / EMBEDDING →{" "}
-                    <span className="badge purple">GENERATION</span>；STEP / TOOL / AGENT / ENTRY →{" "}
-                    <span className="badge blue">SPAN</span>
+                    <span className="mono">gen_ai.operation.name</span> 推断：chat / completion / generate* →{" "}
+                    <span className="badge llm">LLM</span>；embeddings →{" "}
+                    <span className="badge embedding">EMBEDDING</span>；entry / invoke_agent →{" "}
+                    <span className="badge entry">ENTRY</span> / <span className="badge agent">AGENT</span>；react_step / plan →{" "}
+                    <span className="badge step">STEP</span>；invoke_workflow →{" "}
+                    <span className="badge chain">CHAIN</span>；retrieval →{" "}
+                    <span className="badge retriever">RETRIEVER</span>；rerank →{" "}
+                    <span className="badge reranker">RERANKER</span>
                   </li>
                   <li>
-                    存在 <span className="mono">gen_ai.tool.name</span> /{" "}
-                    <span className="mono">gen_ai.tool.call.id</span> → <span className="badge blue">SPAN</span>
+                    <span className="mono">gen_ai.tool.name</span> / <span className="mono">gen_ai.tool.call.id</span>{" "}
+                    存在 → <span className="badge tool">TOOL</span>
                   </li>
-                  <li>兜底 → <span className="badge blue">SPAN</span></li>
+                  <li>兜底（无任何语义）→ <span className="badge span">SPAN</span></li>
                 </ol>
               </div>
             </div>
@@ -716,46 +956,46 @@ python agent.py   # 离线模式无需 API key`}</pre>
             </div>
 
             <div id="semantics-loongsuite" className="docs-section">
-              <div className="section-title">3.3 LoongSuite gen_ai.span.kind（Agent 行为角色）</div>
+              <div className="section-title">3.3 LoongSuite gen_ai.span.kind（Agent 行为角色 · type 落库值与之一致）</div>
               <div className="table-wrap">
                 <table>
                   <thead>
                     <tr>
                       <th scope="col">span.kind</th>
                       <th scope="col">含义</th>
-                      <th scope="col">Observation 类型</th>
+                      <th scope="col">observation.type（落库值）</th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr>
                       <td className="mono">ENTRY</td>
                       <td className="muted">Agent 调用入口，还原最原始的模型/用户输入输出</td>
-                      <td><span className="badge blue">SPAN</span></td>
+                      <td><span className="badge entry">ENTRY</span></td>
                     </tr>
                     <tr>
                       <td className="mono">AGENT</td>
                       <td className="muted">Agent 本体</td>
-                      <td><span className="badge blue">SPAN</span></td>
+                      <td><span className="badge agent">AGENT</span></td>
                     </tr>
                     <tr>
                       <td className="mono">STEP</td>
                       <td className="muted">ReAct 单轮循环（反思 → 工具调用 → 模型调用）</td>
-                      <td><span className="badge blue">SPAN</span></td>
+                      <td><span className="badge step">STEP</span></td>
                     </tr>
                     <tr>
                       <td className="mono">LLM</td>
                       <td className="muted">模型调用</td>
-                      <td><span className="badge purple">GENERATION</span></td>
+                      <td><span className="badge llm">LLM</span></td>
                     </tr>
                     <tr>
                       <td className="mono">TOOL</td>
                       <td className="muted">工具调用（execute_tool，可挂 gen_ai.skill.*）</td>
-                      <td><span className="badge blue">SPAN</span></td>
+                      <td><span className="badge tool">TOOL</span></td>
                     </tr>
                     <tr>
                       <td className="mono">EMBEDDING</td>
                       <td className="muted">嵌入调用</td>
-                      <td><span className="badge purple">GENERATION</span></td>
+                      <td><span className="badge embedding">EMBEDDING</span></td>
                     </tr>
                   </tbody>
                 </table>
@@ -775,7 +1015,7 @@ python agent.py   # 离线模式无需 API key`}</pre>
                   <tbody>
                     <tr>
                       <td className="mono">chat / completion / text_completion / generate_content / generate / embeddings</td>
-                      <td className="muted">模型 / 嵌入生成 → GENERATION</td>
+                      <td className="muted">模型生成 → <span className="badge llm">LLM</span> / 嵌入 → <span className="badge embedding">EMBEDDING</span></td>
                     </tr>
                     <tr>
                       <td className="mono">invoke_agent / create_agent / entry</td>
@@ -817,8 +1057,9 @@ python agent.py   # 离线模式无需 API key`}</pre>
                   resource 资源属性保留在 <span className="mono">observation.metadata</span>。
                   <b>例外</b>：<span className="mono">gen_ai.span.kind</span> /{" "}
                   <span className="mono">gen_ai.operation.name</span> / <span className="mono">gen_ai.tool.name</span>{" "}
-                  / <span className="mono">gen_ai.tool.call.id</span> 无专用列，
-                  虽在提取键清单中也保留在 metadata，供轨迹视图角色分类使用。
+                  / <span className="mono">gen_ai.tool.call.id</span>（及 <span className="mono">machora.span.kind</span>{" "}
+                  等）虽已归一化到 <span className="mono">type</span> 落库，仍保留在 metadata，
+                  供 SPAN 通用节点的轨迹角色反推与审计使用。
                 </div>
               </div>
             </div>
@@ -827,7 +1068,9 @@ python agent.py   # 离线模式无需 API key`}</pre>
               <div className="section-title">3.6 轨迹视图（推理轨迹）角色分类</div>
               <div className="muted mb-1">
                 trace 详情页「轨迹」tab 把 observation 按行为角色重组为主链视图；分类实现见{" "}
-                <span className="mono">packages/shared/src/otel/trajectory.ts</span>（判定优先级从高到低）。
+                <span className="mono">packages/shared/src/otel/trajectory.ts</span>。
+                <b>新数据 type 已与 span.kind 一致直接落库，按 type 直接映射</b>；仅 SPAN
+                 （无角色通用节点）回退到 metadata.gen_ai.span.kind / operation / 专用列反推。
                 <span className="mono">event / other</span> 不占行，聚合为父节点的计数徽标；
                 同名工具在决策序列中连续出现 ≥3 次标记「重复调用」；若段内含无进展信号
                 （工具 ERROR 或输出显式为空）则 ≥2 次即升级标记「疑似无效循环」；
@@ -844,43 +1087,43 @@ python agent.py   # 离线模式无需 API key`}</pre>
                   <tbody>
                     <tr>
                       <td className="mono">entry 入口</td>
-                      <td className="muted">gen_ai.span.kind=ENTRY；或根 SPAN（无父）且无其它语义</td>
+                      <td className="muted">type=ENTRY；或根 SPAN（无父）且无其它语义（旧数据）</td>
                     </tr>
                     <tr>
                       <td className="mono">agent</td>
-                      <td className="muted">span.kind=AGENT / operation=invoke_agent|create_agent|entry / agentName 列</td>
+                      <td className="muted">type=AGENT / 旧数据：span.kind=AGENT / operation=invoke_agent|create_agent|entry / agentName 列</td>
                     </tr>
                     <tr>
                       <td className="mono">workflow 工作流</td>
-                      <td className="muted">operation=invoke_workflow|create_workflow / workflowName 列</td>
+                      <td className="muted">type=CHAIN / 旧数据：operation=invoke_workflow|create_workflow / workflowName 列</td>
                     </tr>
                     <tr>
                       <td className="mono">think 思考</td>
-                      <td className="muted">span.kind=STEP / operation=react_step|plan</td>
+                      <td className="muted">type=STEP / 旧数据：span.kind=STEP / operation=react_step|plan</td>
                     </tr>
                     <tr>
                       <td className="mono">llm 模型</td>
-                      <td className="muted">span.kind=LLM / operation=chat|completion|generate* / GENERATION 兜底</td>
+                      <td className="muted">type=LLM / SPAN 反推：span.kind=LLM / operation=chat|completion|generate*</td>
                     </tr>
                     <tr>
                       <td className="mono">tool 工具</td>
-                      <td className="muted">span.kind=TOOL / metadata 含 gen_ai.tool.name</td>
+                      <td className="muted">type=TOOL / 旧数据：span.kind=TOOL / metadata 含 gen_ai.tool.name</td>
                     </tr>
                     <tr>
                       <td className="mono">retrieval 检索</td>
-                      <td className="muted">operation=retrieval|rerank</td>
+                      <td className="muted">type=RETRIEVER|RERANKER / 旧数据：operation=retrieval|rerank</td>
                     </tr>
                     <tr>
                       <td className="mono">memory 记忆</td>
-                      <td className="muted">operation=create/search/upsert/update/get/delete_memory、memory</td>
+                      <td className="muted">旧数据：operation=create/search/upsert/update/get/delete_memory、memory</td>
                     </tr>
                     <tr>
                       <td className="mono">skill 技能</td>
-                      <td className="muted">operation=invoke_skill|create_skill|skill / skillName 列</td>
+                      <td className="muted">旧数据：operation=invoke_skill|create_skill|skill / skillName 列</td>
                     </tr>
                     <tr>
                       <td className="mono">embedding 嵌入</td>
-                      <td className="muted">span.kind=EMBEDDING / operation=embeddings / model 含 embed</td>
+                      <td className="muted">type=EMBEDDING / 旧数据：span.kind=EMBEDDING / operation=embeddings / model 含 embed</td>
                     </tr>
                     <tr>
                       <td className="mono">event 日志</td>

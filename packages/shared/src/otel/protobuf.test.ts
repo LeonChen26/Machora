@@ -239,7 +239,7 @@ describe("protobuf → parseOtelPayload 集成", () => {
       id: "1112131415161718",
       traceId: "0102030405060708090a0b0c0d0e0f10",
       projectId: "project-1",
-      type: "GENERATION", // 含模型信息 → GENERATION
+      type: "LLM", // 含模型信息 → LLM
       name: "root",
       model: "gpt-4o",
       level: "ERROR", // status.code=2 → ERROR
@@ -313,7 +313,7 @@ describe("span events → EVENT observation", () => {
 
     const span = observations.find((o) => o.id === "1112131415161718")!;
     expect(span).toMatchObject({
-      type: "GENERATION",
+      type: "LLM",
       parentObservationId: null,
     });
 
