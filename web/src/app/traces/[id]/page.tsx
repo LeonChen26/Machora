@@ -26,7 +26,7 @@ import { TrajectoryGraph } from "../../../components/trace/TrajectoryGraph";
 import { TraceDetailPanel } from "../../../components/trace/TraceDetailPanel";
 import { MessageView } from "../../../components/trace/MessageView";
 import { buildTrajectoryRows } from "../../../server/trajectory";
-import { classifyTrajectoryKind, isGenerationType } from "@machora/shared";
+import { classifyTrajectoryKind } from "@machora/shared";
 import {
   SelectionProvider,
   SelectionLayout,
@@ -182,7 +182,8 @@ export default async function TraceDetailPage({
   function collectChatMessages(observations: Observation[]): ChatMsg[] {
     const out: ChatMsg[] = [];
     for (const o of observations) {
-      if (!isGenerationType(o.type)) continue;
+      // 聊天消息仅对 LLM 有意义；EMBEDDING 的 input/output 非 role 消息形态，不进入会话视图
+      if (o.type !== "LLM") continue;
       let idx = 0;
       for (const src of [o.input, o.output]) {
         if (!src || typeof src !== "object") continue;

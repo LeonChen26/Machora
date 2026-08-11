@@ -24,7 +24,7 @@ export const TRAJECTORY_KINDS = [
 export type TrajectoryKind = (typeof TRAJECTORY_KINDS)[number];
 
 export interface TrajectoryKindInput {
-  /** SPAN | GENERATION | EVENT */
+  /** 落库 type（span.kind 多值；SPAN=通用节点） */
   type: string;
   /** observation.metadata（jsonb，未知结构视为无） */
   metadata: unknown;
