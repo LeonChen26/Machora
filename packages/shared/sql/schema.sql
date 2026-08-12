@@ -103,6 +103,7 @@ CREATE TABLE IF NOT EXISTS "Evaluation" (
     "evaluatorType" TEXT NOT NULL,
     "config" JSONB,
     "status" TEXT NOT NULL DEFAULT 'PENDING',
+    "mode" TEXT NOT NULL DEFAULT 'EXPERIMENT',
     "error" TEXT,
     "result" JSONB,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -119,6 +120,7 @@ CREATE TABLE IF NOT EXISTS "EvaluationConfig" (
     "evaluatorType" TEXT NOT NULL,
     "config" JSONB,
     "enabled" BOOLEAN NOT NULL DEFAULT TRUE,
+    "autoRun" BOOLEAN NOT NULL DEFAULT FALSE,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -194,6 +196,10 @@ CREATE INDEX IF NOT EXISTS "MetricSample_projectId_name_timestamp_idx" ON "Metri
 
 -- CreateIndex
 CREATE INDEX IF NOT EXISTS "MetricSample_name_timestamp_idx" ON "MetricSample"("name", "timestamp");
+
+-- 存量表补列（幂等）
+ALTER TABLE IF EXISTS "EvaluationConfig" ADD COLUMN IF NOT EXISTS "autoRun" BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE IF EXISTS "Evaluation" ADD COLUMN IF NOT EXISTS "mode" TEXT NOT NULL DEFAULT 'EXPERIMENT';
 
 -- AddForeignKey
 ALTER TABLE "ApiKey" ADD CONSTRAINT "ApiKey_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE CASCADE ON UPDATE CASCADE;

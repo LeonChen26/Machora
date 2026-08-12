@@ -174,6 +174,7 @@ export const evaluation = pgTable(
     evaluatorType: text("evaluatorType").notNull(),
     config: jsonb("config"),
     status: text("status").notNull().default("PENDING"), // PENDING | RUNNING | COMPLETED | ERROR
+    mode: text("mode").notNull().default("EXPERIMENT"), // ONLINE（在线自动） | EXPERIMENT（手动/批量）
     error: text("error"),
     result: jsonb("result"),
     createdAt: ts("createdAt").notNull().defaultNow(),
@@ -197,7 +198,8 @@ export const evaluationConfig = pgTable(
     name: text("name").notNull(), // 配置名（如 helpfulness）
     evaluatorType: text("evaluatorType").notNull(), // llm | error | latency ...
     config: jsonb("config"), // 评估器参数（model/apiKey/systemPrompt 或阈值）
-    enabled: boolean("enabled").notNull().default(true),
+    enabled: boolean("enabled").notNull().default(true), // 可手动触发
+    autoRun: boolean("autoRun").notNull().default(false), // 在线自动评估（ingestion 后自动触发）
     createdAt: ts("createdAt").notNull().defaultNow(),
     updatedAt: ts("updatedAt").notNull(),
   },

@@ -9,6 +9,7 @@ export interface EvalConfigRow {
   evaluatorType: string;
   config: Record<string, unknown> | null;
   enabled: boolean;
+  autoRun: boolean;
 }
 
 export function EvalConfigActions({
@@ -20,12 +21,12 @@ export function EvalConfigActions({
   const [error, setError] = useState<string | null>(null);
   const [testMsg, setTestMsg] = useState<string | null>(null);
 
-  function toggleEnabled() {
+  function patch(updates: Record<string, unknown>) {
     startTransition(async () => {
       const res = await fetch("/api/evaluations", {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id: row.id, enabled: !row.enabled }),
+        body: JSON.stringify({ id: row.id, ...updates }),
       });
       if (res.ok) {
         setError(null);
@@ -35,6 +36,14 @@ export function EvalConfigActions({
         setError(data?.error ?? "操作失败");
       }
     });
+  }
+
+  function toggleEnabled() {
+    patch({ enabled: !row.enabled });
+  }
+
+  function toggleAutoRun() {
+    patch({ autoRun: !row.autoRun });
   }
 
   function remove() {
@@ -89,6 +98,15 @@ export function EvalConfigActions({
         disabled={pending}
       >
         {row.enabled ? "停用" : "启用"}
+      </button>
+      <button
+        type="button"
+        className={row.autoRun ? "btn primary" : "btn"}
+        onClick={toggleAutoRun}
+        disabled={pending}
+        title="开启后，新注入的 trace 自动触发该评估（在线评估模式）"
+      >
+        {row.autoRun ? "● 在线" : "○ 手动"}
       </button>
       <button
         type="button"

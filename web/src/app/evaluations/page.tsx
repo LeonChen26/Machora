@@ -154,6 +154,7 @@ export default async function EvaluationsPage({
                       <th scope="col">评估器</th>
                       <th scope="col">任务名</th>
                       <th scope="col">目标 Trace</th>
+                      <th scope="col">模式</th>
                       <th scope="col">状态</th>
                       <th scope="col">结果</th>
                       <th scope="col">耗时</th>
@@ -184,6 +185,11 @@ export default async function EvaluationsPage({
                             >
                               {t.traceId.slice(0, 12)}…
                             </Link>
+                          </td>
+                          <td>
+                            <span className={`badge ${t.mode === "ONLINE" ? "blue" : ""}`}>
+                              {t.mode === "ONLINE" ? "在线" : "实验"}
+                            </span>
                           </td>
                           <td>
                             <span className={`badge ${sm.cls}`} title={t.status === "ERROR" ? t.error ?? undefined : undefined}>
@@ -237,6 +243,7 @@ export default async function EvaluationsPage({
                       <div className="label" style={{ margin: 0 }}>
                         {c.name}
                         {!c.enabled && <span className="badge idle ml-1">已停用</span>}
+                        {c.autoRun && <span className="badge blue ml-1">在线</span>}
                       </div>
                       <span className={`badge ${isLlm ? "blue" : ""}`}>
                         {isLlm ? "LLM judge" : `规则 · ${c.evaluatorType}`}

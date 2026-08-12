@@ -25,6 +25,7 @@ const ConfigSchema = z.object({
   evaluatorType: z.string().min(1, "评估器类型必填"),
   config: z.record(z.string(), z.any()).optional(),
   enabled: z.boolean().optional(),
+  autoRun: z.boolean().optional(),
 });
 
 const ConfigUpdateSchema = ConfigSchema.partial().extend({ id: z.string() });
@@ -92,6 +93,7 @@ const CreateBodySchema = z.discriminatedUnion("kind", [
     evaluatorType: z.string().min(1, "评估器类型必填"),
     config: z.record(z.string(), z.any()).optional(),
     enabled: z.boolean().optional(),
+    autoRun: z.boolean().optional(),
   }),
   z.object({
     kind: z.literal("run"),
@@ -149,6 +151,7 @@ export async function POST(req: NextRequest) {
         evaluatorType: d.evaluatorType,
         config: d.config ?? undefined,
         enabled: d.enabled ?? true,
+        autoRun: d.autoRun ?? false,
         updatedAt: new Date(),
       })
       .returning();
@@ -263,6 +266,7 @@ export async function PATCH(req: NextRequest) {
       ...(next.evaluatorType !== undefined ? { evaluatorType: next.evaluatorType } : {}),
       ...(next.config !== undefined ? { config: next.config } : {}),
       ...(next.enabled !== undefined ? { enabled: next.enabled } : {}),
+      ...(next.autoRun !== undefined ? { autoRun: next.autoRun } : {}),
       updatedAt: new Date(),
     })
     .where(eq(evaluationConfig.id, id))
