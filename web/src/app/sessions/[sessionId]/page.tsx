@@ -10,6 +10,7 @@ import {
 } from "../../../lib/format";
 import { getCurrentProjectId } from "../../../server/project";
 import { requireUser } from "../../../server/session";
+import { EmptyIcon } from "../../../components/EmptyIcon";
 
 export const dynamic = "force-dynamic";
 
@@ -29,11 +30,17 @@ export default async function SessionDetailPage({
     with: {
       observations: {
         columns: {
+          id: true,
           startTime: true,
           endTime: true,
           totalTokens: true,
           totalCost: true,
           level: true,
+          type: true,
+          name: true,
+          model: true,
+          input: true,
+          output: true,
         },
       },
       scores: { columns: { id: true } },
@@ -73,6 +80,88 @@ export default async function SessionDetailPage({
     const hasError = t.observations.some((o) => o.level === "ERROR");
     return { t, dur, tokens, cost, hasError };
   });
+
+  // ---------------------------------------------------------------------------
+  // 会话对话视图：跨 trace 聚合 LLM input/output.messages，按 observation.startTime 平铺
+  // ---------------------------------------------------------------------------
+  const ROLE_LABEL: Record<string, string> = {
+    user: "用户",
+    assistant: "模型",
+    system: "系统",
+    tool: "工具",
+    developer: "开发者",
+    function: "函数",
+  };
+  const chatRoleClass = (role: string): string =>
+    role === "user" || role === "system" || role === "tool" || role === "function"
+      ? role === "function" ? "tool" : role
+      : "assistant";
+  interface SessionChatMsg {
+    id: string;
+    role: string;
+    content: string;
+    model: string | null;
+    obsName: string | null;
+    traceId: string;
+    traceName: string | null;
+  }
+  function chatMessageText(it: Record<string, unknown>): string {
+    if (typeof it.content === "string") return it.content;
+    const blocks = Array.isArray(it.parts)
+      ? it.parts
+      : Array.isArray(it.content)
+        ? it.content
+        : null;
+    if (blocks) {
+      const texts: string[] = [];
+      for (const b of blocks) {
+        const bp = (b ?? {}) as Record<string, unknown>;
+        if (typeof bp.text === "string") texts.push(bp.text);
+        else if (typeof bp.content === "string") texts.push(bp.content);
+      }
+      return texts.join("\n");
+    }
+    return "";
+  }
+  const chatMessages: SessionChatMsg[] = [];
+  for (const t of traces) {
+    const obs = [...t.observations].sort(
+      (a, b) => a.startTime.getTime() - b.startTime.getTime(),
+    );
+    for (const o of obs) {
+      if (o.type !== "LLM") continue;
+      let idx = 0;
+      for (const src of [o.input, o.output]) {
+        if (!src || typeof src !== "object") continue;
+        // 顶层消息数组（Hermes/OpenInference input.value 形态）或 {messages:[...]}
+        const messages = Array.isArray(src)
+          ? src
+          : (src as Record<string, unknown>).messages;
+        if (!Array.isArray(messages)) continue;
+        for (const item of messages) {
+          if (!item || typeof item !== "object") continue;
+          const it = item as Record<string, unknown>;
+          const role = typeof it.role === "string" ? it.role : "unknown";
+          let content = chatMessageText(it);
+          if (Array.isArray(it.tool_calls) && it.tool_calls.length > 0) {
+            content =
+              (content ? content + "\n\n" : "") +
+              "⚙ tool_calls: " + JSON.stringify(it.tool_calls);
+          }
+          if (!content) continue; // 跳过空消息（tool 占位等）
+          chatMessages.push({
+            id: `${o.id}#${idx++}`,
+            role,
+            content,
+            model: o.model,
+            obsName: o.name,
+            traceId: t.id,
+            traceName: t.name,
+          });
+        }
+      }
+    }
+  }
 
   return (
     <>
@@ -160,6 +249,44 @@ export default async function SessionDetailPage({
           );
         })}
       </div>
+
+      {/* 会话对话视图：跨 trace 聚合 LLM 消息，按时间平铺 */}
+      <div className="section-title">
+        对话 <span className="count">{chatMessages.length}</span>
+      </div>
+      {chatMessages.length === 0 ? (
+        <div className="card empty">
+          <EmptyIcon type="target" />
+          该会话无对话消息（LLM observation 需带 input/output.messages）。
+        </div>
+      ) : (
+        <div className="card chat-view" style={{ maxHeight: "none" }}>
+          {chatMessages.map((m) => (
+            <div key={m.id} className={`chat-msg chat-${chatRoleClass(m.role)}`}>
+              <div className="chat-head">
+                <span className="badge">{ROLE_LABEL[m.role] ?? m.role}</span>
+                {m.model && <span className="badge purple">{m.model}</span>}
+                {m.obsName && (
+                  <span className="chat-obs" title={m.obsName}>{m.obsName}</span>
+                )}
+                <span className="chat-obs">
+                  <Link
+                    href={`/traces/${m.traceId}`}
+                    prefetch={false}
+                    className="mono text-xs"
+                    title={m.traceName ?? m.traceId}
+                  >
+                    trace:{(m.traceName ?? m.traceId).slice(0, 12)}
+                  </Link>
+                </span>
+              </div>
+              <div className="chat-content">
+                {m.content || <span className="mute2">（空）</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {errorCount > 0 && (
         <div className="card alert-danger mt-3">
