@@ -18,12 +18,8 @@ const NAV_SECTIONS = [
     label: "接入指南",
     items: [
       { href: "#agents-otlp", label: "OTLP 通道与认证" },
-      { href: "#agents-openclaw", label: "OpenClaw" },
-      { href: "#agents-openllmetry", label: "OpenLLMetry" },
-      { href: "#agents-probes", label: "仓库探针（Hermes / OpenClaw）" },
-      { href: "#agents-jiuwen", label: "JiuwenSwarm" },
-      { href: "#agents-pi", label: "π-Agent" },
-      { href: "#agents-examples", label: "LangChain / LlamaIndex / LoongSuite" },
+      { href: "#agents-zero", label: "零埋点框架接入" },
+      { href: "#agents-probes", label: "Machora 原生探针" },
     ],
   },
   {
@@ -67,7 +63,7 @@ export default async function DocsPage() {
       <div className="page-head">
         <div>
           <h1>Docs</h1>
-          <div className="sub">推荐经 OTLP 通道（OpenInference 语义）接入各类 Agent / 框架；亦支持 REST API 注入 trace / observation / score</div>
+          <div className="sub">推荐经 OTLP 通道接入各类 Agent / 框架（machora.* 原生语义或 OpenInference / gen_ai 兼容语义）；亦支持 REST API 注入 trace / observation / score</div>
         </div>
       </div>
 
@@ -320,397 +316,138 @@ curl -u "${publicKey}:${secretKey}" \\
           <section className="docs-section" id="agents">
             <div className="section-title">二、Agent / 框架接入指南</div>
             <div className="docs-subtitle">
-              接入步骤均基于真实测试 fixture / 官方源码验证通过。两类通道：内置 OTel 的框架走{" "}
-              <span className="mono">OTLP</span>（零埋点）；无内置 OTel 的框架用仓库维护的{" "}
-              <b>探针</b>（examples/ 下，输出 OpenInference 语义）。
+              两条接入路径：框架自带 OTel 打点（OpenInference / gen_ai.* / langfuse 语义）走{" "}
+              <b>零埋点 OTLP</b>；需要 <span className="mono">machora.*</span> 最高优先级语义时用
+              仓库维护的<b>原生探针</b>（examples/ 与 sdk/python）。
             </div>
 
             {/* ---------- OTLP 通道与认证 ---------- */}
             <div id="agents-otlp" className="docs-section">
               <div className="section-title">2.0 OTLP 通道与认证</div>
               <div className="card">
-                <div className="label" style={{ marginBottom: 6 }}>统一 OTLP 端点</div>
+                <div className="label" style={{ marginBottom: 6 }}>统一端点（JSON / Protobuf 双协议）</div>
                 <pre className="code">{`POST ${baseUrl}/api/public/otel/v1/traces
-Content-Type: application/x-protobuf | application/json
 Authorization: Basic <BASE64(pk:sk)>`}</pre>
-                <div className="muted" style={{ marginTop: 8 }}>
-                  支持 OTLP JSON 与 Protobuf 双协议。环境变量通用写法（Python / Node 均适用）：
-                </div>
+                <div className="muted" style={{ marginTop: 8 }}>通用环境变量写法（Python / Node 均适用）：</div>
                 <pre className="code">{`OTEL_EXPORTER_OTLP_ENDPOINT = "${baseUrl}/api/public/otel/v1/traces"
 OTEL_EXPORTER_OTLP_HEADERS  = "Authorization=Basic <BASE64(pk:sk)>"
 OTEL_SERVICE_NAME           = "my-agent"`}</pre>
-                <div className="label" style={{ margin: "12px 0 4px" }}>本地调试开关（免认证）</div>
-                <div className="muted" style={{ marginBottom: 8 }}>
-                  服务端设 <span className="mono">MACHORA_AUTH_DISABLED=true</span> 即跳过 Basic Auth
-                  （数据写入默认项目），本地调试探针 / curl 无需带凭据。
-                  <span className="text-danger">仅限本地</span>，云端保持默认有认证。
-                </div>
-                <pre className="code">{`# PowerShell 启动本地服务
-$env:MACHORA_AUTH_DISABLED = "true"
-pnpm standalone:start
-
-# 之后所有接入示例均可省略 Authorization / Basic Auth 相关配置`}</pre>
                 <div className="muted" style={{ marginTop: 8 }}>
-                  <span className="text-danger">注意</span>：端点必须是完整路径含{" "}
-                  <span className="mono">/api/public/otel/v1/traces</span>（部分 exporter 不自动拼接
-                  /v1/traces，漏掉会 404）；进程结束前需等待 BatchSpanProcessor flush。
-                  下文各框架示例默认已配好认证，本地调试时按上述开关省略即可。
+                  本地调试设 <span className="mono">MACHORA_AUTH_DISABLED=true</span> 免认证
+                  （数据写默认项目，<span className="text-danger">仅限本地</span>）。
+                  <span className="text-danger">注意</span>：端点须为完整路径（部分 exporter 不自动拼接
+                  /v1/traces）；进程结束前等待 BatchSpanProcessor flush。
                 </div>
               </div>
             </div>
 
-            {/* ---------- OpenClaw ---------- */}
-            <div id="agents-openclaw" className="docs-section">
-              <div className="section-title">2.1 OpenClaw 接入（零代码 · 纯配置）</div>
-              <div className="card mb-3">
-                <div className="muted" style={{ marginBottom: 8 }}>
-                  OpenClaw 内置 <span className="mono">diagnostics-otel</span> 插件，只需启用插件 +
-                  配置端点即可上报完整链路。<span className="text-danger">仅支持 http/protobuf 协议</span>
-                  （设为其他协议会被静默跳过）。
-                </div>
-                <div className="label" style={{ marginBottom: 4 }}>方式 A：持久化配置（推荐）</div>
-                <pre className="code">{`{
-  "diagnostics": {
-    "enabled": true,
-    "otel": {
-      "enabled": true,
-      "endpoint": "${baseUrl}/api/public/otel",
-      "protocol": "http/protobuf",
-      "serviceName": "openclaw",
-      "traces": true,
-      "metrics": false,
-      "logs": false,
-      "headers": { "Authorization": "Basic <BASE64(pk:sk)>" }
-    }
-  },
-  "plugins": {
-    "allow": ["diagnostics-otel"],
-    "entries": { "diagnostics-otel": { "enabled": true } }
-  }
-}`}</pre>
-                <div className="label" style={{ margin: "8px 0 4px" }}>方式 B：环境变量临时生效</div>
-                <pre className="code">{`# 注意中缀带 _TRACES_
-$env:OTEL_EXPORTER_OTLP_TRACES_ENDPOINT = "${baseUrl}/api/public/otel"
-$env:OTEL_EXPORTER_OTLP_TRACES_PROTOCOL = "http/protobuf"
-$env:OTEL_EXPORTER_OTLP_TRACES_HEADERS  = "Authorization=Basic <BASE64(pk:sk)>"
-$env:OTEL_SERVICE_NAME = "openclaw"
-
-# 脚本方式：source scripts/connect-openclaw.sh`}</pre>
-                <div className="label" style={{ margin: "8px 0 4px" }}>语义映射</div>
-                <div className="table-wrap">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th scope="col">OpenClaw Span</th>
-                        <th scope="col">Machora 映射</th>
-                        <th scope="col">说明</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr>
-                        <td className="mono">openclaw.model.call</td>
-                        <td><span className="badge llm">LLM</span></td>
-                        <td className="muted">模型 / input/output/total tokens 提取；cache_read 保留 metadata</td>
-                      </tr>
-                      <tr>
-                        <td className="mono">openclaw.harness.run / openclaw.run</td>
-                        <td><span className="badge span">SPAN（父-子嵌套）</span></td>
-                        <td className="muted">harness.run → run → model.call / tool.execution 层级完整还原</td>
-                      </tr>
-                      <tr>
-                        <td className="mono">openclaw.exec / tool.execution</td>
-                        <td><span className="badge span">SPAN</span></td>
-                        <td className="muted">工具名作为 observation.name，参数/结果进 metadata</td>
-                      </tr>
-                      <tr>
-                        <td className="mono">openclaw.liveness.warning</td>
-                        <td><span className="badge span">SPAN（独立 Trace）</span></td>
-                        <td className="muted">事件循环延迟等告警</td>
-                      </tr>
-                      <tr>
-                        <td className="mono">openclaw.model.usage</td>
-                        <td><span className="badge llm">LLM（独立 Trace）</span></td>
-                        <td className="muted">汇总 token 用量</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-                <div className="muted" style={{ marginTop: 6 }}>
-                  常见坑：① plugins.allow 漏加 diagnostics-otel → 插件不加载；
-                  ② protocol 设为 http/json → 静默跳过（必须 http/protobuf）。
-                  认证与端点配置同 2.0（本地调试可用免认证开关）。
-                </div>
-              </div>
-            </div>
-
-            {/* ---------- OpenLLMetry ---------- */}
-            <div id="agents-openllmetry" className="docs-section">
-              <div className="section-title">2.2 OpenLLMetry（traceloop-sdk · 一键打点）</div>
+            {/* ---------- 零埋点框架接入 ---------- */}
+            <div id="agents-zero" className="docs-section">
+              <div className="section-title">2.1 零埋点框架接入（自带 OTel 打点）</div>
               <div className="card">
                 <div className="muted" style={{ marginBottom: 8 }}>
-                  Traceloop 出品的 <b>OpenTelemetry LLM 发行版</b>：一行初始化即可自动打点
-                  OpenAI / Anthropic / LangChain / LlamaIndex / 向量库等 100+ 集成，
-                  输出 <b>OpenInference 语义</b> span（LLM / EMBEDDING → type 原样落库、CHAIN / TOOL / AGENT 等 → type 原样落库），
-                  Machora 语义接入层归一化后 <span className="mono">type 与 span.kind 一致</span> 直接落库，零额外适配。
+                  框架/库自身发射 OTel span（OpenInference / gen_ai.* / langfuse 语义），
+                  Machora 接入层归一化后落库，仅需配置端点与认证（同 2.0）。可运行示例见{" "}
+                  <span className="mono">examples/</span>。
                 </div>
-                <pre className="code">{`pip install traceloop-sdk
-
-from traceloop.sdk import Traceloop
-
-Traceloop.init(
-    app_name="my-agent",                       # → OTEL_SERVICE_NAME
-    api_endpoint="${baseUrl}/api/public/otel", # → 导出端点（自动拼接 /v1/traces）
-    headers={"Authorization": "Basic <base64(pk:sk)>"},  # 自托管用 Basic Auth
-    telemetry_enabled=False,                   # 关闭向 Traceloop 云的匿名遥测
-)`}</pre>
-                <div className="muted" style={{ marginTop: 8 }}>
-                  等价环境变量：<span className="mono">TRACELOOP_BASE_URL</span>（端点）、{" "}
-                  <span className="mono">TRACELOOP_HEADERS</span>（形如{" "}
-                  <span className="mono">Authorization=Basic &lt;base64(pk:sk)&gt;</span>，字符串形式同样生效）、{" "}
-                  <span className="mono">TRACELOOP_API_KEY</span>（传了 headers 即忽略）。端点可省 /v1/traces
-                  （SDK 检测到缺后缀会自动拼接）；传了 headers 后不再发送 Bearer token。
-                </div>
-                <div className="label" style={{ margin: "12px 0 4px" }}>进程结束前 flush</div>
-                <pre className="code">{`from opentelemetry import trace
-trace.get_tracer_provider().shutdown()   # 等待 BatchSpanProcessor 导出，防止 trace 丢失`}</pre>
-                <div className="muted" style={{ marginTop: 8 }}>
-                  常见坑：① 未 flush 直接退出 → 最后一批 span 丢失；② 想控制打点范围可传{" "}
-                  <span className="mono">instruments</span> / <span className="mono">block_instruments</span>；
-                  ③ api_key 走 Bearer 认证，自托管必须用 headers 传 Basic Auth（本地调试可省略，见 2.0）。
-                </div>
-              </div>
-            </div>
-
-            {/* ---------- 仓库探针（Hermes / OpenClaw） ---------- */}
-            <div id="agents-probes" className="docs-section">
-              <div className="section-title">2.3 仓库探针（examples/hermes-agent / examples/openclaw）</div>
-
-              <div className="card" style={{ marginBottom: "0.75rem" }}>
-                <div className="label" style={{ marginBottom: 4 }}>Hermes 探针（examples/hermes-agent）</div>
-                <div className="muted" style={{ marginBottom: 8 }}>
-                  面向 <b>Hermes Agent</b> 的可选可观测插件（<span className="mono">examples/hermes-agent/otel_openinference/</span>），
-                  按 OpenInference 规范导出 session / turn / LLM / tool / subagent span。
-                  LLM 的 <span className="mono">input.value</span> / <span className="mono">output.value</span> 存消息数组，
-                  前端按 role 渲染气泡（调用树详情面板 + 对话 Tab）。
-                </div>
-                <pre className="code">{`pip install 'hermes-agent[otlp]'
-hermes plugins enable observability/otel_openinference
-
-export HERMES_OTEL_OPENINFERENCE_ENDPOINT=${baseUrl}/api/public/otel/v1/traces
-export HERMES_OTEL_OPENINFERENCE_HEADERS=Authorization=Basic <base64(pk:sk)>`}</pre>
-              </div>
-
-              <div className="card">
-                <div className="label" style={{ marginBottom: 4 }}>OpenClaw 探针（examples/openclaw）</div>
-                <div className="muted" style={{ marginBottom: 8 }}>
-                  由 Machroa 维护的 OpenClaw 原生插件（<span className="mono">examples/openclaw/</span>），
-                  订阅诊断事件并输出 <b>OpenInference 语义</b> span（harness.run→AGENT、run→CHAIN、
-                  model.call→LLM、tool.execution→TOOL），带 <span className="mono">session.id</span> 关联。
-                  与内置 diagnostics-otel 二选一即可；探针用独立 SDK 导出，互不干扰。
-                </div>
-                <div className="label" style={{ marginBottom: 4 }}>安装与配置</div>
-                <pre className="code">{`# 安装（本地路径或 archive；-l 链接模式，开发改动即时生效）
-openclaw plugins install <repo>/examples/openclaw
-# openclaw plugins install -l <repo>/examples/openclaw --force
-
-# openclaw.json 配置
-{
-  "diagnostics": { "otel": { "enabled": true, "traces": true, "captureContent": true } },
-  "plugins": {
-    "entries": {
-      "machora-openinference": {
-        "config": { "endpoint": "${baseUrl}/api/public/otel/v1/traces",
-                    "headers": { "Authorization": "Basic <BASE64(pk:sk)>" } }
-      }
-    }
-  }
-}`}</pre>
-                <div className="muted" style={{ marginTop: 8 }}>
-                  <span className="mono">captureContent: true</span> 必须开启，否则 model / tool 的
-                  input/output 内容不随事件下发（探针取{" "}
-                  <span className="mono">privateData.modelContent / toolContent</span>）。
-                  也可用环境变量配置（与 config 等价，config 优先）：{" "}
-                  <span className="mono">MACHORA_OTEL_ENDPOINT</span> /{" "}
-                  <span className="mono">MACHORA_OTEL_HEADERS</span> /{" "}
-                  <span className="mono">MACHORA_OTEL_SERVICE_NAME</span>。
-                </div>
-                <div className="label" style={{ margin: "12px 0 4px" }}>事件 → span 映射</div>
-                <div className="table-wrap">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th scope="col">OpenClaw 诊断事件</th>
-                        <th scope="col">span.kind</th>
-                        <th scope="col">关键属性</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr>
-                        <td className="mono">harness.run.*</td>
-                        <td><span className="badge agent">AGENT</span></td>
-                        <td className="muted">根 span · agent.name=harnessId · session.id</td>
-                      </tr>
-                      <tr>
-                        <td className="mono">run.*</td>
-                        <td><span className="badge chain">CHAIN</span></td>
-                        <td className="muted">挂到同 runId 的 harness 下</td>
-                      </tr>
-                      <tr>
-                        <td className="mono">model.call.*</td>
-                        <td><span className="badge llm">LLM</span></td>
-                        <td className="muted">llm.model_name / token_count / input.output.value</td>
-                      </tr>
-                      <tr>
-                        <td className="mono">tool.execution.*</td>
-                        <td><span className="badge tool">TOOL</span></td>
-                        <td className="muted">tool.name / tool_call.id / 参数与结果</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-
-            {/* ---------- JiuwenSwarm ---------- */}
-            <div id="agents-jiuwen" className="docs-section">
-              <div className="section-title">2.4 JiuwenSwarm（九问 · 华为开源）</div>
-              <div className="card">
-                <div className="muted" style={{ marginBottom: 8 }}>
-                  <b>华为开源</b> 多智能体协同框架，内部经 openjiuwen 内核 OtelCallbackHandler 自动发射
-                  LLM / 工具 span。<span className="text-danger">通用 OTEL_* 环境变量不生效</span>，必须写配置文件；
-                  认证走专有 <span className="mono">langfuse_public_key</span> /{" "}
-                  <span className="mono">langfuse_secret_key</span>（内部拼成 Basic Auth，与 Machora 兼容）。
-                </div>
-                <div className="label" style={{ marginBottom: 4 }}>
-                  ✅ 方案 B · Team 协同模式（推荐）（~/.jiuwenswarm/config/config.yaml）
-                </div>
-                <pre className="code">{`team_observability:
-  enabled: true
-  exporter: otlp_http                                    # otlp_http / otlp_grpc / file / console
-  endpoint: "${baseUrl}/api/public/otel/v1/traces"
-  service_name: jiuwenswarm
-  sample_rate: 1.0
-  langfuse_public_key:  "${publicKey}"
-  langfuse_secret_key:  "${secretKey}"
-  traces_dir: ""
-  file_retention_days: 7
-  attribute_value_max_length: 10240`}</pre>
-                <div className="label" style={{ margin: "12px 0 4px" }}>方案 A · 单 Agent / Code 模式（备选）</div>
-                <pre className="code">{`agent_observability:
-  enabled: true
-  exporter: otlp_http
-  endpoint: "${baseUrl}/api/public/otel/v1/traces"
-  service_name: jiuwenswarm-agent
-  sample_rate: 1.0
-  langfuse_public_key:  "${publicKey}"
-  langfuse_secret_key:  "${secretKey}"
-  redact_prompts: false
-  redact_completions: false`}</pre>
-                <div className="label" style={{ margin: "12px 0 4px" }}>临时调试（debug_trace 段 + /debug 命令）</div>
-                <pre className="code">{`# ~/.jiuwenswarm/config/config.yaml
-debug_trace:
-  agent: { otel_enabled: true }   # agent.* 模式
-  code:   { otel_enabled: true }  # code.* 模式
-
-# 对话里直接输入（仅本轮生效）：
-#   /debug 帮我修复 tests/test_login.py 里失败的用例`}</pre>
-                <div className="muted" style={{ marginTop: 8 }}>
-                  常见坑：① 填 OTEL_* 环境变量不生效（必须写配置文件）；
-                  ② 混用 otlp_grpc → Machora 当前仅测过 HTTP JSON/Protobuf 双栈。
-                  认证与端点同 2.0（langfuse_* 键内部拼成 Basic Auth）。
-                </div>
-              </div>
-            </div>
-
-            {/* ---------- π-Agent ---------- */}
-            <div id="agents-pi" className="docs-section">
-              <div className="section-title">2.5 π-Agent（π-Actor 框架）</div>
-              <div className="card">
-                <div className="muted" style={{ marginBottom: 8 }}>
-                  基于标准 OTel + OpenInference 语义（<span className="mono">openinference.span.kind</span>），
-                  与 LlamaIndex / LangGraph 走同一套语义通道，Machora 无需额外适配器。
-                </div>
-                <pre className="code">{`# 3a) 根 Span（Agent 入口 → type=AGENT + trace 级属性提升）
-with tracer.start_as_current_span("pi.main") as s:
-    s.set_attribute("openinference.span.kind", "AGENT")
-    s.set_attribute("user.id",    "user-pi-001")   # → trace.userId
-    s.set_attribute("session.id", "sess-pi-001")   # → trace.sessionId
-    s.set_attribute("agent.name", "PiScheduler")   # → trace.agentName
-
-    # 3b) 工具调用（TOOL → type=TOOL）
-    with tracer.start_as_current_span("search") as t:
-        t.set_attribute("openinference.span.kind", "TOOL")
-        t.set_attribute("gen_ai.tool.name", "web_search")
-        t.set_attribute("input.value",  '"2026年8月北京天气"')
-        t.set_attribute("output.value", '{"temp":"32C"}')
-
-    # 3c) LLM 调用（LLM → type=LLM + token/成本）
-    with tracer.start_as_current_span("llm.chat") as g:
-        g.set_attribute("openinference.span.kind", "LLM")
-        g.set_attribute("llm.model_name",           "deepseek-v4-flash")
-        g.set_attribute("llm.token_count.prompt",   420)
-        g.set_attribute("llm.token_count.completion", 60)
-        g.set_attribute("llm.cost.total",           0.000084)
-        g.set_attribute("input.messages",           '[{"role":"user","content":"你好"}]')
-        g.set_attribute("output.value",             '{"role":"assistant","content":"你好！"}')`}</pre>
-                <div className="muted" style={{ marginTop: 8 }}>
-                  常见坑：① input.messages / output.value 传 dict 而非 JSON 字符串；
-                  ② 端点与认证配置同 2.0（本地调试可省略认证）。
-                </div>
-              </div>
-            </div>
-
-            {/* ---------- LangChain / LlamaIndex / LoongSuite ---------- */}
-            <div id="agents-examples" className="docs-section">
-              <div className="section-title">2.6 LangChain / LlamaIndex / LoongSuite（examples/）</div>
-              <div className="card">
-                <div className="muted" style={{ marginBottom: 8 }}>
-                  仓库 <span className="mono">examples/</span> 提供三套可运行脚本，均走 OTLP 通道、零业务埋点。
-                </div>
-                <div className="label" style={{ marginBottom: 4 }}>LangChain / LangGraph（examples/langchain-agent）</div>
-                <div className="muted" style={{ marginBottom: 8 }}>
-                  LangChain 1.x 内置 OTel（经 langsmith <span className="mono">tracing_mode="otel"</span>），
-                  span 自带 <span className="mono">gen_ai.*</span> 属性。注意 langsmith 读{" "}
-                  <span className="mono">OTEL_EXPORTER_OTLP_ENDPOINT</span>（无 _TRACES_ 中缀，与 2.0 写法不同）。
-                </div>
+                <div className="label" style={{ marginBottom: 4 }}>OpenLLMetry（traceloop-sdk · 100+ 集成一键打点）</div>
+                <pre className="code">{`Traceloop.init(app_name="my-agent",
+    api_endpoint="${baseUrl}/api/public/otel",           # 自动拼接 /v1/traces
+    headers={"Authorization": "Basic <base64(pk:sk)>"},
+    telemetry_enabled=False)`}</pre>
+                <div className="label" style={{ margin: "12px 0 4px" }}>LangChain / LangGraph（examples/langchain-agent · gen_ai.*）</div>
                 <pre className="code">{`$env:LANGSMITH_TRACING = "true"
 $env:LANGSMITH_TRACING_MODE = "otel"
 $env:OTEL_EXPORTER_OTLP_ENDPOINT = "${baseUrl}/api/public/otel/v1/traces"
 $env:OTEL_EXPORTER_OTLP_HEADERS = "Authorization=Basic <base64(pk:sk)>"
-$env:OTEL_SERVICE_NAME = "langchain-demo"
 python agent.py`}</pre>
-
-                <div className="label" style={{ margin: "12px 0 4px" }}>LlamaIndex（examples/llamaindex-agent）</div>
-                <div className="muted" style={{ marginBottom: 8 }}>
-                  走 <b>OpenInference 语义</b>，需显式调用{" "}
-                  <span className="mono">LlamaIndexInstrumentor().instrument()</span>（与 LangChain 内置自动不同）。
-                </div>
-                <pre className="code">{`from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-from openinference.instrumentation.llamaindex import LlamaIndexInstrumentor
-
-provider = TracerProvider()
-provider.add_span_processor(SimpleSpanProcessor(
-    OTLPSpanExporter(endpoint="${baseUrl}/api/public/otel/v1/traces",
-                     headers={"Authorization": "Basic <base64(pk:sk)>"})))
-LlamaIndexInstrumentor().instrument(tracer_provider=provider)`}</pre>
-
-                <div className="label" style={{ margin: "12px 0 4px" }}>LoongSuite（examples/loongsuite-agent）</div>
-                <div className="muted" style={{ marginBottom: 8 }}>
-                  用阿里云 LoongSuite GenAI Util 构造调用树，演示{" "}
-                  <span className="mono">gen_ai.span.kind</span>（ENTRY / AGENT / STEP / LLM / TOOL）与{" "}
-                  <span className="mono">gen_ai.skill.*</span> 增强语义（skillName 专用列）。
-                </div>
+                <div className="label" style={{ margin: "12px 0 4px" }}>LlamaIndex（examples/llamaindex-agent · OpenInference 语义）</div>
+                <pre className="code">{`LlamaIndexInstrumentor().instrument(tracer_provider=provider)   # OTLPSpanExporter 同 2.0`}</pre>
+                <div className="label" style={{ margin: "12px 0 4px" }}>LoongSuite（examples/loongsuite-agent · gen_ai.span.kind）</div>
                 <pre className="code">{`export OTEL_EXPORTER_OTLP_ENDPOINT=${baseUrl}/api/public/otel/v1/traces
 export OTEL_EXPORTER_OTLP_HEADERS=Authorization=Basic <b64(pk:sk)>
-export OTEL_SERVICE_NAME=loongsuite-demo
-python agent.py   # 离线模式无需 API key`}</pre>
-                <div className="muted" style={{ marginTop: 8 }}>
-                  <span className="text-danger">注意</span>：LoongSuite 与社区 opentelemetry-util-genai 混装会触发依赖冲突，只装 LoongSuite 发行链路。
-                </div>
+python agent.py`}</pre>
+                <div className="label" style={{ margin: "12px 0 4px" }}>JiuwenSwarm（九问 · 须配置文件，走 langfuse 兼容键）</div>
+                <pre className="code">{`# ~/.jiuwenswarm/config/config.yaml
+team_observability:
+  enabled: true
+  exporter: otlp_http
+  endpoint: "${baseUrl}/api/public/otel/v1/traces"
+  langfuse_public_key: "${publicKey}"
+  langfuse_secret_key: "${secretKey}"`}</pre>
+                <div className="label" style={{ margin: "12px 0 4px" }}>π-Agent（标准 OTel · openinference.span.kind 手写 span）</div>
+                <pre className="code">{`with tracer.start_as_current_span("pi.main") as s:
+    s.set_attribute("openinference.span.kind", "AGENT")
+    s.set_attribute("agent.name", "PiScheduler")`}</pre>
               </div>
             </div>
+
+            {/* ---------- Machora 原生探针 ---------- */}
+            <div id="agents-probes" className="docs-section">
+              <div className="section-title">2.2 Machora 原生探针（machora.* 最高优先级）</div>
+              <div className="card" style={{ marginBottom: "0.75rem" }}>
+                <div className="muted" style={{ marginBottom: 8 }}>
+                  仓库维护的探针直接输出 <span className="mono">machora.*</span> 语义键，接入层
+                  machora adapter（最高优先级）<b>直接落库</b> observation.type 与专用字段，无第三方
+                  语义依赖；全部 fail-open（SDK 缺失或端点不可用时静默禁用）。
+                </div>
+                <div className="label" style={{ marginBottom: 4 }}>Python SDK（LangChain / LangGraph）</div>
+                <pre className="code">{`pip install 'machora-sdk[otel]'
+
+from machora.otel import MachoraOtelCallbackHandler, MachoraOtelGraphProbe
+
+# LangChain：CallbackHandler（根 chain→ENTRY、agent 链→AGENT、子链→CHAIN、LLM/TOOL/RETRIEVER）
+handler = MachoraOtelCallbackHandler()
+CallbackManager.configure(handlers=[handler])
+
+# LangGraph：图级探针（graph→ENTRY、agent 节点→AGENT、其余→STEP）
+probe = MachoraOtelGraphProbe()
+graph = probe.wrap(graph)
+probe.invoke(graph, {"messages": [...]})`}</pre>
+                <div className="muted" style={{ margin: "6px 0 4px" }}>
+                  环境变量：<span className="mono">MACHORA_OTEL_ENDPOINT</span> /{" "}
+                  <span className="mono">MACHORA_OTEL_HEADERS</span>（JSON 对象）/{" "}
+                  <span className="mono">MACHORA_OTEL_SERVICE_NAME</span>。
+                </div>
+              </div>
+
+              <div className="card" style={{ marginBottom: "0.75rem" }}>
+                <div className="label" style={{ marginBottom: 4 }}>Hermes 探针（examples/hermes-agent/otel_machora）</div>
+                <div className="muted" style={{ marginBottom: 8 }}>
+                  面向 Hermes Agent 的 OTel 插件：session→<span className="badge entry">ENTRY</span>、
+                  turn→<span className="badge step">STEP</span>、subagent→<span className="badge agent">AGENT</span>、
+                  llm→<span className="badge llm">LLM</span>、tool→<span className="badge tool">TOOL</span>。
+                </div>
+                <pre className="code">{`pip install 'hermes-agent[otlp]'
+hermes plugins enable observability/otel_machora
+
+export HERMES_OTEL_MACHORA_ENDPOINT=${baseUrl}/api/public/otel/v1/traces
+export HERMES_OTEL_MACHORA_HEADERS=Authorization=Basic <base64(pk:sk)>`}</pre>
+              </div>
+
+              <div className="card">
+                <div className="label" style={{ marginBottom: 4 }}>OpenClaw 插件（examples/openclaw）</div>
+                <div className="muted" style={{ marginBottom: 8 }}>
+                  OpenClaw 原生插件：harness.run→<span className="badge entry">ENTRY</span>、
+                  run→<span className="badge agent">AGENT</span>、model.call→<span className="badge llm">LLM</span>、
+                  tool.execution→<span className="badge tool">TOOL</span>，span 带 session.id 关联。
+                </div>
+                <pre className="code">{`openclaw plugins install <repo>/examples/openclaw
+
+# openclaw.json（captureContent 必须开启，否则无 input/output 内容）
+{
+  "diagnostics": { "otel": { "enabled": true, "traces": true, "captureContent": true } },
+  "plugins": { "entries": {
+    "machora-openinference": { "config": {
+      "endpoint": "${baseUrl}/api/public/otel/v1/traces",
+      "headers": { "Authorization": "Basic <BASE64(pk:sk)>" }
+    } }
+  } }
+}`}</pre>
+              </div>
+            </div>
+
+
           </section>
 
           {/* ===================== 三、语义规范 ===================== */}
