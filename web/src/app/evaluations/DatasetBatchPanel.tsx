@@ -57,7 +57,7 @@ export function DatasetBatchPanel({
       });
       const data = await res.json();
       if (res.ok) {
-        setMsg({ ok: true, text: `已触发 ${data.count} 条评估任务（${data.traceIds} 条 trace），完成后可在「任务」Tab 查看` });
+        setMsg({ ok: true, text: `已触发 ${data.count} 条评估任务（${data.total} 条目标），完成后可在「任务」Tab 查看` });
       } else {
         setMsg({ ok: false, text: data.error ?? "批量评估失败" });
       }

@@ -98,7 +98,8 @@ CREATE TABLE IF NOT EXISTS "Score" (
 CREATE TABLE IF NOT EXISTS "Evaluation" (
     "id" TEXT NOT NULL,
     "projectId" TEXT NOT NULL,
-    "traceId" TEXT NOT NULL,
+    "traceId" TEXT,
+    "datasetItemId" TEXT,
     "name" TEXT NOT NULL,
     "evaluatorType" TEXT NOT NULL,
     "config" JSONB,
@@ -110,6 +111,20 @@ CREATE TABLE IF NOT EXISTS "Evaluation" (
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "Evaluation_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE IF NOT EXISTS "DatasetItem" (
+    "id" TEXT NOT NULL,
+    "projectId" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "input" JSONB,
+    "output" JSONB,
+    "expectedOutput" JSONB,
+    "metadata" JSONB,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "DatasetItem_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -146,6 +161,12 @@ CREATE TABLE IF NOT EXISTS "MetricSample" (
 
     CONSTRAINT "MetricSample_pkey" PRIMARY KEY ("id")
 );
+
+-- 存量表补列（幂等，须在建索引前执行，保证新列上的索引可用）
+ALTER TABLE IF EXISTS "EvaluationConfig" ADD COLUMN IF NOT EXISTS "autoRun" BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE IF EXISTS "Evaluation" ADD COLUMN IF NOT EXISTS "mode" TEXT NOT NULL DEFAULT 'EXPERIMENT';
+ALTER TABLE IF EXISTS "Evaluation" ALTER COLUMN "traceId" DROP NOT NULL;
+ALTER TABLE IF EXISTS "Evaluation" ADD COLUMN IF NOT EXISTS "datasetItemId" TEXT;
 
 -- CreateIndex
 CREATE UNIQUE INDEX IF NOT EXISTS "ApiKey_publicKey_key" ON "ApiKey"("publicKey");
@@ -188,6 +209,8 @@ CREATE INDEX IF NOT EXISTS "Evaluation_traceId_idx" ON "Evaluation"("traceId");
 
 -- CreateIndex
 CREATE INDEX IF NOT EXISTS "Evaluation_status_idx" ON "Evaluation"("status");
+CREATE INDEX IF NOT EXISTS "Evaluation_datasetItemId_idx" ON "Evaluation"("datasetItemId");
+CREATE INDEX IF NOT EXISTS "DatasetItem_projectId_name_idx" ON "DatasetItem"("projectId", "name");
 CREATE INDEX IF NOT EXISTS "EvaluationConfig_projectId_idx" ON "EvaluationConfig"("projectId");
 CREATE UNIQUE INDEX IF NOT EXISTS "EvaluationConfig_projectId_name_key" ON "EvaluationConfig"("projectId", "name");
 
@@ -198,8 +221,7 @@ CREATE INDEX IF NOT EXISTS "MetricSample_projectId_name_timestamp_idx" ON "Metri
 CREATE INDEX IF NOT EXISTS "MetricSample_name_timestamp_idx" ON "MetricSample"("name", "timestamp");
 
 -- 存量表补列（幂等）
-ALTER TABLE IF EXISTS "EvaluationConfig" ADD COLUMN IF NOT EXISTS "autoRun" BOOLEAN NOT NULL DEFAULT FALSE;
-ALTER TABLE IF EXISTS "Evaluation" ADD COLUMN IF NOT EXISTS "mode" TEXT NOT NULL DEFAULT 'EXPERIMENT';
+-- （已上移到建索引之前执行，见上）
 
 -- AddForeignKey
 ALTER TABLE "ApiKey" ADD CONSTRAINT "ApiKey_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -215,6 +237,12 @@ ALTER TABLE "Score" ADD CONSTRAINT "Score_traceId_fkey" FOREIGN KEY ("traceId") 
 
 -- AddForeignKey
 ALTER TABLE "Evaluation" ADD CONSTRAINT "Evaluation_traceId_fkey" FOREIGN KEY ("traceId") REFERENCES "Trace"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "DatasetItem" ADD CONSTRAINT "DatasetItem_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Evaluation" ADD CONSTRAINT "Evaluation_datasetItemId_fkey" FOREIGN KEY ("datasetItemId") REFERENCES "DatasetItem"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "MetricSample" ADD CONSTRAINT "MetricSample_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE CASCADE ON UPDATE CASCADE;

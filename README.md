@@ -13,6 +13,7 @@
 - **Generations 页**：独立 LLM 调用列表，支持按模型/级别/时间窗筛选与排序（时间/耗时/Token/成本）
 - **CSV 导出**：`GET /api/export/traces`、`GET /api/export/generations`，按当前筛选条件导出
 - **Scores API**：UI 标注 `POST /api/scores`（session 鉴权）；公开查询/写入 `GET/POST /api/public/scores`（Basic Auth），支持人工/自动评分写入与查询
+- **评估中心**（`/evaluations`）：可插拔评估器（5 规则：error/latency/cost/token/tag + **LLM-as-judge** 对 trace/轨迹打分并输出理由 reasoning）；在线（`autoRun`，ingestion 后自动触发 ONLINE 任务）/实验（手动/批量）双模式；**Prompt 级数据集**（DatasetItem 用例 + 批量评测）；按天评分**趋势**折线图；低分样本回流（score&lt;阈值）
 - **OTLP 接入**：`POST /api/public/otel/v1/traces` 接收 OpenTelemetry 数据（JSON + protobuf 双通道），任意 OTLP exporter 可直接上报（示例见 `scripts/connect-openclaw.sh`、`sdk/python/examples/langgraph_demo.py`）
 - **批量注入 API**：`POST /api/public/ingestion`，Basic Auth（pk:sk）鉴权，单批 ≤1000 条、按收到顺序写入（同一批先建 trace 再挂 observation，满足外键依赖）；支持 `parentObservationId` 构建嵌套调用树
 - **Python SDK**（`sdk/python`，包名 `machora-sdk`）：原生注入客户端 + LangChain 回调（`MachoraCallbackHandler`）

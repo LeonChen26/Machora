@@ -116,7 +116,7 @@ function buildUserPrompt(ctx: EvaluationContext, config: Partial<LlmJudgeConfig>
   }
 
   lines.push(
-    `\n请根据以上信息评估，并只输出 JSON：{"value": <0-1 的分数>${config.dataType === "BOOLEAN" ? " 或 true/false" : ""}, "comment": "<一句简短理由>"}`,
+    `\n请根据以上信息评估，并只输出 JSON：{"value": <0-1 的分数>${config.dataType === "BOOLEAN" ? " 或 true/false" : ""}, "reasoning": "<评估依据，2-3 句详细理由>", "comment": "<一句话结论>"}`,
   );
   return lines.join("\n");
 }
@@ -137,6 +137,7 @@ function parseResult(text: string, dataType: "NUMERIC" | "BOOLEAN"): EvaluationR
       value,
       dataType: "BOOLEAN",
       comment: typeof obj.comment === "string" ? obj.comment : undefined,
+      reasoning: typeof obj.reasoning === "string" ? obj.reasoning : undefined,
     };
   }
 
@@ -148,6 +149,7 @@ function parseResult(text: string, dataType: "NUMERIC" | "BOOLEAN"): EvaluationR
     value: Math.min(1, Math.max(0, num)),
     dataType: "NUMERIC",
     comment: typeof obj.comment === "string" ? obj.comment : undefined,
+    reasoning: typeof obj.reasoning === "string" ? obj.reasoning : undefined,
   };
 }
 

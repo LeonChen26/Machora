@@ -50,6 +50,8 @@ export interface EvaluationResult {
   value: number;
   dataType: "NUMERIC" | "BOOLEAN";
   comment?: string;
+  /** 评估依据/详细理由（LLM judge 输出；规则评估器无） */
+  reasoning?: string;
 }
 
 export interface Evaluator {

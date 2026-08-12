@@ -1,19 +1,21 @@
-// 评估中心：任务（Tab 1）+ 配置（Tab 2）+ 数据集（Tab 3，占位后续）
+// 评估中心：任务（Tab 1）+ 配置（Tab 2）+ 数据集（Tab 3）+ 趋势（Tab 4）
 // SSR 直查 db（force-dynamic），交互走 /api/evaluations REST
 import { Link } from "../../components/NativeLink";
 import { and, desc, eq } from "drizzle-orm";
 import { db, evaluation, evaluationConfig, trace } from "@machora/shared";
 import { formatRelative, formatDateTime } from "../../lib/format";
 import { EmptyIcon } from "../../components/EmptyIcon";
+import { LineChart } from "../../components/LineChart";
 import { getCurrentProjectId } from "../../server/project";
 import { requireUser } from "../../server/session";
 import { EvalConfigForm } from "./EvalConfigForm";
 import { EvalConfigActions } from "./EvalConfigActions";
 import { DatasetBatchPanel } from "./DatasetBatchPanel";
+import { DatasetManager } from "./DatasetManager";
 
 export const dynamic = "force-dynamic";
 
-const TAB_KEYS = ["tasks", "config", "datasets"] as const;
+const TAB_KEYS = ["tasks", "config", "datasets", "trend"] as const;
 type TabKey = (typeof TAB_KEYS)[number];
 
 const STATUS_META: Record<string, { label: string; cls: string }> = {
@@ -45,7 +47,7 @@ export default async function EvaluationsPage({
           where: eq(evaluation.projectId, projectId),
           orderBy: (t, { desc }) => [desc(t.createdAt)],
           limit: 200,
-          with: { trace: true },
+          with: { trace: true, datasetItem: true },
         })
       : [];
 
@@ -83,6 +85,83 @@ export default async function EvaluationsPage({
     datasets.sort((a, b) => b.count - a.count);
   }
 
+  // 趋势：最近 30 天 COMPLETED 任务按天 × 配置名聚合平均分（BOOLEAN 均值即通过率）
+  const TREND_DAYS = 30;
+  const trend: {
+    rows: Array<{
+      name: string;
+      type: string;
+      createdAt: Date;
+      value: number;
+    }>;
+    avg7: number;
+    avg30: number;
+    count7: number;
+    count30: number;
+  } = { rows: [], avg7: 0, avg30: 0, count7: 0, count30: 0 };
+  if (tab === "trend" && projectId) {
+    const since = new Date(Date.now() - TREND_DAYS * 24 * 3600 * 1000);
+    const completed = await db.query.evaluation.findMany({
+      where: and(
+        eq(evaluation.projectId, projectId),
+        eq(evaluation.status, "COMPLETED"),
+      ),
+      orderBy: (t, { asc }) => [asc(t.createdAt)],
+    });
+    const within = completed.filter((t) => t.createdAt >= since);
+    const withVal = within
+      .map((t) => {
+        const r = (t.result ?? {}) as Record<string, unknown>;
+        if (typeof r.value !== "number") return null;
+        return {
+          name: t.name,
+          type: t.evaluatorType,
+          createdAt: t.createdAt,
+          value: r.value,
+        };
+      })
+      .filter((x): x is NonNullable<typeof x> => x != null);
+    trend.rows = withVal;
+    const sum = (arr: Array<{ value: number }>) =>
+      arr.length ? arr.reduce((s, x) => s + x.value, 0) / arr.length : 0;
+    const week = withVal.filter((r) => r.createdAt >= new Date(Date.now() - 7 * 24 * 3600 * 1000));
+    trend.avg7 = sum(week);
+    trend.avg30 = sum(withVal);
+    trend.count7 = week.length;
+    trend.count30 = withVal.length;
+  }
+
+  // 折线图数据：最近 N 天每日各配置平均分（无数据天补空）
+  const trendChartData: { label: string; series: { name: string; value: number }[] }[] = [];
+  if (tab === "trend") {
+    const byDay = new Map<string, Map<string, { sum: number; n: number }>>();
+    for (const r of trend.rows) {
+      const day = r.createdAt.toLocaleDateString("sv-SE"); // yyyy-mm-dd（本地时区）
+      let m = byDay.get(day);
+      if (!m) {
+        m = new Map();
+        byDay.set(day, m);
+      }
+      const acc = m.get(r.name) ?? { sum: 0, n: 0 };
+      acc.sum += r.value;
+      acc.n += 1;
+      m.set(r.name, acc);
+    }
+    for (let i = TREND_DAYS - 1; i >= 0; i--) {
+      const d = new Date(Date.now() - i * 24 * 3600 * 1000);
+      const label = d.toLocaleDateString("sv-SE").slice(5); // MM-DD
+      const key = d.toLocaleDateString("sv-SE");
+      const m = byDay.get(key);
+      const series = m
+        ? Array.from(m.entries()).map(([name, acc]) => ({
+            name,
+            value: +(acc.sum / acc.n).toFixed(3),
+          }))
+        : [];
+      trendChartData.push({ label, series });
+    }
+  }
+
   return (
     <>
       <div className="page-head">
@@ -116,6 +195,14 @@ export default async function EvaluationsPage({
           aria-current={tab === "datasets" ? "true" : undefined}
         >
           数据集
+        </Link>
+        <Link
+          href="/evaluations?tab=trend"
+          prefetch={false}
+          className={tab === "trend" ? "seg-btn active" : "seg-btn"}
+          aria-current={tab === "trend" ? "true" : undefined}
+        >
+          趋势
         </Link>
       </div>
 
@@ -168,6 +255,8 @@ export default async function EvaluationsPage({
                       const val = result.value;
                       const dataType = result.dataType as string | undefined;
                       const comment = (result.comment as string | undefined) ?? t.error;
+                      const reasoning = (result.reasoning as string | undefined) ?? comment;
+                      const resultText = reasoning || comment;
                       return (
                         <tr key={t.id}>
                           <td>
@@ -175,16 +264,22 @@ export default async function EvaluationsPage({
                               {t.evaluatorType === "llm" ? "LLM" : "规则"}
                             </span>
                           </td>
-                          <td title={comment ?? undefined}>{t.name}</td>
+                          <td title={resultText ?? undefined}>{t.name}</td>
                           <td>
-                            <Link
-                              href={`/traces/${encodeURIComponent(t.traceId)}`}
-                              prefetch={false}
-                              className="mono muted text-xs"
-                              title={t.traceId}
-                            >
-                              {t.traceId.slice(0, 12)}…
-                            </Link>
+                            {t.traceId ? (
+                              <Link
+                                href={`/traces/${encodeURIComponent(t.traceId)}`}
+                                prefetch={false}
+                                className="mono muted text-xs"
+                                title={t.traceId}
+                              >
+                                {t.traceId.slice(0, 12)}…
+                              </Link>
+                            ) : (
+                              <span className="badge purple" title={t.datasetItemId ?? undefined}>
+                                数据集 · {t.datasetItem?.name ?? "—"}
+                              </span>
+                            )}
                           </td>
                           <td>
                             <span className={`badge ${t.mode === "ONLINE" ? "blue" : ""}`}>
@@ -287,6 +382,9 @@ export default async function EvaluationsPage({
 
       {tab === "datasets" && (
         <>
+          <div className="section-title">
+            Tag 数据集（trace 批量评测） <span className="count">{datasets.length}</span>
+          </div>
           <DatasetBatchPanel
             tags={datasets}
             configs={configs.map((c) => ({
@@ -295,25 +393,57 @@ export default async function EvaluationsPage({
               evaluatorType: c.evaluatorType,
             }))}
           />
-          <div className="section-title">
-            数据集（按 tag） <span className="count">{datasets.length}</span>
+          <DatasetManager
+            configs={configs.map((c) => ({
+              id: c.id,
+              name: c.name,
+              evaluatorType: c.evaluatorType,
+            }))}
+          />
+        </>
+      )}
+      {tab === "trend" && (
+        <>
+          <div className="grid grid-4 mb-3">
+            <div className="card">
+              <div className="label">近 7 天平均分</div>
+              <div className="value text-accent">{trend.count7 ? trend.avg7.toFixed(3) : "—"}</div>
+              <div className="hint">{trend.count7} 次评估</div>
+            </div>
+            <div className="card">
+              <div className="label">近 30 天平均分</div>
+              <div className="value text-accent">{trend.count30 ? trend.avg30.toFixed(3) : "—"}</div>
+              <div className="hint">{trend.count30} 次评估</div>
+            </div>
+            <div className="card">
+              <div className="label">评估配置</div>
+              <div className="value text-accent">
+                {new Set(trend.rows.map((r) => r.name)).size}
+              </div>
+              <div className="hint">近 30 天有结果的配置</div>
+            </div>
+            <div className="card">
+              <div className="label">评估器</div>
+              <div className="value text-accent">
+                {Array.from(new Set(trend.rows.map((r) => r.type))).join(" / ") || "—"}
+              </div>
+              <div className="hint">近 30 天类型</div>
+            </div>
           </div>
-          {datasets.length === 0 ? (
-            <div className="card empty">
-              <EmptyIcon type="star" />
-              暂无带标签的 trace。给 trace 打上 tag 后会自动出现在这里，可作数据集批量评测。
+
+          <div className="card">
+            <div className="section-title">
+              评分趋势（近 {TREND_DAYS} 天） <span className="count">按天平均分 · BOOLEAN 均值即通过率</span>
             </div>
-          ) : (
-            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}>
-              {datasets.map((d) => (
-                <div className="card" key={d.tag}>
-                  <div className="label">{d.tag}</div>
-                  <div className="value text-accent">{d.count}</div>
-                  <div className="hint">traces · 选中后在左上方批量评测</div>
-                </div>
-              ))}
-            </div>
-          )}
+            {trendChartData.length === 0 || trendChartData.every((d) => d.series.length === 0) ? (
+              <div className="empty" style={{ padding: "32px 0" }}>
+                <EmptyIcon type="star" />
+                暂无评估结果。运行评估任务后，这里会展示评分随时间的变化趋势。
+              </div>
+            ) : (
+              <LineChart data={trendChartData} height={220} />
+            )}
+          </div>
         </>
       )}
     </>

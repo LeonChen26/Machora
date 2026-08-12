@@ -1,4 +1,4 @@
-// 批量评估：按 tag 或显式 traceId 列表对一批 trace 触发评估任务
+// 批量评估：按 tag / 显式 traceId / 低分回流 对一批 trace，或按数据集（Prompt 级用例）触发评估任务
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { and, eq, inArray, sql } from "drizzle-orm";
@@ -6,6 +6,7 @@ import {
   db,
   evaluation,
   evaluationConfig,
+  datasetItem,
   queueBus,
   QUEUES,
   trace,
@@ -20,8 +21,10 @@ const BatchSchema = z.object({
   traceIds: z.array(z.string().min(1)).max(1000).optional(),
   // 低分回流：score < 阈值 的 trace（用当前项目 Score 过滤）
   maxScore: z.number().min(0).max(1).optional(),
-}).refine((d) => d.tag || d.traceIds || d.maxScore !== undefined, {
-  message: "tag / traceIds / maxScore 至少提供一个",
+  // Prompt 级数据集评测：对数据集（DatasetItem.name 分组）内全部用例建任务
+  datasetId: z.string().optional(),
+}).refine((d) => d.tag || d.traceIds || d.maxScore !== undefined || d.datasetId, {
+  message: "tag / traceIds / maxScore / datasetId 至少提供一个",
 });
 
 export async function POST(req: NextRequest) {
@@ -44,7 +47,7 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
-  const { configId, tag, traceIds, maxScore } = parsed.data;
+  const { configId, tag, traceIds, maxScore, datasetId } = parsed.data;
 
   const cfg = await db.query.evaluationConfig.findFirst({
     where: and(
@@ -56,17 +59,34 @@ export async function POST(req: NextRequest) {
   if (!cfg) {
     return NextResponse.json({ error: "配置不存在或已停用" }, { status: 400 });
   }
+  // 数据集评测是纯 Prompt 上下文（无 trace/observations），仅 LLM judge 有意义
+  if (datasetId && cfg.evaluatorType !== "llm") {
+    return NextResponse.json(
+      { error: "数据集评测仅支持 LLM judge 配置（需对用例输入打分）" },
+      { status: 400 },
+    );
+  }
 
-  // 目标 trace 集合
-  let targets: string[] = [];
-  if (traceIds && traceIds.length > 0) {
+  // 目标集合：数据集评测目标为 DatasetItem；其余为 trace
+  let targetTraces: string[] = [];
+  let targetItems: string[] = [];
+  if (datasetId) {
+    const rows = await db
+      .select({ id: datasetItem.id })
+      .from(datasetItem)
+      .where(
+        and(eq(datasetItem.projectId, projectId), eq(datasetItem.name, datasetId)),
+      )
+      .limit(1000);
+    targetItems = rows.map((r) => r.id);
+  } else if (traceIds && traceIds.length > 0) {
     const rows = await db
       .select({ id: trace.id })
       .from(trace)
       .where(
         and(eq(trace.projectId, projectId), inArray(trace.id, traceIds)),
       );
-    targets = rows.map((r) => r.id);
+    targetTraces = rows.map((r) => r.id);
   } else if (tag) {
     // tags 是 text[]，用 @> 数组包含过滤
     const rows = await db
@@ -79,7 +99,7 @@ export async function POST(req: NextRequest) {
         ),
       )
       .limit(1000);
-    targets = rows.map((r) => r.id);
+    targetTraces = rows.map((r) => r.id);
   } else if (maxScore !== undefined) {
     // 低分回流：该项目内 score < 阈值 的 trace（EVALUATION/ANNOTATION 均可）
     const rows = await db
@@ -92,17 +112,21 @@ export async function POST(req: NextRequest) {
         ),
       )
       .limit(1000);
-    targets = rows.map((r) => r.traceId).filter((v): v is string => !!v);
+    targetTraces = rows.map((r) => r.traceId).filter((v): v is string => !!v);
   }
 
-  if (targets.length === 0) {
-    return NextResponse.json({ error: "没有匹配的 trace" }, { status: 400 });
+  const total = targetTraces.length + targetItems.length;
+  if (total === 0) {
+    return NextResponse.json(
+      { error: datasetId ? `数据集「${datasetId}」为空` : "没有匹配的 trace" },
+      { status: 400 },
+    );
   }
 
   // 逐个创建评估任务并入队
   const runConfig = (cfg.config as Record<string, unknown> | null) ?? {};
   const created: string[] = [];
-  for (const traceId of targets) {
+  for (const traceId of targetTraces) {
     const [task] = await db
       .insert(evaluation)
       .values({
@@ -122,6 +146,26 @@ export async function POST(req: NextRequest) {
     });
     created.push(task.id);
   }
+  for (const itemId of targetItems) {
+    const [task] = await db
+      .insert(evaluation)
+      .values({
+        id: crypto.randomUUID(),
+        projectId,
+        datasetItemId: itemId,
+        name: cfg.name,
+        evaluatorType: cfg.evaluatorType,
+        config: runConfig,
+        status: "PENDING",
+        updatedAt: new Date(),
+      })
+      .returning({ id: evaluation.id });
+    await queueBus.enqueue(QUEUES.evaluation, {
+      projectId,
+      evaluationId: task.id,
+    });
+    created.push(task.id);
+  }
 
-  return NextResponse.json({ ok: true, count: created.length, traceIds: targets.length });
+  return NextResponse.json({ ok: true, count: created.length, total });
 }

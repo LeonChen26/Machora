@@ -159,6 +159,29 @@ export const score = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// 数据集（Prompt 级评测用例，Langfuse dataset 简化版：name 为数据集名，item 为用例）
+// ---------------------------------------------------------------------------
+
+export const datasetItem = pgTable(
+  "DatasetItem",
+  {
+    id: primaryId(),
+    projectId: text("projectId")
+      .notNull()
+      .references(() => project.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    name: text("name").notNull(), // 数据集名
+    input: jsonb("input"),
+    output: jsonb("output"),
+    expectedOutput: jsonb("expectedOutput"),
+    metadata: jsonb("metadata"),
+    createdAt: ts("createdAt").notNull().defaultNow(),
+  },
+  (t) => [
+    index("DatasetItem_projectId_name_idx").on(t.projectId, t.name),
+  ],
+);
+
+// ---------------------------------------------------------------------------
 // 服务端评估任务
 // ---------------------------------------------------------------------------
 
@@ -167,9 +190,15 @@ export const evaluation = pgTable(
   {
     id: text("id").primaryKey(),
     projectId: text("projectId").notNull(),
-    traceId: text("traceId")
-      .notNull()
-      .references(() => trace.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    // trace 评估：traceId 指向 Trace；数据集评测：datasetItemId 指向数据集用例（traceId 为空）
+    traceId: text("traceId").references(() => trace.id, {
+      onDelete: "cascade",
+      onUpdate: "cascade",
+    }),
+    datasetItemId: text("datasetItemId").references(() => datasetItem.id, {
+      onDelete: "cascade",
+      onUpdate: "cascade",
+    }),
     name: text("name").notNull(), // 写回 Score 时的 name
     evaluatorType: text("evaluatorType").notNull(),
     config: jsonb("config"),
@@ -183,6 +212,7 @@ export const evaluation = pgTable(
   (t) => [
     index("Evaluation_projectId_createdAt_idx").on(t.projectId, t.createdAt),
     index("Evaluation_traceId_idx").on(t.traceId),
+    index("Evaluation_datasetItemId_idx").on(t.datasetItemId),
     index("Evaluation_status_idx").on(t.status),
   ],
 );
@@ -276,6 +306,17 @@ export const scoreRelations = relations(score, ({ one }) => ({
 
 export const evaluationRelations = relations(evaluation, ({ one }) => ({
   trace: one(trace, { fields: [evaluation.traceId], references: [trace.id] }),
+  datasetItem: one(datasetItem, {
+    fields: [evaluation.datasetItemId],
+    references: [datasetItem.id],
+  }),
+}));
+
+export const datasetItemRelations = relations(datasetItem, ({ one }) => ({
+  project: one(project, {
+    fields: [datasetItem.projectId],
+    references: [project.id],
+  }),
 }));
 
 export const metricSampleRelations = relations(metricSample, ({ one }) => ({

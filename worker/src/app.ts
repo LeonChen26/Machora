@@ -12,10 +12,12 @@ import {
   selfMetrics,
   evaluation as evaluationTable,
   evaluationConfig,
+  datasetItem as datasetItemTable,
   trace as traceTable,
   score as scoreTable,
   type IngestionQueuePayload,
   type EvaluationQueuePayload,
+  type EvaluationContext,
 } from "@machora/shared";
 
 export function registerQueueProcessors(): void {
@@ -117,17 +119,34 @@ async function runEvaluation(payload: EvaluationQueuePayload): Promise<void> {
       .set({ status: "RUNNING" })
       .where(eq(evaluationTable.id, evaluation.id));
 
-    const trace = await db.query.trace.findFirst({
-      where: eq(traceTable.id, evaluation.traceId),
-      with: { observations: true },
-    });
-    if (!trace) throw new Error(`trace not found: ${evaluation.traceId}`);
-
-    const evaluator = getEvaluator(evaluation.evaluatorType);
-    if (!evaluator) throw new Error(`unknown evaluator type: ${evaluation.evaluatorType}`);
-
-    const result = await evaluator.run(
-      {
+    // 数据集评测：读 DatasetItem 构造纯 prompt 上下文（无 observations）；trace 评估走原逻辑
+    let ctx: EvaluationContext;
+    if (evaluation.datasetItemId) {
+      const item = await db.query.datasetItem.findFirst({
+        where: eq(datasetItemTable.id, evaluation.datasetItemId),
+      });
+      if (!item) {
+        throw new Error(`dataset item not found: ${evaluation.datasetItemId}`);
+      }
+      ctx = {
+        trace: {
+          id: item.id,
+          name: item.name,
+          tags: [],
+          timestamp: item.createdAt,
+          input: item.input ?? null,
+          output: item.expectedOutput ?? null,
+        },
+        observations: [],
+        trajectorySummary: null,
+      };
+    } else {
+      const trace = await db.query.trace.findFirst({
+        where: eq(traceTable.id, evaluation.traceId!), // 该分支已排除数据集任务，traceId 必非空
+        with: { observations: true },
+      });
+      if (!trace) throw new Error(`trace not found: ${evaluation.traceId}`);
+      ctx = {
         trace: {
           id: trace.id,
           name: trace.name,
@@ -155,19 +174,30 @@ async function runEvaluation(payload: EvaluationQueuePayload): Promise<void> {
         })),
         // 轨迹摘要：LLM judge 深度评估输入（按执行顺序，对齐 AgentLoop 轨迹评估）
         trajectorySummary: buildTrajectorySummary(trace.observations as any),
-      },
+      };
+    }
+
+    const evaluator = getEvaluator(evaluation.evaluatorType);
+    if (!evaluator) throw new Error(`unknown evaluator type: ${evaluation.evaluatorType}`);
+
+    const result = await evaluator.run(
+      ctx,
       (evaluation.config as Record<string, unknown>) ?? {},
     );
 
-    await db.insert(scoreTable).values({
-      traceId: evaluation.traceId,
-      projectId: evaluation.projectId,
-      name: evaluation.name,
-      value: result.value,
-      dataType: result.dataType,
-      source: "EVALUATION",
-      comment: result.comment ?? null,
-    });
+    // 数据集评测结果仅存 evaluation.result，不写 Score（无关联 trace，避免孤行）
+    if (!evaluation.datasetItemId) {
+      await db.insert(scoreTable).values({
+        traceId: evaluation.traceId,
+        projectId: evaluation.projectId,
+        name: evaluation.name,
+        value: result.value,
+        dataType: result.dataType,
+        source: "EVALUATION",
+        // 理由优先：LLM judge 的详细 reasoning 写进 Score.comment，评分 Tab 可直接展示
+        comment: result.reasoning ?? result.comment ?? null,
+      });
+    }
 
     await db
       .update(evaluationTable)
