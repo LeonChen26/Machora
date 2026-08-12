@@ -2,8 +2,8 @@
 // session 鉴权，归属校验到当前项目
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { and, eq } from "drizzle-orm";
-import { db, datasetItem, selfMetrics } from "@machora/shared";
+import { and, eq, sql } from "drizzle-orm";
+import { db, datasetItem, evaluation, selfMetrics } from "@machora/shared";
 import { getApiUser } from "../../../server/session";
 import { getCurrentProjectId } from "../../../server/project";
 
@@ -35,11 +35,51 @@ export async function GET(req: NextRequest) {
     arr.push(item);
     byName.set(item.name, arr);
   }
-  const datasets = Array.from(byName.entries()).map(([name, list]) => ({
-    name,
-    count: list.length,
-    items: list,
-  }));
+
+  // 评测统计：每个数据集名 × 配置名 → 平均分/通过率/次数（仅 COMPLETED 数据集任务）
+  const tasks = await db.query.evaluation.findMany({
+    where: and(
+      eq(evaluation.projectId, projectId),
+      sql`${evaluation.datasetItemId} IS NOT NULL`,
+      eq(evaluation.status, "COMPLETED"),
+    ),
+    columns: { name: true, datasetItemId: true, result: true },
+    limit: 5000,
+  });
+  const itemNameOf = new Map(items.map((i) => [i.id, i.name]));
+  const statsByDataset = new Map<
+    string,
+    Map<string, { sum: number; n: number; dataType: string }>
+  >();
+  for (const t of tasks) {
+    const dsName = t.datasetItemId ? itemNameOf.get(t.datasetItemId) : undefined;
+    if (!dsName) continue;
+    const r = (t.result ?? {}) as Record<string, unknown>;
+    if (typeof r.value !== "number") continue;
+    let m = statsByDataset.get(dsName);
+    if (!m) {
+      m = new Map();
+      statsByDataset.set(dsName, m);
+    }
+    const acc = m.get(t.name) ?? { sum: 0, n: 0, dataType: String(r.dataType ?? "NUMERIC") };
+    acc.sum += r.value;
+    acc.n += 1;
+    m.set(t.name, acc);
+  }
+
+  const datasets = Array.from(byName.entries()).map(([name, list]) => {
+    const stats = Array.from((statsByDataset.get(name) ?? new Map()).entries()).map(
+      ([configName, acc]) => ({
+        configName,
+        n: acc.n,
+        avg: +(acc.sum / acc.n).toFixed(3),
+        passRate: acc.dataType === "BOOLEAN" ? +(acc.sum / acc.n).toFixed(3) : null,
+        dataType: acc.dataType,
+      }),
+    );
+    stats.sort((a, b) => b.n - a.n);
+    return { name, count: list.length, items: list, stats };
+  });
   return NextResponse.json({ datasets });
 }
 

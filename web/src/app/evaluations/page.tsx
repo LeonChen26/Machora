@@ -12,6 +12,7 @@ import { EvalConfigForm } from "./EvalConfigForm";
 import { EvalConfigActions } from "./EvalConfigActions";
 import { DatasetBatchPanel } from "./DatasetBatchPanel";
 import { DatasetManager } from "./DatasetManager";
+import { EvalReviewButton } from "./EvalReviewPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -246,6 +247,7 @@ export default async function EvaluationsPage({
                       <th scope="col">结果</th>
                       <th scope="col">耗时</th>
                       <th scope="col">创建时间</th>
+                      <th scope="col" style={{ width: 60 }}>评审</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -307,6 +309,18 @@ export default async function EvaluationsPage({
                           </td>
                           <td className="mono muted text-xs" title={formatDateTime(t.createdAt)}>
                             {formatRelative(t.createdAt)}
+                          </td>
+                          <td>
+                            <EvalReviewButton
+                              task={{
+                                id: t.id,
+                                traceId: t.traceId,
+                                name: t.name,
+                                evaluatorType: t.evaluatorType,
+                                status: t.status,
+                                result: (t.result ?? null) as Record<string, unknown> | null,
+                              }}
+                            />
                           </td>
                         </tr>
                       );

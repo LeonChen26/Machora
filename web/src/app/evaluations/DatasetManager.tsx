@@ -3,6 +3,7 @@
 // Prompt 级数据集管理（client）：新建用例 / 查看数据集 / 删除 / 对整个数据集批量评测（LLM judge）
 // 与 tag 数据集不同：用例是独立定义（input/expectedOutput），不依赖 trace
 import { useEffect, useTransition, useState } from "react";
+import { BarChart } from "../../components/BarChart";
 
 export interface DatasetConfig {
   id: string;
@@ -19,10 +20,19 @@ interface DatasetItemRow {
   createdAt: string;
 }
 
+interface DatasetStat {
+  configName: string;
+  n: number;
+  avg: number;
+  passRate: number | null;
+  dataType: string;
+}
+
 interface DatasetGroup {
   name: string;
   count: number;
   items: DatasetItemRow[];
+  stats: DatasetStat[];
 }
 
 /** JSON 摘要（折行 + 截断） */
@@ -46,8 +56,10 @@ export function DatasetManager({ configs }: { configs: DatasetConfig[] }) {
   const [input, setInput] = useState("");
   const [expectedOutput, setExpectedOutput] = useState("");
 
-  // 评测
-  const [evalConfigId, setEvalConfigId] = useState<string>(configs[0]?.id ?? "");
+  // 评测：勾选多个 LLM 配置 → 对该数据集并发批量评测（对比不同配置/模型）
+  const [checked, setChecked] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(configs.filter((c) => c.evaluatorType === "llm").map((c) => [c.id, false])),
+  );
   const [evalFor, setEvalFor] = useState<string | null>(null); // 正在评测的数据集名
 
   const [pending, startTransition] = useTransition();
@@ -114,25 +126,35 @@ export function DatasetManager({ configs }: { configs: DatasetConfig[] }) {
   }
 
   function runEval(groupName: string) {
-    if (!evalConfigId) {
-      setMsg({ ok: false, text: "请先创建并启用一个 LLM judge 配置" });
+    const selected = llmConfigs.filter((c) => checked[c.id]);
+    if (selected.length === 0) {
+      setMsg({ ok: false, text: "请先勾选至少一个 LLM judge 配置" });
       return;
     }
     setEvalFor(groupName);
     setMsg(null);
     startTransition(async () => {
-      const res = await fetch("/api/evaluations/batch", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ configId: evalConfigId, datasetId: groupName }),
-      });
-      const data = await res.json();
-      setEvalFor(null);
-      if (res.ok) {
-        setMsg({ ok: true, text: `数据集「${groupName}」已触发 ${data.count} 条评测任务，完成后可在「任务」Tab 查看结果` });
-      } else {
-        setMsg({ ok: false, text: data.error ?? "评测失败" });
+      // 对每个勾选配置分别触发数据集批量评测，便于对比
+      const results: string[] = [];
+      for (const cfg of selected) {
+        const res = await fetch("/api/evaluations/batch", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ configId: cfg.id, datasetId: groupName }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          results.push(`${cfg.name}×${data.count}`);
+        } else {
+          results.push(`${cfg.name}✗(${data.error ?? res.status})`);
+        }
       }
+      setEvalFor(null);
+      setMsg({
+        ok: true,
+        text: `数据集「${groupName}」评测完成触发：${results.join("、")}。稍后刷新查看对比。`,
+      });
+      await load();
     });
   }
 
@@ -204,28 +226,32 @@ export function DatasetManager({ configs }: { configs: DatasetConfig[] }) {
 
       {groups.map((g) => (
         <div className="card mt-2" key={g.name} style={{ border: "1px dashed var(--border)" }}>
-          <div className="flex-between">
+          <div className="flex-between" style={{ flexWrap: "wrap", gap: 8 }}>
             <div className="label" style={{ margin: 0 }}>
               {g.name} <span className="count">{g.count} 条用例</span>
             </div>
-            <div className="form-inline">
-              <select
-                value={evalConfigId}
-                onChange={(e) => setEvalConfigId(e.target.value)}
-                className="select"
-                style={{ width: 200 }}
-                disabled={llmConfigs.length === 0}
-              >
-                {llmConfigs.length === 0 ? (
-                  <option value="">先创建 LLM judge 配置</option>
-                ) : (
-                  llmConfigs.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))
-                )}
-              </select>
+            <div className="form-inline" style={{ flexWrap: "wrap" }}>
+              {llmConfigs.length === 0 ? (
+                <span className="text-xs muted">先创建 LLM judge 配置</span>
+              ) : (
+                llmConfigs.map((c) => (
+                  <label
+                    key={c.id}
+                    className="form-inline"
+                    style={{ alignItems: "center", gap: 4, fontSize: 12 }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={!!checked[c.id]}
+                      onChange={(e) =>
+                        setChecked({ ...checked, [c.id]: e.target.checked })
+                      }
+                      style={{ width: 14, height: 14 }}
+                    />
+                    {c.name}
+                  </label>
+                ))
+              )}
               <button
                 type="button"
                 className="btn primary"
@@ -234,13 +260,52 @@ export function DatasetManager({ configs }: { configs: DatasetConfig[] }) {
                 aria-busy={evalFor === g.name}
               >
                 {evalFor === g.name && <span className="spinner" aria-hidden="true" />}
-                {evalFor === g.name ? "评测中…" : "评测数据集"}
+                {evalFor === g.name ? "评测中…" : "对比评测"}
               </button>
               <button type="button" className="btn danger" onClick={() => deleteDataset(g.name)}>
                 删除
               </button>
             </div>
           </div>
+
+          {g.stats.length > 0 && (
+            <div className="mt-2">
+              <div className="text-xs muted" style={{ marginBottom: 6 }}>
+                评测对比（按配置）
+              </div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
+                  gap: 10,
+                }}
+              >
+                {g.stats.map((s) => (
+                  <div
+                    key={s.configName}
+                    className="card"
+                    style={{ padding: "8px 10px", border: "1px dashed var(--border)" }}
+                  >
+                    <div className="text-xs" style={{ fontWeight: 600 }}>
+                      {s.configName}
+                    </div>
+                    <div className="text-sm">
+                      {s.dataType === "BOOLEAN"
+                        ? `通过率 ${Math.round((s.passRate ?? 0) * 100)}%`
+                        : `平均分 ${s.avg}`}
+                      <span className="muted"> · {s.n} 次</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <BarChart
+                data={g.stats.map((s) => ({ label: s.configName, value: s.avg }))}
+                height={90}
+                emptyText="暂无评测结果"
+              />
+            </div>
+          )}
+
           <div className="table-wrap mt-2">
             <table>
               <thead>
