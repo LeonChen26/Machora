@@ -129,3 +129,72 @@ export function classifyTrajectoryKind(o: TrajectoryKindInput): TrajectoryKind {
   if (o.type === "SPAN" && !o.hasParent) return "entry";
   return "other";
 }
+
+// ---------------------------------------------------------------------------
+// 轨迹摘要：把 observations 按执行顺序转成文本摘要（LLM judge 深度评估输入）
+// ---------------------------------------------------------------------------
+
+export interface TrajectorySummaryInput {
+  id: string;
+  type: string;
+  name: string | null;
+  model: string | null;
+  agentName: string | null;
+  workflowName: string | null;
+  skillName: string | null;
+  level: string;
+  parentObservationId: string | null;
+  startTime: Date;
+  metadata: unknown;
+  input: unknown;
+  output: unknown;
+}
+
+/** 单条 observation → 摘要行（保留语义标签 + 名称 + IO 摘要） */
+function summaryLine(o: TrajectorySummaryInput): string {
+  const role = classifyTrajectoryKind({
+    type: o.type,
+    metadata: o.metadata,
+    model: o.model,
+    agentName: o.agentName,
+    workflowName: o.workflowName,
+    skillName: o.skillName,
+    hasParent: !!o.parentObservationId,
+  });
+  const label = o.name?.trim() || o.type || "step";
+  const modelSuffix = o.model ? ` [${o.model}]` : "";
+  const io: string[] = [];
+  if (o.input !== null && o.input !== undefined) {
+    try {
+      io.push(`in=${JSON.stringify(o.input).slice(0, 200)}`);
+    } catch {
+      /* ignore */
+    }
+  }
+  if (o.output !== null && o.output !== undefined) {
+    try {
+      io.push(`out=${JSON.stringify(o.output).slice(0, 300)}`);
+    } catch {
+      /* ignore */
+    }
+  }
+  const ioSuffix = io.length > 0 ? ` (${io.join(" ")})` : "";
+  return `${role}: ${label}${modelSuffix}${ioSuffix}`;
+}
+
+/**
+ * 把 observations 按开始时间排序生成轨迹摘要（供 LLM judge 注入 prompt）。
+ * 纯函数，不依赖落库；空数组返回 null。
+ */
+export function buildTrajectorySummary(
+  observations: TrajectorySummaryInput[],
+  limit = 50,
+): string | null {
+  if (observations.length === 0) return null;
+  const sorted = [...observations].sort(
+    (a, b) => a.startTime.getTime() - b.startTime.getTime(),
+  );
+  const lines = sorted.slice(0, limit).map((o) => summaryLine(o));
+  if (sorted.length > limit) lines.push(`…（共 ${sorted.length} 步，仅列前 ${limit} 步）`);
+  return lines.join("\n");
+}

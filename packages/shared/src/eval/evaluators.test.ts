@@ -9,19 +9,34 @@ import {
 
 function ctx(overrides: Partial<EvaluationContext> = {}): EvaluationContext {
   return {
-    trace: { id: "t1", tags: ["prod"], timestamp: new Date("2026-08-02T00:00:00Z") },
+    trace: {
+      id: "t1",
+      name: null,
+      tags: ["prod"],
+      timestamp: new Date("2026-08-02T00:00:00Z"),
+      input: null,
+      output: null,
+    },
     observations: [
       {
         id: "o1",
         type: "SPAN",
         level: "DEFAULT",
+        name: null,
         startTime: new Date("2026-08-02T00:00:00Z"),
         endTime: new Date("2026-08-02T00:00:05Z"),
         model: null,
+        agentName: null,
+        workflowName: null,
+        skillName: null,
+        parentObservationId: null,
         totalTokens: 1000,
         totalCost: 0.001,
+        input: null,
+        output: null,
       },
     ],
+    trajectorySummary: null,
     ...overrides,
   };
 }
@@ -76,26 +91,32 @@ describe("规则评估器", () => {
     expect((await e.run(ctx(), { thresholdMs: "4000" })).value).toBe(1);
   });
 
-  it("注册表可插拔：registerEvaluator 扩展（预留 LLM judge）", () => {
-    const llm: Evaluator = {
+  it("注册表可插拔：registerEvaluator 可覆盖已注册类型（LLM judge 扩展点）", () => {
+    const custom: Evaluator = {
       type: "llm",
-      description: "LLM-as-judge（预留）",
+      description: "自定义 LLM judge 覆盖版",
       async run() {
         return { value: 0, dataType: "NUMERIC", comment: "todo" };
       },
     };
-    expect(getEvaluator("llm")).toBeUndefined();
-    registerEvaluator(llm);
-    expect(getEvaluator("llm")).toBe(llm);
+    const before = getEvaluator("llm");
+    expect(before).toBeDefined();
+    registerEvaluator(custom);
+    expect(getEvaluator("llm")).toBe(custom);
+    // 恢复内置，避免影响其他测试
+    registerEvaluator(before!);
+    expect(getEvaluator("llm")).toBe(before);
   });
 
-  it("defaultEvaluators 覆盖 5 个内置规则", () => {
+  it("defaultEvaluators 覆盖 5 个内置规则 + LLM judge", () => {
     expect(defaultEvaluators.map((e) => e.type).sort()).toEqual([
       "cost",
       "error",
       "latency",
+      "llm",
       "tag",
       "token",
     ]);
+    expect(getEvaluator("llm")).toBeDefined();
   });
 });

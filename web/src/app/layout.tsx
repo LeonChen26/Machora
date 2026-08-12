@@ -58,6 +58,9 @@ const ICONS: Record<string, React.ReactNode> = {
   scores: (
     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"><path d="M12 3.5l2.6 5.3 5.9.9-4.2 4.1 1 5.8L12 17l-5.3 2.6 1-5.8-4.2-4.1 5.9-.9z"/></svg>
   ),
+  evaluations: (
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12l4 4L20 6"/><path d="M12 20h8"/></svg>
+  ),
   sessions: (
     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
   ),
@@ -128,6 +131,7 @@ export default async function RootLayout({
             <NavItem href="/generations" label="Generations" icon="generations" />
             <NavItem href="/analytics" label="Analytics" icon="models" />
             <NavItem href="/scores" label="Scores" icon="scores" />
+            <NavItem href="/evaluations" label="评估" icon="evaluations" />
             <NavItem href="/sessions" label="Sessions" icon="sessions" />
             <NavItem href="/users" label="Users" icon="users" />
             <NavItem href="/metrics" label="Metrics" icon="metrics" />

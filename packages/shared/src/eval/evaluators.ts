@@ -7,6 +7,7 @@ import type {
   Evaluator,
   EvaluatorType,
 } from "./types.ts";
+import { llmJudgeEvaluator } from "./llmJudge.ts";
 
 // ---------------------------------------------------------------------------
 // 工具
@@ -115,6 +116,8 @@ const registry = new Map<string, Evaluator>();
 for (const e of [errorEvaluator, latencyEvaluator, costEvaluator, tokenEvaluator, tagEvaluator]) {
   registry.set(e.type, e);
 }
+// LLM-as-judge：类型已在 EVALUATOR_TYPES 预留，注册后 POST /api/public/evaluations 立即可用
+registry.set(llmJudgeEvaluator.type, llmJudgeEvaluator);
 
 export const defaultEvaluators: Evaluator[] = [...registry.values()];
 

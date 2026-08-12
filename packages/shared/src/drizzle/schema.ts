@@ -8,6 +8,7 @@
 
 import { relations } from "drizzle-orm";
 import {
+  boolean,
   doublePrecision,
   index,
   integer,
@@ -182,6 +183,27 @@ export const evaluation = pgTable(
     index("Evaluation_projectId_createdAt_idx").on(t.projectId, t.createdAt),
     index("Evaluation_traceId_idx").on(t.traceId),
     index("Evaluation_status_idx").on(t.status),
+  ],
+);
+
+// 评估器配置（UI 可管理）：LLM judge 的模型/端点/提示词，或规则评估器阈值
+export const evaluationConfig = pgTable(
+  "EvaluationConfig",
+  {
+    id: primaryId(),
+    projectId: text("projectId")
+      .notNull()
+      .references(() => project.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    name: text("name").notNull(), // 配置名（如 helpfulness）
+    evaluatorType: text("evaluatorType").notNull(), // llm | error | latency ...
+    config: jsonb("config"), // 评估器参数（model/apiKey/systemPrompt 或阈值）
+    enabled: boolean("enabled").notNull().default(true),
+    createdAt: ts("createdAt").notNull().defaultNow(),
+    updatedAt: ts("updatedAt").notNull(),
+  },
+  (t) => [
+    index("EvaluationConfig_projectId_idx").on(t.projectId),
+    uniqueIndex("EvaluationConfig_projectId_name_key").on(t.projectId, t.name),
   ],
 );
 

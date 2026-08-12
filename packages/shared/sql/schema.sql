@@ -112,6 +112,20 @@ CREATE TABLE IF NOT EXISTS "Evaluation" (
 );
 
 -- CreateTable
+CREATE TABLE IF NOT EXISTS "EvaluationConfig" (
+    "id" TEXT NOT NULL,
+    "projectId" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "evaluatorType" TEXT NOT NULL,
+    "config" JSONB,
+    "enabled" BOOLEAN NOT NULL DEFAULT TRUE,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "EvaluationConfig_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE IF NOT EXISTS "MetricSample" (
     "id" TEXT NOT NULL,
     "projectId" TEXT NOT NULL,
@@ -172,6 +186,8 @@ CREATE INDEX IF NOT EXISTS "Evaluation_traceId_idx" ON "Evaluation"("traceId");
 
 -- CreateIndex
 CREATE INDEX IF NOT EXISTS "Evaluation_status_idx" ON "Evaluation"("status");
+CREATE INDEX IF NOT EXISTS "EvaluationConfig_projectId_idx" ON "EvaluationConfig"("projectId");
+CREATE UNIQUE INDEX IF NOT EXISTS "EvaluationConfig_projectId_name_key" ON "EvaluationConfig"("projectId", "name");
 
 -- CreateIndex
 CREATE INDEX IF NOT EXISTS "MetricSample_projectId_name_timestamp_idx" ON "MetricSample"("projectId", "name", "timestamp");

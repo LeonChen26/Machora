@@ -8,6 +8,7 @@ import {
   QUEUES,
   db,
   getEvaluator,
+  buildTrajectorySummary,
   selfMetrics,
   evaluation as evaluationTable,
   trace as traceTable,
@@ -64,17 +65,33 @@ async function runEvaluation(payload: EvaluationQueuePayload): Promise<void> {
 
     const result = await evaluator.run(
       {
-        trace: { id: trace.id, tags: trace.tags, timestamp: trace.timestamp },
+        trace: {
+          id: trace.id,
+          name: trace.name,
+          tags: trace.tags,
+          timestamp: trace.timestamp,
+          input: trace.input ?? null,
+          output: trace.output ?? null,
+        },
         observations: trace.observations.map((o) => ({
           id: o.id,
           type: o.type,
           level: o.level,
+          name: o.name,
           startTime: o.startTime,
           endTime: o.endTime,
           model: o.model,
+          agentName: o.agentName,
+          workflowName: o.workflowName,
+          skillName: o.skillName,
+          parentObservationId: o.parentObservationId,
           totalTokens: o.totalTokens,
           totalCost: o.totalCost,
+          input: o.input ?? null,
+          output: o.output ?? null,
         })),
+        // 轨迹摘要：LLM judge 深度评估输入（按执行顺序，对齐 AgentLoop 轨迹评估）
+        trajectorySummary: buildTrajectorySummary(trace.observations as any),
       },
       (evaluation.config as Record<string, unknown>) ?? {},
     );
@@ -93,7 +110,10 @@ async function runEvaluation(payload: EvaluationQueuePayload): Promise<void> {
       .update(evaluationTable)
       .set({
         status: "COMPLETED",
-        result: result as unknown as typeof evaluationTable.$inferInsert["result"],
+        result: {
+          ...(result as unknown as Record<string, unknown>),
+          durationMs: Date.now() - start,
+        } as unknown as typeof evaluationTable.$inferInsert["result"],
       })
       .where(eq(evaluationTable.id, evaluation.id));
     selfMetrics.inc("machora.evaluation.completed", 1, {

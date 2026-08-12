@@ -1,7 +1,7 @@
 import { Link } from "../../../components/NativeLink";
 import { notFound } from "next/navigation";
 import { and, asc, desc, eq } from "drizzle-orm";
-import { db, trace as traceTable, observation } from "@machora/shared";
+import { db, trace as traceTable, observation, evaluationConfig } from "@machora/shared";
 import {
   formatDateTime,
   formatDuration,
@@ -15,6 +15,7 @@ import { EmptyIcon } from "../../../components/EmptyIcon";
 import { requireUser } from "../../../server/session";
 import { JsonBlock } from "../../../components/JsonBlock";
 import ScoreForm from "../../../components/ScoreForm";
+import { EvalRunPanel } from "../../../components/trace/EvalRunPanel";
 import { getCurrentProjectId } from "../../../server/project";
 import {
   type ObservationView,
@@ -77,6 +78,22 @@ export default async function TraceDetailPage({
   if (!trace) {
     notFound();
   }
+
+  // 启用的评估配置（评分 Tab 自动评估入口）
+  const evalConfigs = (
+    await db.query.evaluationConfig.findMany({
+      where: and(
+        eq(evaluationConfig.projectId, projectId),
+        eq(evaluationConfig.enabled, true),
+      ),
+      orderBy: (t, { asc }) => [asc(t.createdAt)],
+      columns: { id: true, name: true, evaluatorType: true },
+    })
+  ).map((c) => ({
+    id: c.id,
+    name: c.name,
+    evaluatorType: c.evaluatorType,
+  }));
 
   // 时间轴范围
   const obsTimes = trace.observations.map((o) => o.startTime.getTime());
@@ -699,6 +716,10 @@ export default async function TraceDetailPage({
       <div className="section-title">
         Scores <span className="count">{trace.scores.length}</span>
       </div>
+      <EvalRunPanel
+        traceId={trace.id}
+        configs={evalConfigs}
+      />
       <ScoreForm
         traceId={trace.id}
         observations={trace.observations.map((o) => ({
