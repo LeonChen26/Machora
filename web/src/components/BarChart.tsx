@@ -64,6 +64,7 @@ export function BarChart({
           >
             <div
               className="barchart-bar"
+              data-val={d.value}
               title={`${d.label}: ${d.value}`}
               style={{
                 width: "100%",

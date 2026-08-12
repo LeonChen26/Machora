@@ -121,19 +121,21 @@ export default async function SessionsPage({
         </div>
       </div>
 
-      {/* 时间窗筛选：仅统计近 N 天有活动的会话 */}
-      <div className="seg mb-3">
-        {DAY_OPTIONS.map((d) => (
-          <Link
-            key={d}
-            href={d === 0 ? "/sessions" : `/sessions?days=${d}`}
-            prefetch={false}
-            className={d === days ? "seg-btn active" : "seg-btn"}
-            aria-current={d === days ? "true" : undefined}
-          >
-            {d === 0 ? "全部" : `${d} 天`}
-          </Link>
-        ))}
+      {/* 时间窗筛选：仅统计近 N 天有活动的会话（与 metrics/system 等页一致：seg 包在卡片内） */}
+      <div className="card mb-3">
+        <div className="seg">
+          {DAY_OPTIONS.map((d) => (
+            <Link
+              key={d}
+              href={d === 0 ? "/sessions" : `/sessions?days=${d}`}
+              prefetch={false}
+              className={d === days ? "seg-btn active" : "seg-btn"}
+              aria-current={d === days ? "true" : undefined}
+            >
+              {d === 0 ? "全部" : `${d} 天`}
+            </Link>
+          ))}
+        </div>
       </div>
 
       {sessions.length === 0 ? (

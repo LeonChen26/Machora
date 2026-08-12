@@ -100,15 +100,15 @@ export default async function SessionDetailPage({
         </div>
         <div className="card">
           <div className="label">会话跨度</div>
-          <div className="value value-md">{formatDuration(spanMs)}</div>
+          <div className="value">{formatDuration(spanMs)}</div>
         </div>
         <div className="card">
           <div className="label">Token 用量</div>
-          <div className="value value-md">{formatTokens(totalTokens)}</div>
+          <div className="value">{formatTokens(totalTokens)}</div>
         </div>
         <div className="card">
           <div className="label">总成本</div>
-          <div className="value value-md cost">
+          <div className="value cost">
             {formatCost(totalCost)}
           </div>
         </div>

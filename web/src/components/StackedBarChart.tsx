@@ -84,6 +84,8 @@ export function StackedBarChart({
               {d.series.map((s, j) => (
                 <div
                   key={j}
+                  className="stack-seg"
+                  data-val={s.value}
                   title={`${d.label} · ${s.name}: ${s.value}`}
                   style={{
                     width: "100%",

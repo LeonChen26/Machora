@@ -232,18 +232,6 @@ export default async function Home() {
         />
       </div>
 
-      <div className="section-title">近 {TREND_DAYS} 天分布</div>
-      <div className="grid grid-2">
-        <div className="card">
-          <div className="label">按模型（调用数）</div>
-          <BarChart data={modelDist} color="var(--purple)" />
-        </div>
-        <div className="card">
-          <div className="label">按环境（trace 数）</div>
-          <BarChart data={envDist} color="var(--accent)" />
-        </div>
-      </div>
-
       <div className="section-title">近 {TREND_DAYS} 天趋势</div>
       <div className="grid grid-2">
         <div className="card">
@@ -282,6 +270,18 @@ export default async function Home() {
         </div>
       </div>
 
+      <div className="section-title">近 {TREND_DAYS} 天分布</div>
+      <div className="grid grid-2">
+        <div className="card">
+          <div className="label">按模型（调用数）</div>
+          <BarChart data={modelDist} color="var(--purple)" />
+        </div>
+        <div className="card">
+          <div className="label">按环境（trace 数）</div>
+          <BarChart data={envDist} color="var(--accent)" />
+        </div>
+      </div>
+
       <div className="section-title">Top 5（近 {TREND_DAYS} 天）</div>
       <div className="grid grid-2">
         <div className="card">
@@ -296,7 +296,7 @@ export default async function Home() {
                 <Link href={`/traces/${x.t.id}`} prefetch={false}>
                   {x.t.name || <span className="mute2">{x.t.id}</span>}
                 </Link>
-                <span className="mono cost" style={{ whiteSpace: "nowrap" }}>
+                <span className="mono cost nowrap">
                   {formatCost(x.cost)}
                 </span>
               </div>
@@ -432,7 +432,7 @@ export default async function Home() {
     ]
   }'`}
         </pre>
-        <div className="muted" style={{ marginTop: "0.75rem" }}>
+        <div className="muted mt-2">
           <Link href="/api/public/health" prefetch={false}>健康检查</Link> ·{" "}
           <Link href="/traces" prefetch={false}>查看全部 Traces →</Link>
         </div>

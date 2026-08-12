@@ -57,7 +57,7 @@ export function CreateApiKeyForm({
           placeholder="名称（可选），如：生产环境"
           maxLength={60}
           className="input"
-          style={{ flex: 1, minWidth: 180 }}
+          style={{ flex: 1, minWidth: 200 }}
         />
         <select name="projectId" required className="select" defaultValue="">
           <option value="" disabled>

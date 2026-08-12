@@ -29,7 +29,7 @@ declare global {
   }
 }
 
-export function ThemeToggle() {
+export function ThemeToggle({ compact = false }: { compact?: boolean }) {
   const [theme, setTheme] = useState<string>("system");
 
   useEffect(() => {
@@ -44,12 +44,12 @@ export function ThemeToggle() {
   return (
     <button
       type="button"
-      className="theme-toggle"
+      className={`theme-toggle${compact ? " compact" : ""}`}
       onClick={toggle}
       title={`主题：${LABELS[theme]}（点击切换）`}
     >
       <span aria-hidden>{ICONS[theme]}</span>
-      <span className="muted">{LABELS[theme]}</span>
+      {!compact && <span className="muted">{LABELS[theme]}</span>}
     </button>
   );
 }

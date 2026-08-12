@@ -1,4 +1,5 @@
 import { Link } from "../../components/NativeLink";
+import { DocsNav } from "../../components/DocsNav";
 import { requireUser } from "../../server/session";
 
 export const dynamic = "force-dynamic";
@@ -36,21 +37,6 @@ const NAV_SECTIONS = [
   },
 ];
 
-function DocsNav() {
-  return (
-    <nav className="docs-nav" aria-label="文档目录">
-      {NAV_SECTIONS.map((section) => (
-        <div key={section.label} className="docs-nav-section">
-          <div className="docs-nav-label">{section.label}</div>
-          {section.items.map((item) => (
-            <a key={item.href} href={item.href}>{item.label}</a>
-          ))}
-        </div>
-      ))}
-    </nav>
-  );
-}
-
 export default async function DocsPage() {
   await requireUser();
   const port = process.env.PORT ?? "3100";
@@ -68,7 +54,7 @@ export default async function DocsPage() {
       </div>
 
       <div className="docs-layout">
-        <DocsNav />
+        <DocsNav sections={NAV_SECTIONS} />
 
         <div className="docs-content">
           {/* ===================== 一、API 参考 ===================== */}
@@ -82,22 +68,22 @@ export default async function DocsPage() {
             {/* ---------- 端点与认证 ---------- */}
             <div id="api-endpoint" className="docs-section">
               <div className="section-title">1.1 端点与认证</div>
-              <div className="card">
-                <div className="label" style={{ marginBottom: 6 }}>OTLP 端点（推荐 · 零埋点接入）</div>
+              <div className="card docs-card">
+                <div className="label">OTLP 端点（推荐 · 零埋点接入）</div>
                 <pre className="code">{`POST ${baseUrl}/api/public/otel/v1/traces    # trace / span（JSON / Protobuf）
 POST ${baseUrl}/api/public/otel/v1/metrics   # metrics（JSON / Protobuf）`}</pre>
-                <div className="muted" style={{ marginTop: 8 }}>
+                <div className="muted">
                   支持 OTLP JSON / Protobuf 双协议，多数 LLM 框架与探针（OpenLLMetry、OpenClaw、
                   LangChain、JiuwenSwarm 等）直接指向该端点即可自动上报完整链路，零业务埋点。
                   详细接入见「二、接入指南」。
                 </div>
-                <div className="label" style={{ margin: "12px 0 4px" }}>批量注入端点（REST API）</div>
+                <div className="label">批量注入端点（REST API）</div>
                 <pre className="code">{`POST ${baseUrl}/api/public/ingestion`}</pre>
-                <div style={{ marginTop: 8 }}>
-                  <div className="label" style={{ marginBottom: 4 }}>认证（Basic Auth，全部公开端点）</div>
+                <div>
+                  <div className="label">认证（Basic Auth，全部公开端点）</div>
                   <pre className="code">{`用户名: ${publicKey}
 密码:   ${secretKey}`}</pre>
-                  <div className="muted" style={{ marginTop: 6 }}>
+                  <div className="muted">
                     本地调试可设 <span className="mono">MACHORA_AUTH_DISABLED=true</span> 免认证（仅限本地，见 2.0）。
                   </div>
                 </div>
@@ -107,7 +93,7 @@ POST ${baseUrl}/api/public/otel/v1/metrics   # metrics（JSON / Protobuf）`}</p
             {/* ---------- 批量注入 ---------- */}
             <div id="api-ingestion" className="docs-section">
               <div className="section-title">1.2 批量注入</div>
-              <div className="card">
+              <div className="card docs-card">
                 <pre className="code">{`{
   "batch": [
     {
@@ -116,12 +102,12 @@ POST ${baseUrl}/api/public/otel/v1/metrics   # metrics（JSON / Protobuf）`}</p
     }
   ]
 }`}</pre>
-                <div className="muted" style={{ marginTop: 8 }}>
+                <div className="muted">
                   batch 内事件按顺序处理（trace 须先于其 observation 创建，否则外键失败）。
                 </div>
               </div>
 
-              <div className="table-wrap" style={{ marginTop: "0.75rem" }}>
+              <div className="table-wrap mb-2">
                 <table>
                   <thead>
                     <tr>
@@ -151,7 +137,7 @@ POST ${baseUrl}/api/public/otel/v1/metrics   # metrics（JSON / Protobuf）`}</p
               </div>
 
               <div className="section-title" style={{ marginTop: "1.25rem" }}>完整示例</div>
-              <div className="card">
+              <div className="card docs-card">
                 <pre className="code">{`curl -X POST ${baseUrl}/api/public/ingestion \\
   -u "${publicKey}:${secretKey}" \\
   -H "Content-Type: application/json" \\
@@ -197,7 +183,7 @@ POST ${baseUrl}/api/public/otel/v1/metrics   # metrics（JSON / Protobuf）`}</p
               </div>
 
               <div className="section-title" style={{ marginTop: "1.25rem" }}>响应</div>
-              <div className="card">
+              <div className="card docs-card">
                 <pre className="code">{`// 成功
 { "success": true, "received": 3 }
 
@@ -213,8 +199,8 @@ POST ${baseUrl}/api/public/otel/v1/metrics   # metrics（JSON / Protobuf）`}</p
             {/* ---------- 查询与评估 ---------- */}
             <div id="api-query" className="docs-section">
               <div className="section-title">1.3 查询与评估</div>
-              <div className="card">
-                <div className="muted" style={{ marginBottom: 8 }}>
+              <div className="card docs-card">
+                <div className="muted">
                   查询 API 对齐 Langfuse 公开 API：Basic Auth 认证，列表返回{" "}
                   <span className="mono">{"{ data, meta: { limit, nextCursor, hasMore, totalCount } }"}</span>{" "}
                   信封；支持时间窗（from/to）、游标分页（limit/cursor）与字段选择（select=name,tags）。示例：
@@ -234,7 +220,7 @@ curl -u "${publicKey}:${secretKey}" \\
   -X POST ${baseUrl}/api/public/evaluations \\
   -H "Content-Type: application/json" \\
   -d '{"traceId":"<traceId>","evaluatorType":"error"}'`}</pre>
-                <div className="muted" style={{ marginTop: 8 }}>
+                <div className="muted">
                   内置评估器：<span className="mono">error</span> / <span className="mono">latency</span> /{" "}
                   <span className="mono">cost</span> / <span className="mono">token</span> / <span className="mono">tag</span>
                   （阈值经 config 传入，如 {"{ thresholdMs, thresholdUsd, thresholdTokens, tag }"}）；
@@ -324,15 +310,15 @@ curl -u "${publicKey}:${secretKey}" \\
             {/* ---------- OTLP 通道与认证 ---------- */}
             <div id="agents-otlp" className="docs-section">
               <div className="section-title">2.0 OTLP 通道与认证</div>
-              <div className="card">
-                <div className="label" style={{ marginBottom: 6 }}>统一端点（JSON / Protobuf 双协议）</div>
+              <div className="card docs-card">
+                <div className="label">统一端点（JSON / Protobuf 双协议）</div>
                 <pre className="code">{`POST ${baseUrl}/api/public/otel/v1/traces
 Authorization: Basic <BASE64(pk:sk)>`}</pre>
-                <div className="muted" style={{ marginTop: 8 }}>通用环境变量写法（Python / Node 均适用）：</div>
+                <div className="muted">通用环境变量写法（Python / Node 均适用）：</div>
                 <pre className="code">{`OTEL_EXPORTER_OTLP_ENDPOINT = "${baseUrl}/api/public/otel/v1/traces"
 OTEL_EXPORTER_OTLP_HEADERS  = "Authorization=Basic <BASE64(pk:sk)>"
 OTEL_SERVICE_NAME           = "my-agent"`}</pre>
-                <div className="muted" style={{ marginTop: 8 }}>
+                <div className="muted">
                   本地调试设 <span className="mono">MACHORA_AUTH_DISABLED=true</span> 免认证
                   （数据写默认项目，<span className="text-danger">仅限本地</span>）。
                   <span className="text-danger">注意</span>：端点须为完整路径（部分 exporter 不自动拼接
@@ -344,30 +330,30 @@ OTEL_SERVICE_NAME           = "my-agent"`}</pre>
             {/* ---------- 零埋点框架接入 ---------- */}
             <div id="agents-zero" className="docs-section">
               <div className="section-title">2.1 零埋点框架接入（自带 OTel 打点）</div>
-              <div className="card">
-                <div className="muted" style={{ marginBottom: 8 }}>
+              <div className="card docs-card">
+                <div className="muted">
                   框架/库自身发射 OTel span（OpenInference / gen_ai.* / langfuse 语义），
                   Machora 接入层归一化后落库，仅需配置端点与认证（同 2.0）。可运行示例见{" "}
                   <span className="mono">examples/</span>。
                 </div>
-                <div className="label" style={{ marginBottom: 4 }}>OpenLLMetry（traceloop-sdk · 100+ 集成一键打点）</div>
+                <div className="label">OpenLLMetry（traceloop-sdk · 100+ 集成一键打点）</div>
                 <pre className="code">{`Traceloop.init(app_name="my-agent",
     api_endpoint="${baseUrl}/api/public/otel",           # 自动拼接 /v1/traces
     headers={"Authorization": "Basic <base64(pk:sk)>"},
     telemetry_enabled=False)`}</pre>
-                <div className="label" style={{ margin: "12px 0 4px" }}>LangChain / LangGraph（examples/langchain-agent · gen_ai.*）</div>
+                <div className="label">LangChain / LangGraph（examples/langchain-agent · gen_ai.*）</div>
                 <pre className="code">{`$env:LANGSMITH_TRACING = "true"
 $env:LANGSMITH_TRACING_MODE = "otel"
 $env:OTEL_EXPORTER_OTLP_ENDPOINT = "${baseUrl}/api/public/otel/v1/traces"
 $env:OTEL_EXPORTER_OTLP_HEADERS = "Authorization=Basic <base64(pk:sk)>"
 python agent.py`}</pre>
-                <div className="label" style={{ margin: "12px 0 4px" }}>LlamaIndex（examples/llamaindex-agent · OpenInference 语义）</div>
+                <div className="label">LlamaIndex（examples/llamaindex-agent · OpenInference 语义）</div>
                 <pre className="code">{`LlamaIndexInstrumentor().instrument(tracer_provider=provider)   # OTLPSpanExporter 同 2.0`}</pre>
-                <div className="label" style={{ margin: "12px 0 4px" }}>LoongSuite（examples/loongsuite-agent · gen_ai.span.kind）</div>
+                <div className="label">LoongSuite（examples/loongsuite-agent · gen_ai.span.kind）</div>
                 <pre className="code">{`export OTEL_EXPORTER_OTLP_ENDPOINT=${baseUrl}/api/public/otel/v1/traces
 export OTEL_EXPORTER_OTLP_HEADERS=Authorization=Basic <b64(pk:sk)>
 python agent.py`}</pre>
-                <div className="label" style={{ margin: "12px 0 4px" }}>JiuwenSwarm（九问 · 须配置文件，走 langfuse 兼容键）</div>
+                <div className="label">JiuwenSwarm（九问 · 须配置文件，走 langfuse 兼容键）</div>
                 <pre className="code">{`# ~/.jiuwenswarm/config/config.yaml
 team_observability:
   enabled: true
@@ -375,7 +361,7 @@ team_observability:
   endpoint: "${baseUrl}/api/public/otel/v1/traces"
   langfuse_public_key: "${publicKey}"
   langfuse_secret_key: "${secretKey}"`}</pre>
-                <div className="label" style={{ margin: "12px 0 4px" }}>π-Agent（标准 OTel · openinference.span.kind 手写 span）</div>
+                <div className="label">π-Agent（标准 OTel · openinference.span.kind 手写 span）</div>
                 <pre className="code">{`with tracer.start_as_current_span("pi.main") as s:
     s.set_attribute("openinference.span.kind", "AGENT")
     s.set_attribute("agent.name", "PiScheduler")`}</pre>
@@ -385,13 +371,13 @@ team_observability:
             {/* ---------- Machora 原生探针 ---------- */}
             <div id="agents-probes" className="docs-section">
               <div className="section-title">2.2 Machora 原生探针（machora.* 最高优先级）</div>
-              <div className="card" style={{ marginBottom: "0.75rem" }}>
-                <div className="muted" style={{ marginBottom: 8 }}>
+              <div className="card docs-card mb-2">
+                <div className="muted">
                   仓库维护的探针直接输出 <span className="mono">machora.*</span> 语义键，接入层
                   machora adapter（最高优先级）<b>直接落库</b> observation.type 与专用字段，无第三方
                   语义依赖；全部 fail-open（SDK 缺失或端点不可用时静默禁用）。
                 </div>
-                <div className="label" style={{ marginBottom: 4 }}>Python SDK（LangChain / LangGraph）</div>
+                <div className="label">Python SDK（LangChain / LangGraph）</div>
                 <pre className="code">{`pip install 'machora-sdk[otel]'
 
 from machora.otel import MachoraOtelCallbackHandler, MachoraOtelGraphProbe
@@ -404,16 +390,16 @@ CallbackManager.configure(handlers=[handler])
 probe = MachoraOtelGraphProbe()
 graph = probe.wrap(graph)
 probe.invoke(graph, {"messages": [...]})`}</pre>
-                <div className="muted" style={{ margin: "6px 0 4px" }}>
+                <div className="muted">
                   环境变量：<span className="mono">MACHORA_OTEL_ENDPOINT</span> /{" "}
                   <span className="mono">MACHORA_OTEL_HEADERS</span>（JSON 对象）/{" "}
                   <span className="mono">MACHORA_OTEL_SERVICE_NAME</span>。
                 </div>
               </div>
 
-              <div className="card" style={{ marginBottom: "0.75rem" }}>
-                <div className="label" style={{ marginBottom: 4 }}>Hermes 探针（examples/hermes-agent/otel_machora）</div>
-                <div className="muted" style={{ marginBottom: 8 }}>
+              <div className="card docs-card mb-2">
+                <div className="label">Hermes 探针（examples/hermes-agent/otel_machora）</div>
+                <div className="muted">
                   面向 Hermes Agent 的 OTel 插件：session→<span className="badge entry">ENTRY</span>、
                   turn→<span className="badge step">STEP</span>、subagent→<span className="badge agent">AGENT</span>、
                   llm→<span className="badge llm">LLM</span>、tool→<span className="badge tool">TOOL</span>。
@@ -425,9 +411,9 @@ export HERMES_OTEL_MACHORA_ENDPOINT=${baseUrl}/api/public/otel/v1/traces
 export HERMES_OTEL_MACHORA_HEADERS=Authorization=Basic <base64(pk:sk)>`}</pre>
               </div>
 
-              <div className="card">
-                <div className="label" style={{ marginBottom: 4 }}>OpenClaw 插件（examples/openclaw）</div>
-                <div className="muted" style={{ marginBottom: 8 }}>
+              <div className="card docs-card">
+                <div className="label">OpenClaw 插件（examples/openclaw）</div>
+                <div className="muted">
                   OpenClaw 原生插件：harness.run→<span className="badge entry">ENTRY</span>、
                   run→<span className="badge agent">AGENT</span>、model.call→<span className="badge llm">LLM</span>、
                   tool.execution→<span className="badge tool">TOOL</span>，span 带 session.id 关联。
@@ -463,8 +449,8 @@ export HERMES_OTEL_MACHORA_HEADERS=Authorization=Basic <base64(pk:sk)>`}</pre>
             {/* ---------- Machora 语义规范 ---------- */}
             <div id="semantics-machora" className="docs-section">
               <div className="section-title">3.0 Machora 语义规范（推荐 · machora.*）</div>
-              <div className="card">
-                <div className="muted" style={{ marginBottom: 8 }}>
+              <div className="card docs-card">
+                <div className="muted">
                   Machora 自有的推荐语义（<span className="mono">machora.*</span>），参考 LoongSuite
                   （ENTRY / STEP 等 Agent 角色）与 OpenInference（CHAIN / RETRIEVER 等）设计：
                   一套与具体框架无关、粒度统一的语义。接入时直接写这些键即可获得完整分类与字段提取，
@@ -472,7 +458,7 @@ export HERMES_OTEL_MACHORA_HEADERS=Authorization=Basic <base64(pk:sk)>`}</pre>
                   （无角色/UNKNOWN 落库为 SPAN），渲染层按 type 直接分类，不再从 metadata 反推；
                   显式 <span className="mono">machora.observation.type</span>（接受 span.kind 值，兼容旧三值）优先级最高。
                 </div>
-                <div className="label" style={{ marginBottom: 4 }}>span.kind 角色枚举（type 落库值与之一致）</div>
+                <div className="label">span.kind 角色枚举（type 落库值与之一致）</div>
                 <div className="table-wrap">
                   <table>
                     <thead>
@@ -541,7 +527,7 @@ export HERMES_OTEL_MACHORA_HEADERS=Authorization=Basic <base64(pk:sk)>`}</pre>
                     </tbody>
                   </table>
                 </div>
-                <div className="label" style={{ margin: "12px 0 4px" }}>关键属性</div>
+                <div className="label">关键属性</div>
                 <div className="table-wrap">
                   <table>
                     <thead>
@@ -587,14 +573,14 @@ export HERMES_OTEL_MACHORA_HEADERS=Authorization=Basic <base64(pk:sk)>`}</pre>
 
             <div id="semantics-type" className="docs-section">
               <div className="section-title">3.1 Observation 类型判定（type 与 span.kind 一致）</div>
-              <div className="card">
-                <div className="muted" style={{ marginBottom: 8 }}>
+              <div className="card docs-card">
+                <div className="muted">
                   observation.type 由语义接入层归一化的 <span className="mono">span.kind</span>{" "}
                   一一映射后<b>直接落库</b>：ENTRY / AGENT / STEP / LLM / TOOL / EMBEDDING / CHAIN /
                   RETRIEVER / RERANKER / EVENT 原样写入，无角色（UNKNOWN）→ <span className="badge span">SPAN</span>。
                   渲染层按 type 直接分类。判定流程（优先级从高到低）：
                 </div>
-                <ol className="muted" style={{ margin: 0, paddingLeft: 20 }}>
+                <ol className="muted" style={{ margin: "8px 0 0", paddingLeft: 20 }}>
                   <li>
                     <span className="mono">machora.observation.type</span> 显式指定（Machora 原生，最高）→
                     接受 span.kind 值直接落库
@@ -785,7 +771,7 @@ export HERMES_OTEL_MACHORA_HEADERS=Authorization=Basic <base64(pk:sk)>`}</pre>
 
             <div id="semantics-metadata" className="docs-section">
               <div className="section-title">3.5 metadata 保留规则</div>
-              <div className="card">
+              <div className="card docs-card">
                 <div className="muted">
                   被提取为专用字段的属性不再进 metadata；前缀{" "}
                   <span className="mono">gen_ai.prompt</span> / <span className="mono">gen_ai.completion</span>{" "}
@@ -876,7 +862,7 @@ export HERMES_OTEL_MACHORA_HEADERS=Authorization=Basic <base64(pk:sk)>`}</pre>
             </div>
           </section>
 
-          <div className="muted" style={{ marginTop: "1rem" }}>
+          <div className="muted mt-2">
             更多可运行示例（LangChain / LlamaIndex / LoongSuite / Hermes / OpenClaw 探针完整脚本）见仓库{" "}
             <span className="mono">examples/</span> 目录；OTLP 捕获 &amp; 解码辅助工具见{" "}
             <span className="mono">scripts/capture-otel.mjs / decode-otel-fixture.mjs</span>。{" "}

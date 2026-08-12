@@ -160,7 +160,7 @@ export function DrilldownView({
       <div className="page-head">
         <div>
           <h1>
-            <span className={`badge ${badgeClass}`} style={{ fontSize: 16 }}>{value}</span>
+            <span className={`badge ${badgeClass}`}>{value}</span>
           </h1>
           <div className="sub">
             近 {days} 天 · {total} 次 generation 调用
@@ -207,7 +207,7 @@ export function DrilldownView({
         </div>
         <div className="card">
           <div className="label">错误率</div>
-          <div className="value text-danger">
+          <div className={`value${cur.errorRate > 0 ? " text-danger" : ""}`}>
             {(cur.errorRate * 100).toFixed(1)}%
           </div>
           <div className="hint">

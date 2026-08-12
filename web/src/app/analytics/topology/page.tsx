@@ -120,7 +120,7 @@ export default async function TopologyPage({
                         <span className="mute2">—</span>
                       ) : (
                         ts.slice(0, 8).map((t) => (
-                          <span key={t.name} className="badge" style={{ marginRight: 4 }}>
+                          <span key={t.name} className="badge mr-1">
                             {t.name} <span className="count">{t.count}</span>
                           </span>
                         ))
@@ -193,7 +193,7 @@ export default async function TopologyPage({
                       <span className="mute2">—</span>
                     ) : (
                       t.models.slice(0, 5).map((m) => (
-                        <span key={m.name} className="badge purple" style={{ marginRight: 4 }}>
+                        <span key={m.name} className="badge purple mr-1">
                           {m.name} <span className="count">{m.count}</span>
                         </span>
                       ))

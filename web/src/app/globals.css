@@ -187,6 +187,9 @@ a:hover {
   height: 100vh;
   overflow-y: auto;
   overscroll-behavior: contain;
+  /* 纵向 flex：让底部 footer 用 margin-top: auto 贴底 */
+  display: flex;
+  flex-direction: column;
 }
 
 .brand {
@@ -268,17 +271,38 @@ a:hover {
   border-color: var(--border);
 }
 
-/* ---------- Sidebar user / logout ---------- */
+/* ---------- Sidebar footer / user / logout ----------
+   footer 贴底固定；用户卡片紧凑化：头像 + 元信息 + 紧凑主题按钮 + 退出 */
+.sidebar-footer {
+  margin-top: auto;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border-soft);
+  position: sticky;
+  bottom: 0;
+  background: var(--bg-elev);
+}
 .sidebar-user {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  width: 100%;
-  margin-top: 1rem;
-  padding: 0.5rem 0.6rem;
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius);
+  gap: 0.35rem;
+  padding: 0.35rem 0.4rem;
+  border-radius: 8px;
+  transition: background-color 0.16s ease;
+}
+.sidebar-user:hover {
   background: var(--bg-elev-2);
+}
+.user-avatar {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, var(--accent), var(--purple));
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
 }
 .sidebar-user .user-meta {
   flex: 1;
@@ -298,6 +322,19 @@ a:hover {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* footer 内的主题切换：紧凑图标按钮（随用户卡片内联） */
+.sidebar-footer .theme-toggle {
+  width: auto;
+  margin: 0;
+  padding: 0.3rem;
+  border: none;
+  background: transparent;
+  flex-shrink: 0;
+}
+.sidebar-footer .theme-toggle:hover {
+  background: var(--bg-elev-2);
+  border-color: transparent;
+}
 .logout-btn {
   border: none;
   background: transparent;
@@ -307,6 +344,7 @@ a:hover {
   padding: 0.25rem 0.35rem;
   border-radius: 5px;
   line-height: 1;
+  flex-shrink: 0;
 }
 .logout-btn:hover {
   color: var(--red);
@@ -432,6 +470,12 @@ a:hover {
   font-weight: 600;
   overflow-wrap: anywhere;
 }
+/* 标识符标题（如 session 详情页）：保持页头 20px 字号/字重，仅换等宽字体，
+   避免复用 .mono（自带 12px）导致字号冲突 */
+.page-head h1.mono {
+  font-family: var(--mono);
+  font-size: 20px;
+}
 .page-head > div:first-child {
   min-width: 0;
 }
@@ -548,6 +592,19 @@ tbody tr[data-level="ERROR"]:hover {
 tbody tr[data-level="WARNING"]:hover {
   background: color-mix(in srgb, var(--amber) 8%, var(--bg-elev-2));
 }
+/* analytics 汇总表：异常（成本/错误率突增）行与 data-level 同风格 */
+tbody tr.is-anomaly {
+  background: color-mix(in srgb, var(--red) 6%, transparent);
+}
+tbody tr.is-anomaly:hover {
+  background: color-mix(in srgb, var(--red) 11%, var(--bg-elev-2));
+}
+/* 页头标题内的徽章（如下钻页 agent/model 名）：跟随 h1 放大 */
+.page-head h1 .badge {
+  font-size: 16px;
+  padding: 3px 10px;
+  vertical-align: middle;
+}
 .mono {
   font-family: var(--mono);
   font-size: 12px;
@@ -653,6 +710,12 @@ pre.code .s {
 .btn:active {
   transform: translateY(0);
   box-shadow: none;
+}
+/* 禁用态：与 .btn-sm:disabled 的 opacity 对齐，阻止 hover 位移/阴影 */
+.btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+  pointer-events: none;
 }
 .btn.primary {
   background: var(--accent);
@@ -834,6 +897,14 @@ pre.code .s {
 .score-value[data-grade="mid"] { color: var(--amber); }
 .score-value[data-grade="bad"] { color: var(--red); }
 
+/* 错误率色阶（analytics 按模型 / 按 Agent 汇总表共用） */
+.err-rate {
+  font-family: var(--mono);
+}
+.err-rate[data-grade="high"] { color: var(--red); }
+.err-rate[data-grade="mid"] { color: var(--amber); }
+.err-rate[data-grade="low"] { color: var(--green); }
+
 /* 变化率色阶 */
 .delta-up { color: var(--red); font-family: var(--mono); }
 .delta-down { color: var(--green); font-family: var(--mono); }
@@ -864,6 +935,8 @@ pre.code .s {
 /* 更细粒度水平/垂直间距（对应内联 4px/6px/2px） */
 .mr-1 { margin-right: 0.25rem; }
 .ml-1 { margin-left: 0.25rem; }
+.mr-2 { margin-right: 6px; }
+.ml-2 { margin-left: 6px; }
 .mt-2px { margin-top: 2px; }
 .mt-4px { margin-top: 4px; }
 .mb-4px { margin-bottom: 4px; }
@@ -993,9 +1066,39 @@ pre.code .s {
 }
 
 /* ---------- Bar chart ---------- */
+/* hover 数值浮层（attr(data-val) 内容，覆盖在柱子顶部上方） */
+.barchart-bar {
+  position: relative;
+}
+.barchart-bar::after {
+  content: attr(data-val);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 4px);
+  transform: translateX(-50%);
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font: var(--weight-medium) 10px/1.5 var(--mono);
+  color: var(--text);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+  z-index: 3;
+}
+.barchart-bar:hover::after {
+  opacity: 1;
+}
 .barchart-bar:hover {
   opacity: 1 !important;
   filter: brightness(1.18);
+}
+/* 堆叠图分段：hover 提亮（分段受容器 overflow 裁剪，数值走原生 title） */
+.stack-seg:hover {
+  opacity: 1;
+  filter: brightness(1.15);
 }
 
 /* ---------- Timeline ---------- */
@@ -1250,6 +1353,13 @@ pre.code .s {
   color: var(--text);
   background: var(--accent-soft);
 }
+/* 滚动定位当前章节（scrollspy）高亮 */
+.docs-nav a.active {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-left-color: var(--accent);
+  font-weight: 600;
+}
 .docs-nav a:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
@@ -1270,6 +1380,24 @@ pre.code .s {
   color: var(--text-dim);
   font-size: 13px;
   margin: -0.25rem 0 0.75rem;
+}
+/* docs 卡片排版统一：内部 label / code / 说明文字用统一垂直节奏，
+   替代散落的 inline margin（6/8/12px 混用）；后代选择器覆盖嵌套块 */
+.docs-card .label {
+  margin-top: 12px;
+  margin-bottom: 4px;
+}
+.docs-card .label:first-child {
+  margin-top: 0;
+}
+.docs-card pre.code {
+  margin: 8px 0;
+}
+.docs-card .muted {
+  margin: 8px 0;
+}
+.docs-card .table-wrap {
+  margin: 8px 0;
 }
 @media (max-width: 1100px) {
   .docs-layout {
@@ -1390,6 +1518,13 @@ pre.code .s {
   }
   .sidebar-user .user-name {
     font-size: 12px;
+  }
+  /* 移动端 sidebar 为横向条：footer 退化为普通项 */
+  .sidebar-footer {
+    margin: 0;
+    padding: 0;
+    border-top: none;
+    flex-shrink: 0;
   }
   .logout-btn {
     font-size: 13px;

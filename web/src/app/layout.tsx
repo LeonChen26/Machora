@@ -137,20 +137,26 @@ export default async function RootLayout({
             <div className="nav-section">系统</div>
             <NavItem href="/docs" label="Docs" icon="docs" />
             <NavItem href="/system" label="System" icon="system" />
-            {user && (
-              <div className="sidebar-user">
-                <div className="user-meta">
-                  <div className="user-name">{user.name ?? "Admin"}</div>
-                  <div className="user-mail">{user.email}</div>
+            <div className="sidebar-footer">
+              {user && (
+                <div className="sidebar-user">
+                  <div className="user-avatar" aria-hidden>
+                    {(user.name ?? "A").charAt(0).toUpperCase()}
+                  </div>
+                  <div className="user-meta">
+                    <div className="user-name">{user.name ?? "Admin"}</div>
+                    <div className="user-mail">{user.email}</div>
+                  </div>
+                  <ThemeToggle compact />
+                  <form action="/api/auth/logout" method="post">
+                    <button type="submit" className="logout-btn" aria-label="退出登录" title="退出登录">
+                      ⏻
+                    </button>
+                  </form>
                 </div>
-                <form action="/api/auth/logout" method="post">
-                  <button type="submit" className="logout-btn" aria-label="退出登录" title="退出登录">
-                    ⏻
-                  </button>
-                </form>
-              </div>
-            )}
-            <ThemeToggle />
+              )}
+              {!user && <ThemeToggle />}
+            </div>
           </aside>
           <main className="main" id="main-content">{children}</main>
         </div>

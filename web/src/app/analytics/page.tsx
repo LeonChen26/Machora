@@ -301,8 +301,11 @@ export default async function AnalyticsPage({
   function deltaCell(cur: number | null, prev: number | null): ReactNode {
     const d = delta(prev, cur);
     if (d == null) return <span className="mute2">—</span>;
+    // 复用全局色阶：相对前窗涨（恶化）红 / 跌（改善）绿 / 持平灰
+    const cls =
+      d > 0.05 ? "delta-up" : d < -0.05 ? "delta-down" : "delta-flat";
     return (
-      <span style={{ color: d > 0.05 ? "var(--red)" : d < -0.05 ? "var(--green)" : "var(--text-dim)", fontFamily: "var(--mono)" }} title="相对前一窗口">
+      <span className={cls} title="相对前一窗口">
         {pct(d)}
       </span>
     );
@@ -370,7 +373,7 @@ export default async function AnalyticsPage({
             <div key={name} className="text-md mt-1">
               <span className="badge purple">{name}</span>{" "}
               {flags.map((f) => (
-                <span key={f} className="badge red" style={{ marginLeft: 6 }}>
+                <span key={f} className="badge red ml-2">
                   {f}
                 </span>
               ))}
@@ -469,7 +472,7 @@ export default async function AnalyticsPage({
                 const p = prevSummary.get(m.name);
                 const flagged = anomalies.has(m.name);
                 return (
-                  <tr key={m.name} style={flagged ? { background: "color-mix(in srgb, var(--red) 6%, transparent)" } : undefined}>
+                  <tr key={m.name} className={flagged ? "is-anomaly" : undefined}>
                     <td>
                       <Link
                         href={`/analytics/models?model=${encodeURIComponent(m.name)}&days=${days}`}
@@ -478,7 +481,7 @@ export default async function AnalyticsPage({
                       >
                         <span className="badge purple">{m.name}</span>
                       </Link>
-                      {flagged && <span className="badge red" style={{ marginLeft: 6 }}>!</span>}
+                      {flagged && <span className="badge red ml-2">!</span>}
                     </td>
                     <td className="mono">{m.count}</td>
                     <td>{deltaCell(m.count, p?.count ?? null)}</td>
@@ -506,15 +509,8 @@ export default async function AnalyticsPage({
                     </td>
                     <td>
                       <span
-                        style={{
-                          color:
-                            m.errorRate >= 0.1
-                              ? "var(--red)"
-                              : m.errorRate > 0
-                                ? "var(--amber)"
-                                : "var(--green)",
-                          fontFamily: "var(--mono)",
-                        }}
+                        className="err-rate"
+                        data-grade={m.errorRate >= 0.1 ? "high" : m.errorRate > 0 ? "mid" : "low"}
                       >
                         {(m.errorRate * 100).toFixed(1)}%
                       </span>
@@ -591,15 +587,8 @@ export default async function AnalyticsPage({
                     </td>
                     <td>
                       <span
-                        style={{
-                          color:
-                            a.errorRate >= 0.1
-                              ? "var(--red)"
-                              : a.errorRate > 0
-                                ? "var(--amber)"
-                                : "var(--green)",
-                          fontFamily: "var(--mono)",
-                        }}
+                        className="err-rate"
+                        data-grade={a.errorRate >= 0.1 ? "high" : a.errorRate > 0 ? "mid" : "low"}
                       >
                         {(a.errorRate * 100).toFixed(1)}%
                       </span>
