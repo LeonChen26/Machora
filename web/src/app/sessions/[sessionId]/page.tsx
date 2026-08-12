@@ -86,11 +86,10 @@ export default async function SessionDetailPage({
   // ---------------------------------------------------------------------------
   const ROLE_LABEL: Record<string, string> = {
     user: "用户",
-    assistant: "模型",
+    assistant: "助手",
     system: "系统",
     tool: "工具",
-    developer: "开发者",
-    function: "函数",
+    function: "工具",
   };
   const chatRoleClass = (role: string): string =>
     role === "user" || role === "system" || role === "tool" || role === "function"
@@ -114,11 +113,25 @@ export default async function SessionDetailPage({
         : null;
     if (blocks) {
       const texts: string[] = [];
+      let hasTool = false;
       for (const b of blocks) {
         const bp = (b ?? {}) as Record<string, unknown>;
-        if (typeof bp.text === "string") texts.push(bp.text);
-        else if (typeof bp.content === "string") texts.push(bp.content);
+        // 图片 blob 内容为 base64，不拼入对话文本
+        if (bp.type === "blob" && bp.modality === "image") continue;
+        const t =
+          typeof bp.text === "string"
+            ? bp.text
+            : typeof bp.content === "string"
+              ? bp.content
+              : bp.type === "tool_call_response" && typeof bp.response === "string"
+                ? bp.response
+                : null;
+        if (t) texts.push(t);
+        if (bp.type === "tool_call" || bp.type === "tool_use") {
+          hasTool = true;
+        }
       }
+      if (hasTool) texts.push("⚙ 工具调用");
       return texts.join("\n");
     }
     return "";
