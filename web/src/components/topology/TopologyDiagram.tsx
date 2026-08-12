@@ -169,7 +169,6 @@ export function TopologyDiagram({
           .pn-agent { fill: var(--fam-agent-bg); stroke: var(--fam-agent); }
           .pn-tool { fill: var(--fam-tool-bg); stroke: var(--fam-tool); }
           .pn-llm { fill: var(--fam-llm-bg); stroke: var(--fam-llm); }
-          .pn-badge { }
           .pn-badge-agent { fill: var(--fam-agent); }
           .pn-badge-tool { fill: var(--fam-tool); }
           .pn-badge-llm { fill: var(--fam-llm); }
