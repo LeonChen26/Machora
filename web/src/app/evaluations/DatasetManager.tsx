@@ -262,7 +262,7 @@ export function DatasetManager({ configs }: { configs: DatasetConfig[] }) {
                 {evalFor === g.name && <span className="spinner" aria-hidden="true" />}
                 {evalFor === g.name ? "评测中…" : "对比评测"}
               </button>
-              <button type="button" className="btn danger" onClick={() => deleteDataset(g.name)}>
+              <button type="button" className="btn btn-danger" onClick={() => deleteDataset(g.name)}>
                 删除
               </button>
             </div>
@@ -327,7 +327,7 @@ export function DatasetManager({ configs }: { configs: DatasetConfig[] }) {
                       {summarize(it.expectedOutput)}
                     </td>
                     <td>
-                      <button type="button" className="btn sm danger" onClick={() => deleteItem(it.id)}>
+                      <button type="button" className="btn btn-danger" onClick={() => deleteItem(it.id)}>
                         删
                       </button>
                     </td>

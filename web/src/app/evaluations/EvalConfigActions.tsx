@@ -110,7 +110,7 @@ export function EvalConfigActions({
       </button>
       <button
         type="button"
-        className="btn danger"
+        className="btn btn-danger"
         onClick={remove}
         disabled={pending}
       >

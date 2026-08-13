@@ -270,10 +270,10 @@ export default async function GenerationsPage({
                       ? formatDuration(durationMs(o.startTime, o.endTime))
                       : "—"}
                   </td>
-                  <td className="mono text-sm">
+                  <td className="mono text-xs">
                     {o.totalTokens != null ? formatTokens(o.totalTokens) : "—"}
                   </td>
-                  <td className="mono text-sm">
+                  <td className="mono text-xs">
                     {o.totalCost != null ? formatCost(o.totalCost) : "—"}
                   </td>
                   <td>

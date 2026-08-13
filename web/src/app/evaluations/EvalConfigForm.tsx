@@ -79,7 +79,7 @@ export function EvalConfigForm() {
 
   return (
     <div className="card mb-3">
-      <div className="label mb-1">新建评估配置</div>
+      <div className="form-title">新建评估配置</div>
       <form onSubmit={onSubmit} className="form-inline">
         <input
           name="name"

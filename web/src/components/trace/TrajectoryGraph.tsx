@@ -276,7 +276,7 @@ export function TrajectoryGraph({ rows }: { rows: TrajectoryRow[] }) {
           .t-attr { font: var(--weight-regular) 11px/14px var(--font-mono); fill: var(--text-mute); }
           .t-dur { font: var(--weight-regular) 11px/14px var(--font-mono); fill: var(--text-mute); }
           .t-mono2 { font: var(--weight-regular) 10px/12px var(--font-mono); fill: var(--text-mute); opacity: 0.85; }
-          .t-loop-text { font: var(--weight-semibold) 10px/12px var(--font-sans); fill: #fff; }
+          .t-loop-text { font: var(--weight-semibold) 10px/12px var(--font-sans); fill: #1a2333; }
           .t-acc-text { font: var(--weight-semibold) 10px/12px var(--font-sans); fill: var(--text-mute); }
           .t-edge { stroke: var(--text-mute); fill: none; stroke-width: 1.4; stroke-opacity: 0.7; }
           .t-edge-label { font: var(--weight-medium) 10px/12px var(--font-sans); fill: var(--text-mute); }

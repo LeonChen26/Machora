@@ -193,14 +193,14 @@ export function DrilldownView({
         </div>
         <div className="card">
           <div className="label">平均延迟</div>
-          <div className="value value-md">
+          <div className="value">
             {formatDuration(cur.avg)}
           </div>
           <div className="hint">{deltaHint(cur.avg, prev.avg, (v) => formatDuration(v))}</div>
         </div>
         <div className="card">
           <div className="label">P95 延迟</div>
-          <div className="value value-md">
+          <div className="value">
             {formatDuration(cur.p95)}
           </div>
           <div className="hint">{deltaHint(cur.p95, prev.p95, (v) => formatDuration(v))}</div>

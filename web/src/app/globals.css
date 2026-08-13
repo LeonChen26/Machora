@@ -15,6 +15,9 @@
   --amber: #fbbf24;
   --red: #f87171;
   --purple: #a78bfa;
+  --sky: #38bdf8;
+  --rose: #fb7185;
+  --slate: #94a3b8;
   --radius: 8px;
   --mono: ui-monospace, "SFMono-Regular", "Menlo", "Consolas", monospace;
   /* 字体族 / 字重 / 语义色别名：供 k-badge、轨迹图 SVG 等引用
@@ -631,28 +634,28 @@ tbody tr.is-anomaly:hover {
 }
 .badge.green {
   color: var(--green);
-  border-color: rgba(52, 211, 153, 0.3);
-  background: rgba(52, 211, 153, 0.08);
+  border-color: color-mix(in srgb, var(--green) 30%, transparent);
+  background: color-mix(in srgb, var(--green) 8%, transparent);
 }
 .badge.amber {
   color: var(--amber);
-  border-color: rgba(251, 191, 36, 0.3);
-  background: rgba(251, 191, 36, 0.08);
+  border-color: color-mix(in srgb, var(--amber) 30%, transparent);
+  background: color-mix(in srgb, var(--amber) 8%, transparent);
 }
 .badge.red {
   color: var(--red);
-  border-color: rgba(248, 113, 113, 0.3);
-  background: rgba(248, 113, 113, 0.08);
+  border-color: color-mix(in srgb, var(--red) 30%, transparent);
+  background: color-mix(in srgb, var(--red) 8%, transparent);
 }
 .badge.purple {
   color: var(--purple);
-  border-color: rgba(167, 139, 250, 0.3);
-  background: rgba(167, 139, 250, 0.08);
+  border-color: color-mix(in srgb, var(--purple) 30%, transparent);
+  background: color-mix(in srgb, var(--purple) 8%, transparent);
 }
 .badge.blue {
   color: var(--accent);
-  border-color: rgba(79, 141, 247, 0.3);
-  background: rgba(79, 141, 247, 0.08);
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 /* type 角色徽标（与 span.kind 一致的 11 色族，同 --fam-* 体系） */
 .badge.entry { color: var(--fam-entry); border-color: color-mix(in srgb, var(--fam-entry) 35%, transparent); background: var(--fam-entry-bg); }
@@ -666,6 +669,22 @@ tbody tr.is-anomaly:hover {
 .badge.reranker { color: var(--fam-reranker); border-color: color-mix(in srgb, var(--fam-reranker) 35%, transparent); background: var(--fam-reranker-bg); }
 .badge.event { color: var(--fam-event); border-color: color-mix(in srgb, var(--fam-event) 35%, transparent); background: var(--fam-event-bg); }
 .badge.span { color: var(--fam-span); border-color: color-mix(in srgb, var(--fam-span) 35%, transparent); background: var(--fam-span-bg); }
+/* 任务状态色（评估任务 PENDING/RUNNING/COMPLETED/ERROR 等） */
+.badge.idle { color: var(--text-dim); border-color: var(--border); background: var(--bg-elev-2); }
+.badge.run { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 30%, transparent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.badge.ok { color: var(--green); border-color: color-mix(in srgb, var(--green) 30%, transparent); background: color-mix(in srgb, var(--green) 8%, transparent); }
+.badge.err { color: var(--red); border-color: color-mix(in srgb, var(--red) 30%, transparent); background: color-mix(in srgb, var(--red) 8%, transparent); }
+
+/* 弹性两端对齐（卡片头等） */
+.flex-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+/* 无内衬卡片 */
+.p-0 { padding: 0 !important; }
 
 /* ---------- Code block ---------- */
 pre.code {
@@ -1693,7 +1712,7 @@ tbody tr:hover {
 
 /* 按钮：主按钮渐变、hover 微提升 */
 .btn.primary {
-  background: linear-gradient(135deg, var(--accent), #6b5bf0);
+  background: linear-gradient(135deg, var(--accent), var(--purple));
   border-color: transparent;
   box-shadow: 0 2px 8px var(--accent-soft);
 }
@@ -1710,7 +1729,7 @@ tbody tr:hover {
 
 /* 分段控件：active 渐变 */
 .seg-btn.active {
-  background: linear-gradient(135deg, var(--accent), #6b5bf0);
+  background: linear-gradient(135deg, var(--accent), var(--purple));
   box-shadow: 0 1px 6px var(--accent-soft);
 }
 

@@ -82,7 +82,7 @@ export function EvalReviewButton({ task }: { task: ReviewTask }) {
 
   return (
     <>
-      <button type="button" className="btn sm" onClick={() => setOpen((v) => !v)}>
+      <button type="button" className="btn-sm" onClick={() => setOpen((v) => !v)}>
         评审
       </button>
       {open && (

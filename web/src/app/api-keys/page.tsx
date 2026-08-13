@@ -34,15 +34,15 @@ export default async function ApiKeysPage() {
 
       <CreateApiKeyForm projects={projects} />
 
-      <div className="card" style={{ marginBottom: "1rem" }}>
-        <div className="label" style={{ marginBottom: 6 }}>使用方式</div>
+      <div className="card mb-3">
+        <div className="label mb-1">使用方式</div>
         <pre className="code">
 {`curl -u "<publicKey>:<secretKey>" \\
   -H "Content-Type: application/json" \\
   -d '{"batch":[...]}' \\
   http://localhost:${process.env.PORT ?? "3000"}/api/public/ingestion`}
         </pre>
-        <div className="muted" style={{ marginTop: 6 }}>
+        <div className="muted mt-1">
           secret key 在服务端以 bcrypt 哈希存储，创建时仅显示一次；删除后立即失效。
         </div>
       </div>

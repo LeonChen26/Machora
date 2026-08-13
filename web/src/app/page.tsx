@@ -212,14 +212,12 @@ export default async function Home() {
           label="Token 总量"
           value={formatTokens(totalTokens7d)}
           hint={`近 ${TREND_DAYS} 天`}
-          size="md"
           icon="hash"
         />
         <StatCard
           label="总成本"
           value={formatCost(totalCost7d)}
           hint={`近 ${TREND_DAYS} 天`}
-          size="md"
           tone="success"
           icon="coin"
         />
