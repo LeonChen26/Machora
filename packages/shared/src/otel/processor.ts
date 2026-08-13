@@ -273,8 +273,9 @@ export function parseOtelPayload(
         projectId,
         type: a.type,
         name: obsName,
-        parentObservationId:
-          s.parentSpanId && bySpanId.has(s.parentSpanId) ? s.parentSpanId : null,
+        // 无条件保留原始 parentSpanId：父子 span 分批到达时父可能未落库，
+        // 允许"悬空引用"，查询侧按 trace 内自动挂回（父不存在即视为根）
+        parentObservationId: s.parentSpanId,
         startTime: s.startTime,
         endTime: s.endTime,
         model: a.model,
@@ -434,7 +435,9 @@ export async function persistOtelRecords(
           set: {
             type: o.type,
             name: o.name,
-            parentObservationId: o.parentObservationId,
+            // 与 trace 级语义字段一致：null 不覆盖已落库的非空父关联，
+            // 防止"先正确关联、后被单独重发（父不在批）"时被洗成 NULL
+            parentObservationId: o.parentObservationId ?? undefined,
             startTime: o.startTime,
             endTime: o.endTime,
             model: o.model,
