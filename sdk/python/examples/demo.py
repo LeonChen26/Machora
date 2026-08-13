@@ -3,7 +3,7 @@
 运行：
     python examples/demo.py
 
-凭据从 MACHORA_* 环境变量读取，缺省用 standalone 种子凭据。
+凭据从 MACHORA_* 环境变量读取（缺失时提示设置，不再提供硬编码默认值）。
 """
 
 import os
@@ -13,12 +13,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from machora import MachoraClient
 
-PUBLIC_KEY = os.environ.get(
-    "MACHORA_PUBLIC_KEY", "pk-machora-dev-000000000000000000000"
-)
-SECRET_KEY = os.environ.get(
-    "MACHORA_SECRET_KEY", "sk-machora-dev-000000000000000000000"
-)
+PUBLIC_KEY = os.environ.get("MACHORA_PUBLIC_KEY")
+SECRET_KEY = os.environ.get("MACHORA_SECRET_KEY")
+if not PUBLIC_KEY or not SECRET_KEY:
+    raise SystemExit(
+        "缺少凭据：请设置环境变量 MACHORA_PUBLIC_KEY 与 MACHORA_SECRET_KEY"
+        "（默认凭据见项目 .env.example / standalone 启动日志，不要硬编码到代码中）。"
+    )
 HOST = os.environ.get("MACHORA_HOST", "http://localhost:3100")
 
 

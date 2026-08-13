@@ -13,13 +13,11 @@ export const ATTR = {
   COMPAT_USER_ID: "langfuse.user.id",
   COMPAT_SESSION_ID: "langfuse.session.id",
   ENVIRONMENT: "langfuse.environment",
-  RELEASE: "langfuse.release",
 
   // observation 级
   OBS_TYPE: "langfuse.observation.type",
   OBS_METADATA: "langfuse.observation.metadata",
   OBS_LEVEL: "langfuse.observation.level",
-  OBS_STATUS_MESSAGE: "langfuse.observation.status_message",
   OBS_INPUT: "langfuse.observation.input",
   OBS_OUTPUT: "langfuse.observation.output",
   OBS_MODEL: "langfuse.observation.model.name",
@@ -108,14 +106,3 @@ export const NOISE_PREFIXES = [
   "openinference.",
   "embedding.",
 ] as const;
-
-export const OPENINFERENCE_SPAN_KINDS = new Set<string>([
-  "CHAIN",
-  "RETRIEVER",
-  "RERANKER",
-  "TOOL",
-  "AGENT",
-  "GUARDRAIL",
-  "EVALUATOR",
-  "PROMPT",
-]);

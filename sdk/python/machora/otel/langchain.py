@@ -58,7 +58,7 @@ try:
     from opentelemetry import trace
     from opentelemetry.trace import StatusCode
     from opentelemetry.trace.propagation import set_span_in_context
-except Exception:  # pragma: no cover - fail-open
+except ImportError:  # pragma: no cover - fail-open
     trace = None
     StatusCode = None
     set_span_in_context = None
@@ -121,7 +121,8 @@ class MachoraOtelCallbackHandler(BaseCallbackHandler):
         if output is not None:
             span.set_attribute(OUTPUT, _jsonable(output))
         if error is not None:
-            span.set_status(StatusCode.ERROR)
+            if StatusCode is not None:
+                span.set_status(StatusCode.ERROR)
             span.set_attribute(LEVEL, "ERROR")
         span.end()
 
@@ -255,7 +256,8 @@ class MachoraOtelCallbackHandler(BaseCallbackHandler):
             if generations and generations[0]:
                 msg = generations[0][0]
                 output = getattr(msg, "text", None) or getattr(msg, "message", None)
-        except Exception:
+        except Exception as exc:  # pragma: no cover - 宽松解析
+            logger.warning("Machora otel callback: 解析 LLM 输出失败: %s", exc)
             output = None
         self._end_span(run_id, output=output)
 

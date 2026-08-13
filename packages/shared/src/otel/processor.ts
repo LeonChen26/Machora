@@ -103,8 +103,8 @@ const EXTRACTED_KEYS = new Set<string>(
   [
     ...(Object.values(ATTR) as string[]),
     ...(Object.values(MACHORA_ATTR) as string[]),
-    "gen_ai.usage.input_tokens",
-    "gen_ai.usage.output_tokens",
+    ATTR.GEN_AI_USAGE_INPUT_TOKENS,
+    ATTR.GEN_AI_USAGE_OUTPUT_TOKENS,
   ].filter((k) => !RETAIN_IN_METADATA.has(k)),
 );
 

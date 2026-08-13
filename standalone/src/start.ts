@@ -28,6 +28,12 @@ const DATA_DIR = process.env.DATA_DIR ?? "./.machora-data";
 // 可通过 PG_PORT / PORT 环境变量覆盖。
 const PG_PORT = parseInt(process.env.PG_PORT ?? "5434", 10);
 const WEB_PORT = parseInt(process.env.PORT ?? "3100", 10);
+// 非法端口值尽早失败（parseInt("abc") → NaN，避免运行时才暴露）
+if (!Number.isInteger(PG_PORT) || !Number.isInteger(WEB_PORT)) {
+  throw new Error(
+    `[env] PG_PORT / PORT 必须为整数端口（当前 PG_PORT=${process.env.PG_PORT ?? "5434"}，PORT=${process.env.PORT ?? "3100"}）`,
+  );
+}
 
 // ---------------------------------------------------------------------------
 // 环境变量注入
@@ -72,6 +78,19 @@ function setupEnvironment(): void {
     existsSync(resolve(import.meta.dirname, "..", "..", "web", ".next", "static"))
       ? "production"
       : "development");
+  const isProd = envDefaultsNodeEnv === "production";
+
+  // 生产安全策略：
+  // - NEXTAUTH_SECRET 未配置时随机生成（重启后登录会话失效，安全优先），不落盘；
+  // - 项目 API Key 不注入公开的 dev 种子值：未配置时 seed 跳过创建（见 seedStandaloneData），
+  //   避免生产环境沿用公开已知密钥。
+  if (isProd && process.env.NEXTAUTH_SECRET === undefined) {
+    process.env.NEXTAUTH_SECRET = randomBytes(32).toString("hex");
+    console.warn(
+      "[env] 生产环境未配置 NEXTAUTH_SECRET，已随机生成（重启后登录会话失效，建议在 .env 固定）",
+    );
+  }
+
   const defaults: Record<string, string> = {
     DATABASE_URL: `postgresql://postgres:postgres@127.0.0.1:${PG_PORT}/postgres?sslmode=disable&connection_limit=5`,
     NEXTAUTH_URL: `http://localhost:${WEB_PORT}`,
@@ -81,11 +100,14 @@ function setupEnvironment(): void {
     // seed 凭据（MACHORA_INIT_USER_PASSWORD 不设默认值：优先读 .env，
     // 未配置时 seed 随机生成，见 seedStandaloneData）
     MACHORA_INIT_PROJECT_NAME: "Machora Project",
-    MACHORA_INIT_PROJECT_PUBLIC_KEY: "pk-machora-dev-000000000000000000000",
-    MACHORA_INIT_PROJECT_SECRET_KEY: "sk-machora-dev-000000000000000000000",
     MACHORA_INIT_USER_EMAIL: "admin@machora.local",
     MACHORA_INIT_USER_NAME: "Admin",
   };
+  // dev 模式注入公开的种子 API Key（本地开发便捷）；生产模式必须由 .env 显式配置
+  if (!isProd) {
+    defaults.MACHORA_INIT_PROJECT_PUBLIC_KEY = "pk-machora-dev-000000000000000000000";
+    defaults.MACHORA_INIT_PROJECT_SECRET_KEY = "sk-machora-dev-000000000000000000000";
+  }
 
   for (const [k, v] of Object.entries(defaults)) {
     if (process.env[k] === undefined) process.env[k] = v;
@@ -102,6 +124,9 @@ interface PgliteHandle {
   // 在同一 dataDir 打开独立句柄导致写入不持久（跨进程上下文隔离）。
   db: { exec(sql: string): Promise<unknown>; close(): Promise<void> };
 }
+
+// 模块级句柄：启动序列中途失败时（main().catch）可关闭已打开的 PGlite，避免资源泄漏
+let runningPglite: PgliteHandle | null = null;
 
 async function startPgliteServer(): Promise<PgliteHandle> {
   // 动态 import：pglite-socket 是纯 ESM，必须运行时加载
@@ -128,8 +153,8 @@ async function startPgliteServer(): Promise<PgliteHandle> {
   return {
     db,
     async stop() {
-      try { await server.stop(); } catch {}
-      try { await db.close(); } catch {}
+      try { await server.stop(); } catch (e) { console.warn("[PGlite] server.stop 失败:", (e as Error)?.message ?? e); }
+      try { await db.close(); } catch (e) { console.warn("[PGlite] db.close 失败:", (e as Error)?.message ?? e); }
     },
   };
 }
@@ -201,6 +226,7 @@ async function applySchemaSql(db: { exec(sql: string): Promise<unknown> }): Prom
 
   let ok = 0;
   let skipped = 0;
+  let failed = 0;
   for (const stmt of stmts) {
     try {
       await db.exec(stmt);
@@ -213,12 +239,16 @@ async function applySchemaSql(db: { exec(sql: string): Promise<unknown> }): Prom
       ) {
         skipped++;
       } else {
-        console.warn("[Schema] 语句执行失败（仍继续）:", msg.slice(0, 200));
-        skipped++;
+        // 真实错误（非幂等跳过）：记录并累计，结束后统一抛出，避免残缺库带病启动
+        console.error("[Schema] 语句执行失败:", msg.slice(0, 300));
+        failed++;
       }
     }
   }
-  console.log(`[Schema] 完成（成功 ${ok}，跳过/已存在 ${skipped}，共 ${stmts.length}）`);
+  console.log(`[Schema] 完成（成功 ${ok}，跳过/已存在 ${skipped}，失败 ${failed}，共 ${stmts.length}）`);
+  if (failed > 0) {
+    throw new Error(`[Schema] ${failed} 条建表语句失败（见上方错误），终止启动以防残缺数据库`);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -243,8 +273,8 @@ async function seedStandaloneData(): Promise<void> {
   } = await import("@machora/shared");
 
   const projectName = process.env.MACHORA_INIT_PROJECT_NAME!;
-  const publicKey = process.env.MACHORA_INIT_PROJECT_PUBLIC_KEY!;
-  const secretKey = process.env.MACHORA_INIT_PROJECT_SECRET_KEY!;
+  const publicKey = process.env.MACHORA_INIT_PROJECT_PUBLIC_KEY;
+  const secretKey = process.env.MACHORA_INIT_PROJECT_SECRET_KEY;
   const email = process.env.MACHORA_INIT_USER_EMAIL!;
   const userName = process.env.MACHORA_INIT_USER_NAME!;
   const password = process.env.MACHORA_INIT_USER_PASSWORD;
@@ -259,20 +289,26 @@ async function seedStandaloneData(): Promise<void> {
     });
   console.log("[Seed] Project: project-standalone");
 
-  // 2. API Key（仅当不存在时创建）
-  const existing = await db.query.apiKey.findFirst({
-    where: eq(apiKeyTable.publicKey, publicKey),
-  });
-  if (!existing) {
-    const hashedSecret = await bcryptjs.hash(secretKey, 11);
-    await db.insert(apiKeyTable).values({
-      projectId: "project-standalone",
-      publicKey,
-      hashedSecret,
+  // 2. API Key（仅当显式配置了 key 时创建；未配置时跳过，避免生产沿用公开的 dev 种子值）
+  if (publicKey && secretKey) {
+    const existing = await db.query.apiKey.findFirst({
+      where: eq(apiKeyTable.publicKey, publicKey),
     });
-    console.log("[Seed] API Key 已创建");
+    if (!existing) {
+      const hashedSecret = await bcryptjs.hash(secretKey, 11);
+      await db.insert(apiKeyTable).values({
+        projectId: "project-standalone",
+        publicKey,
+        hashedSecret,
+      });
+      console.log("[Seed] API Key 已创建");
+    } else {
+      console.log("[Seed] API Key 已存在");
+    }
   } else {
-    console.log("[Seed] API Key 已存在");
+    console.warn(
+      "[Seed] 未配置 MACHORA_INIT_PROJECT_PUBLIC_KEY / MACHORA_INIT_PROJECT_SECRET_KEY，跳过 API Key 创建（生产环境请在 .env 显式配置）",
+    );
   }
 
   // 3. User
@@ -424,7 +460,7 @@ async function main() {
     collectSystemMetrics: shared.collectSystemMetrics,
   };
 
-  const pglite = await startPgliteServer();
+  const pglite = (runningPglite = await startPgliteServer());
 
   await applySchemaSql(pglite.db);
   await seedStandaloneData();
@@ -467,7 +503,14 @@ async function main() {
   process.on("SIGTERM", shutdown);
 }
 
-main().catch((err) => {
+main().catch(async (err) => {
   console.error("启动失败:", err);
+  if (runningPglite) {
+    try {
+      await runningPglite.stop();
+    } catch {
+      /* 关闭失败已在 stop 内记录 */
+    }
+  }
   process.exit(1);
 });

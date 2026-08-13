@@ -47,7 +47,7 @@ def create_probe_tracer(service_name: str = "machora-probe") -> Any:
         from opentelemetry.sdk.resources import Resource
         from opentelemetry.sdk.trace import TracerProvider
         from opentelemetry.sdk.trace.export import BatchSpanProcessor
-    except Exception:
+    except ImportError:
         logger.warning(
             "Machora otel probe: opentelemetry SDK 未安装，探针禁用"
             "（pip install 'machora-sdk[otel]'）"

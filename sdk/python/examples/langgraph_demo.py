@@ -14,12 +14,13 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-PUBLIC_KEY = os.environ.get(
-    "MACHORA_PUBLIC_KEY", "pk-machora-dev-000000000000000000000"
-)
-SECRET_KEY = os.environ.get(
-    "MACHORA_SECRET_KEY", "sk-machora-dev-000000000000000000000"
-)
+PUBLIC_KEY = os.environ.get("MACHORA_PUBLIC_KEY")
+SECRET_KEY = os.environ.get("MACHORA_SECRET_KEY")
+if not PUBLIC_KEY or not SECRET_KEY:
+    raise SystemExit(
+        "缺少凭据：请设置环境变量 MACHORA_PUBLIC_KEY 与 MACHORA_SECRET_KEY"
+        "（默认凭据见项目 .env.example / standalone 启动日志，不要硬编码到代码中）。"
+    )
 HOST = os.environ.get("MACHORA_HOST", "http://localhost:3100")
 
 # 标准 OTLP 配置（等价于设置 OTEL_EXPORTER_OTLP_TRACES_* 环境变量）

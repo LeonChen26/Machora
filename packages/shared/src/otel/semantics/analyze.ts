@@ -13,6 +13,9 @@ import { SEMANTICS_ADAPTERS, emptySemanticSpan } from "./adapters.ts";
 import type { AnalyzedSpan, MachoraObservationType } from "./types.ts";
 import { mergeSemantic, asString } from "./util.ts";
 
+// OTel Span StatusCode（与 protobuf 内嵌枚举同值）：0=UNSET / 1=OK / 2=ERROR
+const OTEL_STATUS_ERROR = 2;
+
 const LEVEL_ALIASES: Record<string, string> = {
   DEBUG: "DEBUG",
   TRACE: "DEBUG",
@@ -75,7 +78,7 @@ export function analyzeSpan(
 
   let level = normalizeLevel(semantic.level);
   if (!level) {
-    if (statusCode === 2) level = "ERROR";
+    if (statusCode === OTEL_STATUS_ERROR) level = "ERROR";
     else if (attrs[ATTR.GEN_AI_ERROR_TYPE] !== undefined) level = "ERROR";
     else level = "DEFAULT";
   }

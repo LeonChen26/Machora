@@ -503,7 +503,7 @@ def post_api_request(*, session_id: str = "", model: str = "", response: Any = N
         entry = state.llms.pop(req_key, None)
     if entry is None:
         return
-    span, _started = entry
+    span = entry[0]
     if model:
         span.set_attribute("machora.model.name", model)
     # machora.output：优先存 assistant 消息数组（前端按 role 渲染），
@@ -536,7 +536,7 @@ def api_request_error(*, session_id: str = "", api_call_count: int = 0,
         entry = state.llms.pop(req_key, None)
     if entry is None:
         return
-    span, _started = entry
+    span = entry[0]
     span.set_status(_STATUS_ERROR)
     span.set_attribute("machora.level", "ERROR")
     if reason:

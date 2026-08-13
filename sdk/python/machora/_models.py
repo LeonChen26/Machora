@@ -60,24 +60,6 @@ class ScoreBody(BaseModel):
     comment: Optional[str] = None
 
 
-class TraceEvent(BaseModel):
-    type: Literal["trace-create"]
-    body: TraceBody
-
-
-class ObservationEvent(BaseModel):
-    type: Literal["observation-create"]
-    body: ObservationBody
-
-
-class ScoreEvent(BaseModel):
-    type: Literal["score-create"]
-    body: ScoreBody
-
-
-IngestionEvent = TraceEvent | ObservationEvent | ScoreEvent
-
-
 def event_payload(body: BaseModel) -> dict[str, Any]:
     """把事件 body 序列化为 ingestion API 所需 JSON（camelCase）。"""
     return body.model_dump(mode="json", by_alias=True)

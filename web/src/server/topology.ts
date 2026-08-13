@@ -10,6 +10,16 @@ import {
   classifyTrajectoryKind,
 } from "@machora/shared";
 
+// get-or-init：Map 缺 key 时用工厂初始化并写入，避免 ?? set().get()! 的非空断言模式
+function getOrInit<K, V>(map: Map<K, V>, key: K, init: () => V): V {
+  let v = map.get(key);
+  if (v === undefined) {
+    v = init();
+    map.set(key, v);
+  }
+  return v;
+}
+
 export interface TopologyModel {
   name: string;
   count: number;
@@ -121,35 +131,55 @@ export async function buildTopology(
       hasParent: r.parentObservationId != null,
     });
     const agent = r.agentName ?? r.traceAgent ?? "unknown";
-    const t =
-      perTrace.get(r.traceId) ??
-      perTrace.set(r.traceId, { tools: new Map(), models: new Set() }).get(r.traceId)!;
+    const t = getOrInit(perTrace, r.traceId, () => ({
+      tools: new Map(),
+      models: new Set(),
+    }));
 
     if (kind === "tool" && r.name) {
       t.tools.set(r.name, (t.tools.get(r.name) ?? 0) + 1);
-      const s = toolMap.get(r.name) ?? { agent, count: 0, errors: 0, warnings: 0, durs: [] };
+      const s = getOrInit(toolMap, r.name, () => ({
+        agent,
+        count: 0,
+        errors: 0,
+        warnings: 0,
+        durs: [],
+      }));
       s.agent = agent;
       s.count++;
       if (r.level === "ERROR") s.errors++;
       if (r.level === "WARNING") s.warnings++;
       if (r.endTime) s.durs.push(r.endTime.getTime() - r.startTime.getTime());
-      toolMap.set(r.name, s);
-      const a = agentMap.get(agent) ?? { tools: new Set<string>(), toolCalls: 0, llmCalls: 0, tokens: 0, cost: 0 };
+      const a = getOrInit(agentMap, agent, () => ({
+        tools: new Set<string>(),
+        toolCalls: 0,
+        llmCalls: 0,
+        tokens: 0,
+        cost: 0,
+      }));
       a.toolCalls++;
       a.tools.add(r.name);
-      agentMap.set(agent, a);
     } else if (kind === "llm" && r.model) {
       t.models.add(r.model);
-      const m = modelMap.get(r.model) ?? { name: r.model, count: 0, tokens: 0, cost: 0 };
+      const m = getOrInit(modelMap, r.model, () => ({
+        name: r.model,
+        count: 0,
+        tokens: 0,
+        cost: 0,
+      }));
       m.count++;
       m.tokens += r.totalTokens ?? 0;
       m.cost += r.totalCost ?? 0;
-      modelMap.set(r.model, m);
-      const a = agentMap.get(agent) ?? { tools: new Set<string>(), toolCalls: 0, llmCalls: 0, tokens: 0, cost: 0 };
+      const a = getOrInit(agentMap, agent, () => ({
+        tools: new Set<string>(),
+        toolCalls: 0,
+        llmCalls: 0,
+        tokens: 0,
+        cost: 0,
+      }));
       a.llmCalls++;
       a.tokens += r.totalTokens ?? 0;
       a.cost += r.totalCost ?? 0;
-      agentMap.set(agent, a);
     }
   }
 

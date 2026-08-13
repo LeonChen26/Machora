@@ -126,7 +126,8 @@ export function parseOtelMetricsPayload(
           }
         }
         if (metric.summary?.dataPoints?.length) {
-          // summary 落为 HISTOGRAM（count/sum/min/max 摘要字段）
+          // OTLP Summary 只有 count/sum/quantile_values（无 min/max），
+          // 此处复用 HISTOGRAM 存 count/sum，min/max 字段恒为 null
           for (const dp of metric.summary.dataPoints) {
             out.push(mapDataPoint(dp, metric, "HISTOGRAM", projectId));
           }

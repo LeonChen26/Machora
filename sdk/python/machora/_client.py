@@ -7,6 +7,7 @@ score-create）后批量 POST /api/public/ingestion。
 from __future__ import annotations
 
 import base64
+import logging
 import os
 import threading
 import time
@@ -17,13 +18,14 @@ from typing import Any, Optional
 import httpx
 
 from ._models import (
-    IngestionEvent,
     ObservationBody,
     ScoreBody,
     TraceBody,
     event_payload,
     score_data_type,
 )
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_HOST = "http://localhost:3100"
 
@@ -289,17 +291,28 @@ class MachoraClient:
             raise MachoraError(
                 f"平台返回 {resp.status_code}: {resp.text[:500]}"
             )
-        return resp.json()
+        try:
+            return resp.json()
+        except ValueError as exc:
+            raise MachoraError(
+                f"平台响应不是合法 JSON: {resp.text[:500]}"
+            ) from exc
 
     def close(self) -> None:
-        self.flush()
-        self._http.close()
+        try:
+            self.flush()
+        finally:
+            self._http.close()
 
     def __enter__(self) -> "MachoraClient":
         return self
 
     def __exit__(self, *exc: Any) -> None:
-        self.close()
+        try:
+            self.close()
+        except Exception as exc_2:  # pragma: no cover - fail-open
+            # 仅记录，不遮蔽 with 块内抛出的原始异常
+            logger.warning("Machora client: close/flush 失败: %s", exc_2)
 
 
 class Trace:

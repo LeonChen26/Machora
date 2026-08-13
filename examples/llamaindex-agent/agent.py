@@ -32,13 +32,14 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from openinference.instrumentation.llama_index import LlamaIndexInstrumentor
 
-# 默认 seed 凭据（standalone/src/start.ts）
-PUBLIC_KEY = os.environ.get(
-    "MACHORA_PK", "pk-machora-dev-000000000000000000000"
-)
-SECRET_KEY = os.environ.get(
-    "MACHORA_SK", "sk-machora-dev-000000000000000000000"
-)
+# 凭据从环境变量读取（缺失时提示设置，不提供硬编码默认值）
+PUBLIC_KEY = os.environ.get("MACHORA_PK")
+SECRET_KEY = os.environ.get("MACHORA_SK")
+if not PUBLIC_KEY or not SECRET_KEY:
+    raise SystemExit(
+        "缺少凭据：请设置环境变量 MACHORA_PK 与 MACHORA_SK"
+        "（默认凭据见项目 .env.example / standalone 启动日志，不要硬编码到代码中）。"
+    )
 
 
 # ---------------------------------------------------------------------------

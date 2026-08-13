@@ -108,8 +108,11 @@ export async function POST(req: Request) {
           comment: event.body.comment ?? null,
         });
       }
-    } catch (e: any) {
-      errors.push({ index, error: e.message });
+    } catch (e: unknown) {
+      errors.push({
+        index,
+        error: e instanceof Error ? e.message : String(e),
+      });
     }
   }
 
@@ -119,6 +122,13 @@ export async function POST(req: Request) {
   selfMetrics.inc("machora.ingestion.events", batch.length);
   selfMetrics.observe("machora.ingestion.duration_ms", Date.now() - start);
 
+  if (batch.length > 0 && errors.length === batch.length) {
+    // 批次内全部事件失败：返回 4xx，避免客户端把"全部失败"误判为成功
+    return Response.json(
+      { success: false, received: batch.length, errors },
+      { status: 400 },
+    );
+  }
   return Response.json({
     success: true,
     received: batch.length,

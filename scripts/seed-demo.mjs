@@ -3,8 +3,11 @@
 // 生成近 7 天的 traces / observations / scores，通过 ingestion API 注入
 
 const BASE = process.argv[2] ?? "http://localhost:3100";
-const PUBLIC_KEY = "pk-machora-dev-000000000000000000000";
-const SECRET_KEY = "sk-machora-dev-000000000000000000000";
+// 凭据优先读环境变量（生产/自定义部署时覆盖），缺失时回退本地 dev 种子值
+const PUBLIC_KEY =
+  process.env.MACHORA_INIT_PROJECT_PUBLIC_KEY ?? "pk-machora-dev-000000000000000000000";
+const SECRET_KEY =
+  process.env.MACHORA_INIT_PROJECT_SECRET_KEY ?? "sk-machora-dev-000000000000000000000";
 
 const DAY = 24 * 60 * 60 * 1000;
 const now = new Date();

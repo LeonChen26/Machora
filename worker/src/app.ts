@@ -88,11 +88,9 @@ async function triggerOnlineEvaluations(
       type: cfg.evaluatorType,
     });
   }
-  if (configs.length > 0) {
-    console.log(
-      `[ingestion] project=${projectId} trace=${traceId} online-evals=${configs.length}`,
-    );
-  }
+  console.log(
+    `[ingestion] project=${projectId} trace=${traceId} online-evals=${configs.length}`,
+  );
 }
 
 /**
@@ -204,9 +202,9 @@ async function runEvaluation(payload: EvaluationQueuePayload): Promise<void> {
       .set({
         status: "COMPLETED",
         result: {
-          ...(result as unknown as Record<string, unknown>),
+          ...result,
           durationMs: Date.now() - start,
-        } as unknown as typeof evaluationTable.$inferInsert["result"],
+        } as typeof evaluationTable.$inferInsert["result"],
       })
       .where(eq(evaluationTable.id, evaluation.id));
     selfMetrics.inc("machora.evaluation.completed", 1, {
@@ -215,10 +213,13 @@ async function runEvaluation(payload: EvaluationQueuePayload): Promise<void> {
     console.log(
       `[evaluation] completed id=${evaluation.id} type=${evaluation.evaluatorType} value=${result.value}`,
     );
-  } catch (e: any) {
+  } catch (e: unknown) {
     await db
       .update(evaluationTable)
-      .set({ status: "ERROR", error: String(e?.message ?? e) })
+      .set({
+        status: "ERROR",
+        error: String(e instanceof Error ? e.message : e),
+      })
       .where(eq(evaluationTable.id, evaluation.id));
     selfMetrics.inc("machora.evaluation.failed", 1, {
       type: evaluation.evaluatorType,

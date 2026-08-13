@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 try:
     from opentelemetry.trace import StatusCode
-except Exception:  # pragma: no cover - fail-open
+except ImportError:  # pragma: no cover - fail-open
     StatusCode = None
 
 
@@ -61,7 +61,7 @@ class MachoraOtelGraphProbe:
         self._trace_name = trace_name
         self._user_id = user_id
         self._session_id = session_id
-        self._active: dict[str, Any] = {}
+        self._active: dict[str, list[Any]] = {}
 
     # ------------------------------------------------------------------
     # 节点监听
@@ -78,20 +78,29 @@ class MachoraOtelGraphProbe:
                 INPUT: _jsonable(state),
             },
         )
-        self._active[node_name] = span
+        # 同一节点可能被多次执行（agent 循环 / 并行分支）：以 node_name 直接覆盖
+        # 会丢失前一个 span，改为每节点维护一个 span 栈，start/end 按 LIFO 配对，
+        # 避免覆盖、避免泄漏。
+        self._active.setdefault(node_name, []).append(span)
 
     def _on_node_end(self, node_name: str, state: Any) -> None:
-        span = self._active.pop(node_name, None)
-        if span is None:
+        spans = self._active.get(node_name)
+        if not spans:
             return
+        span = spans.pop()
+        if not spans:
+            self._active.pop(node_name, None)
         if state is not None:
             span.set_attribute(OUTPUT, _jsonable(state))
         span.end()
 
     def _on_node_error(self, node_name: str, error: Any) -> None:
-        span = self._active.pop(node_name, None)
-        if span is None:
+        spans = self._active.get(node_name)
+        if not spans:
             return
+        span = spans.pop()
+        if not spans:
+            self._active.pop(node_name, None)
         if StatusCode is not None:
             span.set_status(StatusCode.ERROR)
         span.set_attribute(LEVEL, "ERROR")
@@ -127,7 +136,8 @@ class MachoraOtelGraphProbe:
             try:
                 result = graph.invoke(inputs, **kwargs)
             except Exception as exc:
-                root.set_status(StatusCode.ERROR)
+                if StatusCode is not None:
+                    root.set_status(StatusCode.ERROR)
                 root.set_attribute(LEVEL, "ERROR")
                 raise
             root.set_attribute(OUTPUT, _jsonable(result))

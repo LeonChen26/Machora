@@ -15,6 +15,7 @@ flush —— 保证 trace 先于 observation 落库。
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Optional
 
 try:
@@ -25,6 +26,8 @@ except ImportError as exc:  # pragma: no cover
     ) from exc
 
 from ._client import MachoraClient, Span
+
+logger = logging.getLogger(__name__)
 
 
 def _serialized_name(serialized: dict[str, Any]) -> Optional[str]:
@@ -80,7 +83,10 @@ class MachoraCallbackHandler(BaseCallbackHandler):
         if self._root_run_id is None or parent_run_id is None:
             if self._trace_id is not None:
                 # 并发/嵌套根链：先落库已收集的，避免串台
-                self.client.flush()
+                try:
+                    self.client.flush()
+                except Exception as exc:  # pragma: no cover - fail-open
+                    logger.warning("Machora callback: flush 失败: %s", exc)
             self._root_run_id = str(run_id)
             self._trace_id = self.client.create_trace(
                 name=self._trace_name or _serialized_name(serialized) or "chain",
@@ -104,7 +110,10 @@ class MachoraCallbackHandler(BaseCallbackHandler):
         **kwargs: Any,
     ) -> None:
         if str(run_id) == self._root_run_id:
-            self.client.flush()
+            try:
+                self.client.flush()
+            except Exception as exc:  # pragma: no cover - fail-open
+                logger.warning("Machora callback: flush 失败: %s", exc)
             self._root_run_id = None
             self._trace_id = None
             return
@@ -118,7 +127,10 @@ class MachoraCallbackHandler(BaseCallbackHandler):
         **kwargs: Any,
     ) -> None:
         if str(run_id) == self._root_run_id:
-            self.client.flush()
+            try:
+                self.client.flush()
+            except Exception as exc:  # pragma: no cover - fail-open
+                logger.warning("Machora callback: flush 失败: %s", exc)
             self._root_run_id = None
             self._trace_id = None
             return
@@ -182,7 +194,8 @@ class MachoraCallbackHandler(BaseCallbackHandler):
             if generations and generations[0]:
                 msg = generations[0][0]
                 output = getattr(msg, "text", None) or getattr(msg, "message", None)
-        except Exception:
+        except Exception as exc:  # pragma: no cover - 宽松解析
+            logger.warning("Machora callback: 解析 LLM 输出失败: %s", exc)
             output = None
         gen.end(
             output=output,

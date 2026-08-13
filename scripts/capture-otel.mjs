@@ -45,6 +45,7 @@ const server = http.createServer(async (req, res) => {
   delete headers.host;
   delete headers["transfer-encoding"];
   delete headers.connection;
+  delete headers["content-length"]; // 转发时 body 重新构造，长度交给 fetch 重算
   try {
     const r = await fetch(TARGET + req.url, {
       method: req.method,
@@ -53,7 +54,13 @@ const server = http.createServer(async (req, res) => {
       duplex: "half",
     });
     const buf = Buffer.from(await r.arrayBuffer());
-    res.writeHead(r.status, Object.fromEntries(r.headers));
+    // fetch 对 accept-encoding: gzip 的响应会自动解压，但 r.headers 仍带原始
+    // content-encoding/content-length（压缩后长度）——透传会导致响应头与体不匹配，
+    // 删除这两个头，由 res.end 按实际字节写回。
+    const outHeaders = Object.fromEntries(r.headers);
+    delete outHeaders["content-encoding"];
+    delete outHeaders["content-length"];
+    res.writeHead(r.status, outHeaders);
     res.end(buf);
     console.log(`[capture] forwarded -> ${r.status}`);
   } catch (e) {

@@ -35,6 +35,7 @@ import { resolve } from "node:path";
 const root = resolve(import.meta.dirname, "..");
 const argVersion = process.argv.find((a) => a.startsWith("--version="));
 const withDeps = process.argv.includes("--with-deps");
+const totalSteps = withDeps ? 4 : 3;
 const version = argVersion
   ? argVersion.slice("--version=".length)
   : readFileSync(resolve(root, "package.json"), "utf8")
@@ -65,13 +66,15 @@ function rmForce(p) {
   if (!existsSync(p)) return;
   try {
     rmSync(p, { recursive: true, force: true, maxRetries: 20 });
-  } catch {
-    /* 偶发失败（如目标已被并发删除）时忽略，后续组装会覆盖 */
+  } catch (e) {
+    // 偶发失败（如目标已被并发删除）通常可忽略，但记录路径与错误，
+    // 避免权限/占用类真实问题被静默掩盖
+    console.warn(`[release] rmForce 删除失败（后续组装会覆盖）: ${p}`, (e as Error)?.message ?? e);
   }
 }
 
 // ---------------------------------------------------------------------------
-step(withDeps ? "1/4 全量构建（pnpm build）" : "1/3 全量构建（pnpm build）");
+step(`1/${totalSteps} 全量构建（pnpm build）`);
 // Next.js production build 会加载全部 server 路由（含 db 连接的 api 路由），为避免
 // 构建阶段模块顶层副作用触发 DB 连接，这里给占位 env。运行时真实值由 start.ts 设置。
 const prev = {};
@@ -93,7 +96,7 @@ try {
 }
 
 // ---------------------------------------------------------------------------
-step(withDeps ? "2/4 组装发布目录" : "2/3 组装发布目录");
+step(`2/${totalSteps} 组装发布目录`);
 rmForce(staging);
 mkdirSync(staging, { recursive: true });
 
@@ -207,7 +210,7 @@ writeFileSync(
 // typescript（@trpc peerDep，运行时不需要）。
 let afterSchemaStep = withDeps ? 4 : 3;
 if (withDeps) {
-  step("3/4 安装运行时依赖（hoisted + prod）");
+  step(`3/${totalSteps} 安装运行时依赖（hoisted + prod）`);
   // 合并仓库根的 registry/fetch 配置（否则 staging 新装 npmrc 会回退 npmjs.org 被墙）
   const rootNpmrc = existsSync(resolve(root, ".npmrc"))
     ? readFileSync(resolve(root, ".npmrc"), "utf8")
@@ -289,7 +292,7 @@ if (withDeps) {
 }
 
 // ---------------------------------------------------------------------------
-step(`${afterSchemaStep}/4 打包 zip`);
+step(`${afterSchemaStep}/${totalSteps} 打包 zip`);
 // pnpm install / tar 可能在 staging 顶层残留空目录（如 _），打包前显式清掉，
 // 避免 zip 混入垃圾条目。_ 目录忽略空判断强制删除（来源不明，仅为空壳）。
 for (const d of readdirSync(staging)) {
@@ -330,7 +333,7 @@ if (leftover.length > 0) {
 }
 
 // ---------------------------------------------------------------------------
-step(`${withDeps ? 4 : 3}/${withDeps ? 4 : 3} 完成`);
+step(`${totalSteps}/${totalSteps} 完成`);
 console.log(`\n  发布包: ${zipPath}`);
 console.log(`  大小  : ${(statSync(zipPath).size / 1024 / 1024).toFixed(1)} MB`);
 console.log(`  形态  : ${withDeps ? "完整包（含 node_modules，解压即用）" : "轻量包（目标机需 pnpm install）"}`);

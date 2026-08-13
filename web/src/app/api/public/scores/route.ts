@@ -75,7 +75,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const auth = await verifyApiKey(req.headers.get("authorization") ?? undefined);
   if (!auth) {
-    selfMetrics.inc("machora.ingestion.requests", 1, { status: "unauthorized" });
+    selfMetrics.inc("machora.scores.requests", 1, { status: "unauthorized" });
     return Response.json({ error: "Invalid API key" }, { status: 401 });
   }
 
@@ -89,13 +89,13 @@ export async function POST(req: Request) {
   try {
     body = await req.json();
   } catch {
-    selfMetrics.inc("machora.ingestion.requests", 1, { status: "bad-json" });
+    selfMetrics.inc("machora.scores.requests", 1, { status: "bad-json" });
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
   const parsed = AnnotationScoreSchema.safeParse(body);
   if (!parsed.success) {
-    selfMetrics.inc("machora.ingestion.requests", 1, { status: "bad-payload" });
+    selfMetrics.inc("machora.scores.requests", 1, { status: "bad-payload" });
     return Response.json(
       { error: "Invalid payload", details: parsed.error.flatten() },
       { status: 400 },
@@ -138,6 +138,6 @@ export async function POST(req: Request) {
     })
     .returning();
 
-  selfMetrics.inc("machora.ingestion.requests", 1, { status: "ok" });
+  selfMetrics.inc("machora.scores.requests", 1, { status: "ok" });
   return Response.json({ data: scoreRow }, { status: 201 });
 }

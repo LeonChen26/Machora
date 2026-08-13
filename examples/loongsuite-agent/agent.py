@@ -45,13 +45,14 @@ from opentelemetry.util.genai.extended_types import (
 )
 from opentelemetry.util.genai.types import InputMessage, OutputMessage, Text
 
-# 默认 seed 凭据（standalone/src/start.ts）
-PUBLIC_KEY = os.environ.get(
-    "MACHORA_PK", "pk-machora-dev-000000000000000000000"
-)
-SECRET_KEY = os.environ.get(
-    "MACHORA_SK", "sk-machora-dev-000000000000000000000"
-)
+# 凭据从环境变量读取（缺失时提示设置，不提供硬编码默认值）
+PUBLIC_KEY = os.environ.get("MACHORA_PK")
+SECRET_KEY = os.environ.get("MACHORA_SK")
+if not PUBLIC_KEY or not SECRET_KEY:
+    raise SystemExit(
+        "缺少凭据：请设置环境变量 MACHORA_PK 与 MACHORA_SK"
+        "（默认凭据见项目 .env.example / standalone 启动日志，不要硬编码到代码中）。"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -100,7 +101,13 @@ def call_llm(messages, handler):
 
     返回 (content, input_tokens, output_tokens)。用标准库 urllib，零额外依赖。
     """
-    api_key = os.environ.get("OPENAI_API_KEY", "EMPTY")
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        raise SystemExit(
+            "缺少 OPENAI_API_KEY：真实模型模式需要设置 OPENAI_API_KEY 环境变量"
+            "（如 DeepSeek 等 OpenAI 兼容端点的 key）；"
+            "如需离线演示请去掉 OPENAI_BASE_URL 后重跑。"
+        )
     base_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
     model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
     req = urllib.request.Request(
