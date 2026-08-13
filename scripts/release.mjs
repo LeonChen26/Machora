@@ -59,20 +59,14 @@ function step(msg) {
 
 // Windows 上 rmSync({recursive, force}) 对含只读文件（.next 产物全为只读）的目录
 // 会静默失败（force 吞 EPERM），导致 staging 清理不净、dev 缓存残留进发布包。
-// 用 PowerShell Remove-Item -Recurse -Force 强删（cmd rmdir /s /q 亦可）。
+// 改用 Node fs.rmSync：Windows 上先剥离只读属性再删，maxRetries 处理瞬态占用
+//（rimraf 同款策略），保证每次从零组装，杜绝轻量包误带完整包的 node_modules。
 function rmForce(p) {
   if (!existsSync(p)) return;
-  if (process.platform === "win32") {
-    try {
-      execSync(
-        `powershell -NoProfile -NonInteractive -Command "Remove-Item -LiteralPath '${p.replace(/'/g, "''")}' -Recurse -Force -ErrorAction SilentlyContinue"`,
-        { stdio: "ignore" },
-      );
-    } catch {
-      /* Remove-Item 偶发退出码 1（如目标已被并发删除），忽略 */
-    }
-  } else {
-    rmSync(p, { recursive: true, force: true });
+  try {
+    rmSync(p, { recursive: true, force: true, maxRetries: 20 });
+  } catch {
+    /* 偶发失败（如目标已被并发删除）时忽略，后续组装会覆盖 */
   }
 }
 
