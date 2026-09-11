@@ -14,10 +14,10 @@
  * 发布形态：
  *   - 默认（轻量包）：源码 + 构建产物。目标机需 node ≥20 + pnpm，解压后 pnpm install --frozen-lockfile 再启动。
  *   - --with-deps（完整包）：含 node_modules，解压即用、零安装。平台特定（Windows 包仅 Windows 可用，
- *     Linux 包需在 Linux/ECS 上构建），因 pglite wasm / esbuild 二进制随平台。
+ *     Linux 包需在 Linux/ECS 上构建），因 better-sqlite3 原生二进制 / esbuild 二进制随平台。
  *
- * 运行时零 ORM CLI：数据访问用 drizzle-orm + pg（纯 JS），表结构由
- * packages/shared/sql/schema.sql（幂等）在启动时直接 exec，无任何引擎二进制。
+ * 运行时零 ORM CLI：数据访问用 drizzle-orm + better-sqlite3，表结构由
+ * packages/shared/sql/schema.sql（幂等）在启动时直接 exec，无需数据库服务。
  */
 import { execSync, spawnSync } from "node:child_process";
 import {
@@ -79,7 +79,6 @@ step(`1/${totalSteps} 全量构建（pnpm build）`);
 // 构建阶段模块顶层副作用触发 DB 连接，这里给占位 env。运行时真实值由 start.ts 设置。
 const prev = {};
 for (const [k, v] of Object.entries({
-  DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/postgres?sslmode=disable",
   NEXTAUTH_URL: "http://localhost",
   NEXTAUTH_SECRET: "build-stub-secret-only",
   SKIP_ENV_VALIDATION: "1",
@@ -171,7 +170,7 @@ writeFileSync(
     `Machora Standalone ${version}`,
     "==========================",
     "",
-    "单进程 LLM 可观测平台：PGlite（嵌入式 PostgreSQL）+ Express + Next.js 生产构建。",
+    "单进程 LLM 可观测平台：SQLite（嵌入式，无外部服务）+ Next.js 生产构建。",
     "",
     withDeps
       ? "形态：完整包（含 node_modules，解压即用，仅限 " + process.platform + " " + process.arch + " 平台）"
@@ -187,17 +186,16 @@ writeFileSync(
     "",
     "常用环境变量（可选）：",
     "  PORT    Web 端口，默认 3100",
-    "  PG_PORT PGlite 端口，默认 5434",
     "  DATA_DIR 数据目录，默认 standalone/.machora-data",
     "",
     "管理员凭据：应用根目录存在 .env 时自动加载（可参考 .env.example 复制改名）。",
     "  MACHORA_INIT_USER_PASSWORD 管理员初始密码，建议设置；未设置时首次启动随机生成并打印在日志",
     "",
     withDeps ? "" : "开发模式（热重载）：\n  pnpm dev\n",
-    "数据说明：PGlite 数据落盘在 standalone/.machora-data，删除即清空。",
+    "数据说明：SQLite 数据库文件位于 standalone/.machora-data/machora.db，删除即清空。",
     "",
     "Schema 初始化：表结构定义在 packages/shared/sql/schema.sql（幂等建表），",
-    "启动时 PGlite 直接 exec，无需任何 ORM CLI / 引擎二进制。",
+    "启动时直接 exec，无需任何 ORM CLI / 数据库服务。",
     "",
   ].join("\n"),
 );

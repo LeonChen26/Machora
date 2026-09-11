@@ -1,4 +1,5 @@
 export * from "./db.ts";
+export * from "./db-dialect.ts";
 export * from "./drizzle/schema.ts";
 export * from "./env.ts";
 export * from "./domain/index.ts";

@@ -2,8 +2,6 @@ import { z } from "zod";
 
 // 环境变量校验，参考 Langfuse packages/shared/src/env.ts
 export const envSchema = z.object({
-  DATABASE_URL: z.string(),
-  PG_PORT: z.coerce.number().default(5433),
   PORT: z.coerce.number().default(3000),
   DATA_DIR: z.string().default("./.machora-data"),
   NODE_ENV: z.string().default("development"),

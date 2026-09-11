@@ -2,7 +2,7 @@
 // 对齐 Langfuse 公开 API 风格：{ data, meta: { limit, nextCursor, hasMore, totalCount } }
 
 import { gte, lte, type SQL } from "drizzle-orm";
-import type { AnyPgColumn } from "drizzle-orm/pg-core";
+import type { AnySQLiteColumn } from "drizzle-orm/sqlite-core";
 import { observation, score, trace, selfMetrics } from "@machora/shared";
 
 /** OpenAPI 查询流量计数（System 自运维折线图"查询"系列）。
@@ -209,7 +209,7 @@ export function pickColumns<T extends Record<string, unknown>>(
 
 /** 时间窗过滤（from/to 均为可选，未给则不限）返回条件数组 */
 export function timeWindow(
-  col: AnyPgColumn,
+  col: AnySQLiteColumn,
   from?: Date,
   to?: Date,
 ): SQL<unknown>[] {

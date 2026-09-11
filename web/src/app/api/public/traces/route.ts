@@ -1,5 +1,5 @@
-import { and, arrayContains, count, desc, eq, ilike, lt, type SQL } from "drizzle-orm";
-import { db, trace } from "@machora/shared";
+import { and, count, desc, eq, lt, type SQL } from "drizzle-orm";
+import { db, trace, textSearch, hasTags } from "@machora/shared";
 import { verifyApiKey } from "../../../../server/auth";
 import {
   TRACE_COLUMNS,
@@ -45,10 +45,10 @@ export async function GET(req: Request) {
   if (name) conds.push(eq(trace.name, name));
   if (userId) conds.push(eq(trace.userId, userId));
   if (sessionId) conds.push(eq(trace.sessionId, sessionId));
-  if (agent) conds.push(ilike(trace.agentName, `%${agent}%`));
-  if (workflow) conds.push(ilike(trace.workflowName, `%${workflow}%`));
-  if (skill) conds.push(ilike(trace.skillName, `%${skill}%`));
-  if (tags && tags.length > 0) conds.push(arrayContains(trace.tags, tags));
+  if (agent) conds.push(textSearch(trace.agentName, agent));
+  if (workflow) conds.push(textSearch(trace.workflowName, workflow));
+  if (skill) conds.push(textSearch(trace.skillName, skill));
+  if (tags && tags.length > 0) conds.push(hasTags(trace.tags, tags));
   if (cursor) conds.push(lt(trace.id, cursor));
 
   let fields: string[] | undefined;

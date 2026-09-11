@@ -1,7 +1,7 @@
 // 列表页筛选参数解析与 drizzle where 条件构建（页面与 CSV 导出共用）
 // 返回 SQL 条件数组，调用方用 and(...conds) 组装
-import { and, arrayContains, eq, exists, gte, ilike, inArray, lte, sql, type SQL } from "drizzle-orm";
-import { db, observation, trace } from "@machora/shared";
+import { and, eq, exists, gte, inArray, lte, sql, type SQL } from "drizzle-orm";
+import { db, observation, trace, textSearch, hasTags } from "@machora/shared";
 
 const str = (v: string | string[] | undefined) =>
   Array.isArray(v) ? v[0] : v;
@@ -53,9 +53,9 @@ export function buildTraceWhere(
     gte(trace.timestamp, f.from),
     lte(trace.timestamp, f.to),
   ];
-  if (f.q) conds.push(ilike(trace.name, `%${f.q}%`));
-  if (f.userId) conds.push(ilike(trace.userId, `%${f.userId}%`));
-  if (f.sessionId) conds.push(ilike(trace.sessionId, `%${f.sessionId}%`));
+  if (f.q) conds.push(textSearch(trace.name, f.q));
+  if (f.userId) conds.push(textSearch(trace.userId, f.userId));
+  if (f.sessionId) conds.push(textSearch(trace.sessionId, f.sessionId));
   if (f.model) {
     conds.push(
       exists(
@@ -65,7 +65,7 @@ export function buildTraceWhere(
           .where(
             and(
               eq(observation.traceId, trace.id),
-              ilike(observation.model, `%${f.model}%`),
+              textSearch(observation.model, f.model),
             ),
           ),
       ),
@@ -84,8 +84,8 @@ export function buildTraceWhere(
     );
   }
   if (f.env) conds.push(eq(trace.environment, f.env));
-  if (f.agent) conds.push(ilike(trace.agentName, `%${f.agent}%`));
-  if (f.tags.length > 0) conds.push(arrayContains(trace.tags, f.tags));
+  if (f.agent) conds.push(textSearch(trace.agentName, f.agent));
+  if (f.tags.length > 0) conds.push(hasTags(trace.tags, f.tags));
   return conds;
 }
 
@@ -118,6 +118,6 @@ export function buildGenerationWhere(
   ];
   if (f.since) conds.push(gte(observation.startTime, f.since));
   if (f.level) conds.push(eq(observation.level, f.level));
-  if (f.model) conds.push(ilike(observation.model, `%${f.model}%`));
+  if (f.model) conds.push(textSearch(observation.model, f.model));
   return conds;
 }

@@ -3,24 +3,21 @@
 // 与 packages/shared/sql/schema.sql 保持一致（8 张表，宽事件模型）：
 // - 列名/表名与 schema.sql 完全相同（列键即列名，保证现有代码字段访问不变）
 // - 表结构由 schema.sql 幂等建立，drizzle 定义仅作类型层 + relations 引用
-// - timestamp(3) 用 mode: "date"（与 Prisma 返回 Date 语义一致）
-// - Json 列用 jsonb()；tags 用 text[].notNull()（Prisma String[] 语义）
+// - 时间列用 integer({ mode: "timestamp_ms" })（epoch 毫秒，读写仍为 JS Date）
+// - Json 列用 text({ mode: "json" })；tags 用 JSON 文本数组（SQLite 无数组类型）
 
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import {
-  boolean,
-  doublePrecision,
   index,
   integer,
-  jsonb,
-  pgTable,
+  real,
+  sqliteTable,
   text,
-  timestamp,
   uniqueIndex,
-} from "drizzle-orm/pg-core";
+} from "drizzle-orm/sqlite-core";
 
-const ts = (name: string) =>
-  timestamp(name, { precision: 3, mode: "date" });
+// SQLite 无原生时间类型：统一存 epoch 毫秒整数，drizzle 读写仍为 JS Date
+const ts = (name: string) => integer(name, { mode: "timestamp_ms" });
 
 // 主键 id：对应 Prisma @default(cuid())，客户端生成（缺省时 drizzle 自动填充）。
 // trace/observation 的 id 是 OTel hex，写入处总是显式提供，不受影响。
@@ -33,13 +30,13 @@ const primaryId = () =>
 // 元数据
 // ---------------------------------------------------------------------------
 
-export const project = pgTable("Project", {
+export const project = sqliteTable("Project", {
   id: primaryId(),
   name: text("name").notNull(),
-  createdAt: ts("createdAt").notNull().defaultNow(),
+  createdAt: ts("createdAt").notNull().default(sql`(unixepoch() * 1000)`),
 });
 
-export const apiKey = pgTable(
+export const apiKey = sqliteTable(
   "ApiKey",
   {
     id: primaryId(),
@@ -49,7 +46,7 @@ export const apiKey = pgTable(
     publicKey: text("publicKey").notNull(),
     hashedSecret: text("hashedSecret").notNull(),
     name: text("name"),
-    createdAt: ts("createdAt").notNull().defaultNow(),
+    createdAt: ts("createdAt").notNull().default(sql`(unixepoch() * 1000)`),
   },
   (t) => [
     uniqueIndex("ApiKey_publicKey_key").on(t.publicKey),
@@ -57,14 +54,14 @@ export const apiKey = pgTable(
   ],
 );
 
-export const user = pgTable(
+export const user = sqliteTable(
   "User",
   {
     id: primaryId(),
     email: text("email").notNull(),
     passwordHash: text("passwordHash").notNull(),
     name: text("name"),
-    createdAt: ts("createdAt").notNull().defaultNow(),
+    createdAt: ts("createdAt").notNull().default(sql`(unixepoch() * 1000)`),
   },
   (t) => [uniqueIndex("User_email_key").on(t.email)],
 );
@@ -73,7 +70,7 @@ export const user = pgTable(
 // 核心观测数据（宽事件模型）
 // ---------------------------------------------------------------------------
 
-export const trace = pgTable(
+export const trace = sqliteTable(
   "Trace",
   {
     id: text("id").primaryKey(), // OTel traceId（hex）
@@ -88,11 +85,14 @@ export const trace = pgTable(
     agentName: text("agentName"),
     workflowName: text("workflowName"),
     skillName: text("skillName"),
-    input: jsonb("input"),
-    output: jsonb("output"),
-    metadata: jsonb("metadata"),
-    tags: text("tags").array().notNull(),
-    createdAt: ts("createdAt").notNull().defaultNow(),
+    input: text("input", { mode: "json" }),
+    output: text("output", { mode: "json" }),
+    metadata: text("metadata", { mode: "json" }),
+    tags: text("tags", { mode: "json" })
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'`),
+    createdAt: ts("createdAt").notNull().default(sql`(unixepoch() * 1000)`),
   },
   (t) => [
     index("Trace_projectId_timestamp_idx").on(t.projectId, t.timestamp),
@@ -101,7 +101,7 @@ export const trace = pgTable(
   ],
 );
 
-export const observation = pgTable(
+export const observation = sqliteTable(
   "Observation",
   {
     id: primaryId(), // OTel spanId（hex）
@@ -118,15 +118,15 @@ export const observation = pgTable(
     agentName: text("agentName"),
     workflowName: text("workflowName"),
     skillName: text("skillName"),
-    input: jsonb("input"),
-    output: jsonb("output"),
-    metadata: jsonb("metadata"),
+    input: text("input", { mode: "json" }),
+    output: text("output", { mode: "json" }),
+    metadata: text("metadata", { mode: "json" }),
     level: text("level").notNull().default("DEFAULT"), // DEBUG | DEFAULT | WARNING | ERROR
-    usage: jsonb("usage"),
+    usage: text("usage", { mode: "json" }),
     inputTokens: integer("inputTokens"),
     outputTokens: integer("outputTokens"),
     totalTokens: integer("totalTokens"),
-    totalCost: doublePrecision("totalCost"),
+    totalCost: real("totalCost"),
   },
   (t) => [
     index("Observation_projectId_startTime_idx").on(t.projectId, t.startTime),
@@ -135,7 +135,7 @@ export const observation = pgTable(
   ],
 );
 
-export const score = pgTable(
+export const score = sqliteTable(
   "Score",
   {
     id: primaryId(),
@@ -146,11 +146,11 @@ export const score = pgTable(
     observationId: text("observationId"),
     projectId: text("projectId").notNull(),
     name: text("name").notNull(),
-    value: doublePrecision("value").notNull(),
+    value: real("value").notNull(),
     dataType: text("dataType").notNull(), // NUMERIC | CATEGORICAL | BOOLEAN
     source: text("source").notNull(), // API | ANNOTATION | EVALUATION
     comment: text("comment"),
-    timestamp: ts("timestamp").notNull().defaultNow(),
+    timestamp: ts("timestamp").notNull().default(sql`(unixepoch() * 1000)`),
   },
   (t) => [
     index("Score_projectId_timestamp_idx").on(t.projectId, t.timestamp),
@@ -162,7 +162,7 @@ export const score = pgTable(
 // 数据集（Prompt 级评测用例，Langfuse dataset 简化版：name 为数据集名，item 为用例）
 // ---------------------------------------------------------------------------
 
-export const datasetItem = pgTable(
+export const datasetItem = sqliteTable(
   "DatasetItem",
   {
     id: primaryId(),
@@ -170,11 +170,11 @@ export const datasetItem = pgTable(
       .notNull()
       .references(() => project.id, { onDelete: "cascade", onUpdate: "cascade" }),
     name: text("name").notNull(), // 数据集名
-    input: jsonb("input"),
-    output: jsonb("output"),
-    expectedOutput: jsonb("expectedOutput"),
-    metadata: jsonb("metadata"),
-    createdAt: ts("createdAt").notNull().defaultNow(),
+    input: text("input", { mode: "json" }),
+    output: text("output", { mode: "json" }),
+    expectedOutput: text("expectedOutput", { mode: "json" }),
+    metadata: text("metadata", { mode: "json" }),
+    createdAt: ts("createdAt").notNull().default(sql`(unixepoch() * 1000)`),
   },
   (t) => [
     index("DatasetItem_projectId_name_idx").on(t.projectId, t.name),
@@ -185,7 +185,7 @@ export const datasetItem = pgTable(
 // 服务端评估任务
 // ---------------------------------------------------------------------------
 
-export const evaluation = pgTable(
+export const evaluation = sqliteTable(
   "Evaluation",
   {
     id: text("id").primaryKey(),
@@ -201,12 +201,12 @@ export const evaluation = pgTable(
     }),
     name: text("name").notNull(), // 写回 Score 时的 name
     evaluatorType: text("evaluatorType").notNull(),
-    config: jsonb("config"),
+    config: text("config", { mode: "json" }),
     status: text("status").notNull().default("PENDING"), // PENDING | RUNNING | COMPLETED | ERROR
     mode: text("mode").notNull().default("EXPERIMENT"), // ONLINE（在线自动） | EXPERIMENT（手动/批量）
     error: text("error"),
-    result: jsonb("result"),
-    createdAt: ts("createdAt").notNull().defaultNow(),
+    result: text("result", { mode: "json" }),
+    createdAt: ts("createdAt").notNull().default(sql`(unixepoch() * 1000)`),
     updatedAt: ts("updatedAt").notNull(),
   },
   (t) => [
@@ -218,7 +218,7 @@ export const evaluation = pgTable(
 );
 
 // 评估器配置（UI 可管理）：LLM judge 的模型/端点/提示词，或规则评估器阈值
-export const evaluationConfig = pgTable(
+export const evaluationConfig = sqliteTable(
   "EvaluationConfig",
   {
     id: primaryId(),
@@ -227,10 +227,10 @@ export const evaluationConfig = pgTable(
       .references(() => project.id, { onDelete: "cascade", onUpdate: "cascade" }),
     name: text("name").notNull(), // 配置名（如 helpfulness）
     evaluatorType: text("evaluatorType").notNull(), // llm | error | latency ...
-    config: jsonb("config"), // 评估器参数（model/apiKey/systemPrompt 或阈值）
-    enabled: boolean("enabled").notNull().default(true), // 可手动触发
-    autoRun: boolean("autoRun").notNull().default(false), // 在线自动评估（ingestion 后自动触发）
-    createdAt: ts("createdAt").notNull().defaultNow(),
+    config: text("config", { mode: "json" }), // 评估器参数（model/apiKey/systemPrompt 或阈值）
+    enabled: integer("enabled", { mode: "boolean" }).notNull().default(true), // 可手动触发
+    autoRun: integer("autoRun", { mode: "boolean" }).notNull().default(false), // 在线自动评估（ingestion 后自动触发）
+    createdAt: ts("createdAt").notNull().default(sql`(unixepoch() * 1000)`),
     updatedAt: ts("updatedAt").notNull(),
   },
   (t) => [
@@ -243,7 +243,7 @@ export const evaluationConfig = pgTable(
 // 指标采样
 // ---------------------------------------------------------------------------
 
-export const metricSample = pgTable(
+export const metricSample = sqliteTable(
   "MetricSample",
   {
     id: primaryId(),
@@ -253,17 +253,17 @@ export const metricSample = pgTable(
     name: text("name").notNull(),
     unit: text("unit"),
     kind: text("kind").notNull(), // GAUGE | SUM | HISTOGRAM
-    attributes: jsonb("attributes"), // labels（OTLP attributes / 自观测维度）
+    attributes: text("attributes", { mode: "json" }), // labels（OTLP attributes / 自观测维度）
     timestamp: ts("timestamp").notNull(),
     // gauge / sum：单值
-    value: doublePrecision("value"),
+    value: real("value"),
     // histogram：摘要
-    count: doublePrecision("count"),
-    sum: doublePrecision("sum"),
-    min: doublePrecision("min"),
-    max: doublePrecision("max"),
-    buckets: jsonb("buckets"), // [{ boundary: number, count: number }]
-    createdAt: ts("createdAt").notNull().defaultNow(),
+    count: real("count"),
+    sum: real("sum"),
+    min: real("min"),
+    max: real("max"),
+    buckets: text("buckets", { mode: "json" }), // [{ boundary: number, count: number }]
+    createdAt: ts("createdAt").notNull().default(sql`(unixepoch() * 1000)`),
   },
   (t) => [
     index("MetricSample_projectId_name_timestamp_idx").on(

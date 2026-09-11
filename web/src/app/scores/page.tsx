@@ -1,6 +1,6 @@
 import { Link } from "../../components/NativeLink";
-import { and, count, desc, eq, gte, ilike, lt, type SQL } from "drizzle-orm";
-import { db, score } from "@machora/shared";
+import { and, count, desc, eq, gte, lt, type SQL } from "drizzle-orm";
+import { db, score, textSearch } from "@machora/shared";
 import { formatRelative, formatDateTime } from "../../lib/format";
 import { BarChart } from "../../components/BarChart";
 import { EmptyIcon } from "../../components/EmptyIcon";
@@ -44,7 +44,7 @@ export default async function ScoresPage({
   const since = days > 0 ? new Date(Date.now() - days * DAY_MS) : undefined;
 
   const conds: SQL<unknown>[] = [eq(score.projectId, projectId)];
-  if (name) conds.push(ilike(score.name, `%${name}%`));
+  if (name) conds.push(textSearch(score.name, name));
   if (since) conds.push(gte(score.timestamp, since));
 
   // 聚合集：用于汇总卡片与直方图（上限 1000 条防爆）

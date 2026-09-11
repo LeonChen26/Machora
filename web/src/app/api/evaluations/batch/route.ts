@@ -11,6 +11,7 @@ import {
   QUEUES,
   trace,
   score,
+  hasTags,
 } from "@machora/shared";
 import { getApiUser } from "../../../../server/session";
 import { getCurrentProjectId } from "../../../../server/project";
@@ -88,14 +89,14 @@ export async function POST(req: NextRequest) {
       );
     targetTraces = rows.map((r) => r.id);
   } else if (tag) {
-    // tags 是 text[]，用 @> 数组包含过滤
+    // tags 过滤走方言隔离层（SQLite: json_each；Postgres: @>）
     const rows = await db
       .select({ id: trace.id })
       .from(trace)
       .where(
         and(
           eq(trace.projectId, projectId),
-          sql`${trace.tags} @> ARRAY[${tag}]`,
+          hasTags(trace.tags, [tag]),
         ),
       )
       .limit(1000);

@@ -1,5 +1,5 @@
-import { and, count, desc, eq, ilike, lt, type SQL } from "drizzle-orm";
-import { db, observation } from "@machora/shared";
+import { and, count, desc, eq, lt, type SQL } from "drizzle-orm";
+import { db, observation, textSearch } from "@machora/shared";
 import { verifyApiKey } from "../../../../server/auth";
 import {
   OBSERVATION_COLUMNS,
@@ -46,9 +46,9 @@ export async function GET(req: Request) {
   if (name) conds.push(eq(observation.name, name));
   if (level) conds.push(eq(observation.level, level));
   if (model) conds.push(eq(observation.model, model));
-  if (agent) conds.push(ilike(observation.agentName, `%${agent}%`));
-  if (workflow) conds.push(ilike(observation.workflowName, `%${workflow}%`));
-  if (skill) conds.push(ilike(observation.skillName, `%${skill}%`));
+  if (agent) conds.push(textSearch(observation.agentName, agent));
+  if (workflow) conds.push(textSearch(observation.workflowName, workflow));
+  if (skill) conds.push(textSearch(observation.skillName, skill));
   if (cursor) conds.push(lt(observation.id, cursor));
 
   let fields: string[] | undefined;

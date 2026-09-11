@@ -1,10 +1,10 @@
 /**
  * Machora Standalone 启动入口
  *
- * 单进程承载：PGlite + Express + worker 队列处理器
+ * 单进程承载：SQLite（嵌入式）+ Next.js + worker 队列处理器
  * 参考 Langfuse worker/src/standalone/start.ts，去掉 chDB/S3/Redis
  *
- * 关键不变量：Express 必须同进程启动，与 worker 共享 queueBus 单例
+ * 关键不变量：Next.js 必须同进程启动，与 worker 共享 queueBus 单例
  */
 
 import { resolve } from "node:path";
@@ -12,26 +12,23 @@ import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { createRequire } from "node:module";
 import { createServer, type Server } from "node:http";
+// 仅类型导入：编译期擦除，不会在 setupEnvironment() 之前触发 shared 的模块副作用
+import type { SqliteHandle } from "@machora/shared";
 
 // ---------------------------------------------------------------------------
 // 配置
 // ---------------------------------------------------------------------------
 
-// 模块加载即读 .env（函数声明提升，可提前调用）：确保下方 DATA_DIR/PG_PORT/
+// 模块加载即读 .env（函数声明提升，可提前调用）：确保下方 DATA_DIR/
 // PORT 计算及后续 setupEnvironment 都能拿到 .env 中的值。
 loadDotEnv();
 
 const DATA_DIR = process.env.DATA_DIR ?? "./.machora-data";
-// 端口说明：本机 .wslconfig 启用了 networkingMode=mirrored，WSL 与 Windows 共享
-// localhost。WSL 里跑的 Langfuse standalone 占用了 5433(PGlite)/3000(Next.js)，
-// Windows 侧 bind 会报 EADDRINUSE（netstat 查不到）。因此默认端口改为 5434/3100，
-// 可通过 PG_PORT / PORT 环境变量覆盖。
-const PG_PORT = parseInt(process.env.PG_PORT ?? "5434", 10);
 const WEB_PORT = parseInt(process.env.PORT ?? "3100", 10);
 // 非法端口值尽早失败（parseInt("abc") → NaN，避免运行时才暴露）
-if (!Number.isInteger(PG_PORT) || !Number.isInteger(WEB_PORT)) {
+if (!Number.isInteger(WEB_PORT)) {
   throw new Error(
-    `[env] PG_PORT / PORT 必须为整数端口（当前 PG_PORT=${process.env.PG_PORT ?? "5434"}，PORT=${process.env.PORT ?? "3100"}）`,
+    `[env] PORT 必须为整数端口（当前 PORT=${process.env.PORT ?? "3100"}）`,
   );
 }
 
@@ -92,7 +89,6 @@ function setupEnvironment(): void {
   }
 
   const defaults: Record<string, string> = {
-    DATABASE_URL: `postgresql://postgres:postgres@127.0.0.1:${PG_PORT}/postgres?sslmode=disable&connection_limit=5`,
     NEXTAUTH_URL: `http://localhost:${WEB_PORT}`,
     NEXTAUTH_SECRET: "machora-standalone-dev-secret-do-not-use-in-production",
     PORT: String(WEB_PORT),
@@ -115,140 +111,45 @@ function setupEnvironment(): void {
 }
 
 // ---------------------------------------------------------------------------
-// PGlite TCP 服务器
-// ---------------------------------------------------------------------------
-
-interface PgliteHandle {
-  stop(): Promise<void>;
-  // 直接暴露 PGlite 实例给 Schema 同步用，避免第二次 PGlite.create
-  // 在同一 dataDir 打开独立句柄导致写入不持久（跨进程上下文隔离）。
-  db: { exec(sql: string): Promise<unknown>; close(): Promise<void> };
-}
-
-// 模块级句柄：启动序列中途失败时（main().catch）可关闭已打开的 PGlite，避免资源泄漏
-let runningPglite: PgliteHandle | null = null;
-
-async function startPgliteServer(): Promise<PgliteHandle> {
-  // 动态 import：pglite-socket 是纯 ESM，必须运行时加载
-  const [{ PGlite }, { PGLiteSocketServer }] = await Promise.all([
-    import("@electric-sql/pglite"),
-    import("@electric-sql/pglite-socket"),
-  ]);
-
-  const baseDir = resolve(DATA_DIR, "pglite");
-  if (!existsSync(baseDir)) mkdirSync(baseDir, { recursive: true });
-  const dbPath = resolve(baseDir, "pgdata");
-
-  console.log(`[PGlite] 启动，数据目录: ${dbPath}, 端口: ${PG_PORT}`);
-  const db = await PGlite.create({ dataDir: dbPath, relaxedDurability: true });
-  const server = new PGLiteSocketServer({
-    db,
-    port: PG_PORT,
-    host: "127.0.0.1",
-    maxConnections: 30,
-  });
-  await server.start();
-
-  console.log("[PGlite] 已就绪");
-  return {
-    db,
-    async stop() {
-      try { await server.stop(); } catch (e) { console.warn("[PGlite] server.stop 失败:", (e as Error)?.message ?? e); }
-      try { await db.close(); } catch (e) { console.warn("[PGlite] db.close 失败:", (e as Error)?.message ?? e); }
-    },
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Schema 同步（直接通过 PGlite 执行 packages/shared/sql/schema.sql）
+// Schema 同步
 //
 // 表结构真源是 packages/shared/sql/schema.sql（幂等：IF NOT EXISTS），
-// 数据访问走 drizzle-orm + pg（纯 JS，无引擎二进制），运行时零 ORM CLI。
-// SQL 按分号（;）拆分，单条 try/catch 执行，整体幂等。
+// 数据访问走 drizzle-orm + better-sqlite3（嵌入式，无 TCP、无连接池）。
+// better-sqlite3 的 exec() 原生支持多语句，整文件直接执行即可。
 // ---------------------------------------------------------------------------
 
-// 轻量 SQL 语句拆分器：按 ';' 分段，跳过 '--' 注释与空段，单引号字符串内部不拆。
-function splitStatements(sql: string): string[] {
-  const out: string[] = [];
-  let buf = "";
-  let inSingle = false;
-  let inLineComment = false;
-  for (let i = 0; i < sql.length; i++) {
-    const c = sql[i];
-    const next = sql[i + 1];
-    if (inLineComment) {
-      buf += c;
-      if (c === "\n" || c === "\r") inLineComment = false;
-      continue;
-    }
-    if (!inSingle && c === "-" && next === "-") {
-      inLineComment = true;
-      buf += c;
-      continue;
-    }
-    if (!inLineComment && c === "'" && sql[i - 1] !== "\\") {
-      inSingle = !inSingle;
-      buf += c;
-      continue;
-    }
-    if (!inSingle && !inLineComment && c === ";") {
-      const s = buf.trim();
-      if (s) out.push(s);
-      buf = "";
-      continue;
-    }
-    buf += c;
-  }
-  const tail = buf.trim();
-  if (tail) out.push(tail);
-  return out;
+type SqliteDb = SqliteHandle;
+
+/**
+ * 增量补列（SQLite 不支持 ADD COLUMN IF NOT EXISTS，用 PRAGMA table_info 判断）。
+ * 对应原 Postgres schema.sql 末尾的 ALTER TABLE ... ADD COLUMN IF NOT EXISTS。
+ */
+function ensureColumn(db: SqliteDb, table: string, column: string, ddl: string): void {
+  const exists = (db.prepare(`PRAGMA table_info("${table}")`).all() as { name: string }[])
+    .some((c) => c.name === column);
+  if (exists) return;
+  db.exec(`ALTER TABLE "${table}" ADD COLUMN ${ddl}`);
+  console.log(`[Schema] 补列 ${table}.${column}`);
 }
 
-async function applySchemaSql(db: { exec(sql: string): Promise<unknown> }): Promise<void> {
+function applySchemaSql(db: SqliteDb): void {
   const root = resolve(import.meta.dirname, "..", "..");
-  const sqlPath = resolve(
-    root,
-    "packages",
-    "shared",
-    "sql",
-    "schema.sql",
-  );
+  const sqlPath = resolve(root, "packages", "shared", "sql", "schema.sql");
   if (!existsSync(sqlPath)) {
-    // 本地开发模式（pnpm dev / start）未走 release 流程，
-    // schema.sql 不一定存在；此时跳过 SQL 同步（不强制依赖）。
+    // 本地开发模式（pnpm dev / start）未走 release 流程，schema.sql 不一定存在
     console.warn("[Schema] 未找到 schema.sql，跳过 SQL 同步（开发模式可忽略）");
     return;
   }
 
-  console.log("[Schema] 读 schema.sql 并幂等建表...");
-  const raw = readFileSync(sqlPath, "utf8");
-  const stmts = splitStatements(raw);
+  console.log("[Schema] 执行 schema.sql 幂等建表...");
+  db.exec(readFileSync(sqlPath, "utf8"));
 
-  let ok = 0;
-  let skipped = 0;
-  let failed = 0;
-  for (const stmt of stmts) {
-    try {
-      await db.exec(stmt);
-      ok++;
-    } catch (e) {
-      const msg = String((e as Error)?.message ?? e);
-      if (
-        /(relation|constraint|index) .* already exists/i.test(msg) ||
-        /duplicate key( value)? violates unique constraint/i.test(msg)
-      ) {
-        skipped++;
-      } else {
-        // 真实错误（非幂等跳过）：记录并累计，结束后统一抛出，避免残缺库带病启动
-        console.error("[Schema] 语句执行失败:", msg.slice(0, 300));
-        failed++;
-      }
-    }
-  }
-  console.log(`[Schema] 完成（成功 ${ok}，跳过/已存在 ${skipped}，失败 ${failed}，共 ${stmts.length}）`);
-  if (failed > 0) {
-    throw new Error(`[Schema] ${failed} 条建表语句失败（见上方错误），终止启动以防残缺数据库`);
-  }
+  // 存量库补列（新建库时这些列已在 CREATE TABLE 中，此处为 no-op）
+  ensureColumn(db, "EvaluationConfig", "autoRun", `"autoRun" INTEGER NOT NULL DEFAULT 0`);
+  ensureColumn(db, "Evaluation", "mode", `"mode" TEXT NOT NULL DEFAULT 'EXPERIMENT'`);
+  ensureColumn(db, "Evaluation", "datasetItemId", `"datasetItemId" TEXT`);
+
+  console.log("[Schema] 完成");
 }
 
 // ---------------------------------------------------------------------------
@@ -444,15 +345,13 @@ async function main() {
   console.log("  Machora — Standalone 模式");
   console.log("=".repeat(60));
   console.log(`  数据目录: ${DATA_DIR}`);
-  console.log(`  PGlite 端口: ${PG_PORT}`);
   console.log(`  Web 端口: ${WEB_PORT}`);
   console.log("=".repeat(60));
 
   setupEnvironment();
 
-  // 延迟加载 @machora/shared：db.ts 的 Pg Pool 在模块加载时读取 DATABASE_URL，
-  // 必须先 setupEnvironment() 注入 env 再 import（否则连接串为 undefined，
-  // pg 默认连 localhost:5432 → ECONNREFUSED）。
+  // 延迟加载 @machora/shared：db.ts 在模块加载时按 DATA_DIR 打开 SQLite 文件，
+  // 必须先 setupEnvironment() 注入 env 再 import（否则落到错误的数据目录）。
   const shared = await import("@machora/shared");
   const { markSelfStarted, ensureSystemProject, startSelfMetrics } = shared;
   selfApi = {
@@ -460,9 +359,11 @@ async function main() {
     collectSystemMetrics: shared.collectSystemMetrics,
   };
 
-  const pglite = (runningPglite = await startPgliteServer());
+  // SQLite 句柄由 @machora/shared 的 db 单例惰性创建（DATA_DIR/machora.db）
+  const sqlite = shared.getSqliteHandle();
+  console.log(`[SQLite] 已就绪: ${shared.getDbPath()}`);
 
-  await applySchemaSql(pglite.db);
+  applySchemaSql(sqlite);
   await seedStandaloneData();
 
   // 自观测：确保 system 项目存在并启动周期落库（60s），队列/请求指标由此采集；
@@ -494,7 +395,11 @@ async function main() {
       });
       nextServer = null;
     }
-    await pglite.stop();
+    try {
+      sqlite.close();
+    } catch (e) {
+      console.warn("[SQLite] close 失败:", (e as Error)?.message ?? e);
+    }
     console.log("[Shutdown] 完成");
     process.exit(0);
   };
@@ -503,14 +408,8 @@ async function main() {
   process.on("SIGTERM", shutdown);
 }
 
-main().catch(async (err) => {
+main().catch((err) => {
   console.error("启动失败:", err);
-  if (runningPglite) {
-    try {
-      await runningPglite.stop();
-    } catch {
-      /* 关闭失败已在 stop 内记录 */
-    }
-  }
+  // SQLite 为进程内句柄，进程退出即释放，无需显式关闭
   process.exit(1);
 });
