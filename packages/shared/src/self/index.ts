@@ -195,7 +195,7 @@ export async function measureEventLoopDelay(samples = 5): Promise<number> {
   return n > 0 ? sum / n : 0;
 }
 
-/** 递归统计目录总字节数（PGlite 数据目录 MB 级，60s 一次开销可忽略） */
+/** 递归统计目录总字节数（SQLite 数据目录 MB 级，60s 一次开销可忽略） */
 export async function dirSizeBytes(dir: string): Promise<number> {
   let total = 0;
   async function walk(d: string): Promise<void> {

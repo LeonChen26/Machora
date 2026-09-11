@@ -141,7 +141,7 @@ export default async function SystemPage({
     {
       label: "数据目录",
       value: resDataDir != null ? fmtBytes(resDataDir) : "—",
-      hint: "PGlite 落盘大小",
+      hint: "SQLite 数据目录大小",
     },
     {
       label: "事件循环",

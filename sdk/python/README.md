@@ -2,7 +2,7 @@
 
 Machora 可观测平台的 Python SDK：向 Machora 注入 **trace / observation / score**。
 
-Machora 是参考 Langfuse 架构的轻量 LLM / AI Agent 可观测平台（单进程、零外部依赖、PGlite）。
+Machora 是参考 Langfuse 架构的轻量 LLM / AI Agent 可观测平台（单进程、零外部依赖、SQLite）。
 本 SDK 是它的通道 C（原生 SDK），同时支持 LangChain 自动埋点回调。
 
 ## 安装

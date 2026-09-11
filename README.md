@@ -1,7 +1,7 @@
 # Machora
 
 简化版 LLM / AI Agent 可观测平台，参考 [Langfuse](https://langfuse.com) 架构实现。
-**单进程、零外部依赖**（PGlite 进程内 Postgres），一条命令跑起完整的
+**单进程、零外部依赖**（SQLite 嵌入式数据库），一条命令跑起完整的
 **注入 → 存储 → 查询 → 评分 → 展示** 可观测链路。
 
 ![Machora](machora.jpg)
@@ -25,6 +25,13 @@
 
 要求：Node.js 与 pnpm workspace（根 `package.json` 的 `devEngines` 指定 pnpm 11.10.0；npm registry 走 npmmirror，见 `.npmrc`）
 
+> 安装说明：`better-sqlite3` 需预编译二进制。若无法直连 GitHub Releases，请先设置镜像环境变量再安装：
+> ```powershell
+> $env:npm_config_better_sqlite3_binary_host_mirror="https://registry.npmmirror.com/-/binary/better-sqlite3"
+> pnpm install
+> ```
+> （`.npmrc` 中已写入同名配置，但 pnpm 不会将其透传给生命周期脚本，故仍需环境变量。）
+
 ```bash
 pnpm install
 pnpm standalone:start   # 生产模式，默认 http://localhost:3100
@@ -46,8 +53,7 @@ pnpm standalone:start   # 生产模式，默认 http://localhost:3100
 | 变量 | 默认 | 说明 |
 |---|---|---|
 | `PORT` | `3100` | Web 端口 |
-| `PG_PORT` | `5434` | PGlite 端口 |
-| `DATA_DIR` | `./.machora-data` | 数据目录（删除即清空） |
+| `DATA_DIR` | `./.machora-data` | 数据目录（内含 `machora.db`，删除即清空） |
 | `MACHORA_INIT_USER_PASSWORD` | 无 | 管理员初始密码（建议在应用目录 `.env` 中设置；未设置时首次启动随机生成并打印在日志） |
 
 应用根目录（`start.cmd` / `node standalone/dist/start.js` 所在目录）存在 `.env` 文件时自动加载，可参考 `.env.example` 复制改名。`MACHORA_SESSION_SECRET` 不设置时自动持久化到 `DATA_DIR/session-secret`。
@@ -68,13 +74,13 @@ pnpm workspace monorepo，依赖方向：`standalone → web + worker + shared`�
 
 | 包 | 说明 |
 |---|---|
-| `packages/shared` | 领域模型（Zod）+ Drizzle schema（schema.sql 幂等建表）+ OTel 解码/解析 + 鉴权 + 队列（单一真源） |
+| `packages/shared` | 领域模型（Zod）+ Drizzle schema（schema.sql 幂等建表）+ SQL 方言隔离层 + OTel 解码/解析 + 鉴权 + 队列（单一真源） |
 | `web` | Next.js App Router UI（force-dynamic SSR）+ tRPC + 公共 REST（ingestion / otel / health） |
 | `worker` | 队列处理器（standalone 进程内注册，共享 queueBus，无 Redis） |
-| `standalone` | 单进程入口：PGlite + schema.sql 建表 + seed + Next.js in-process |
+| `standalone` | 单进程入口：SQLite + schema.sql 建表 + seed + Next.js in-process |
 | `sdk/python` | Python SDK（httpx + pydantic，可选 langchain-core） |
 
-技术栈：TypeScript · Next.js · tRPC · Drizzle ORM · PGlite（进程内 Postgres）· Zod · OpenTelemetry（protobufjs）· bcryptjs
+技术栈：TypeScript · Next.js · tRPC · Drizzle ORM · SQLite（better-sqlite3，嵌入式）· Zod · OpenTelemetry（protobufjs）· bcryptjs
 
 ## 开发命令（仓库根）
 
