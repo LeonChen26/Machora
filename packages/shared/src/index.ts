@@ -1,5 +1,8 @@
 export * from "./db.ts";
 export * from "./db-dialect.ts";
+// 命名空间导出：避免 ensureColumn / tableColumns 等通用名进入顶层，
+// 同时让 standalone 可用 shared.sqliteMigrate.ensureColumnWithFk 访问
+export * as sqliteMigrate from "./sqlite-migrate.ts";
 export * from "./drizzle/schema.ts";
 export * from "./env.ts";
 export * from "./domain/index.ts";

@@ -13,7 +13,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 let tmp: string;
 let db: typeof import("./db.ts")["db"];
@@ -45,6 +45,8 @@ beforeAll(async () => {
     },
     { id: "t2", projectId: "p1", name: "other run", timestamp: now, tags: ["prod"] },
     { id: "t3", projectId: "p1", name: "third", timestamp: now, tags: [] },
+    // t4：name 含字面量 '%'，用于验证 LIKE 通配符转义
+    { id: "t4", projectId: "p1", name: "progress 50% done", timestamp: now, tags: [] },
   ]);
   await db.insert(s.observation).values([
     { id: "o1", traceId: "t1", projectId: "p1", type: "LLM", startTime: now, endTime: new Date(now.getTime() + 1200), model: "GPT-4o", totalCost: 0.0125, output: { text: "hi" } },
@@ -93,6 +95,26 @@ describe("textSearch（替代 ILIKE）", () => {
       .where(dialect.textSearch(s.trace.name, "nonexistent"));
     expect(rows).toEqual([]);
   });
+
+  it("LIKE 通配符被转义：'_' 不再命中全表", async () => {
+    // 修复前 "%%_%%" 会被 SQLite 当通配符，命中所有非空 name
+    const rows = await db.select({ id: s.trace.id }).from(s.trace)
+      .where(dialect.textSearch(s.trace.name, "_"));
+    expect(rows).toEqual([]);
+  });
+
+  it("LIKE 通配符被转义：'%' 按字面量匹配", async () => {
+    // 只有 t4 的 name 含字面量 '%'（"progress 50% done"）
+    const rows = await db.select({ id: s.trace.id }).from(s.trace)
+      .where(dialect.textSearch(s.trace.name, "%"));
+    expect(rows.map((r) => r.id)).toEqual(["t4"]);
+  });
+
+  it("转义符自身可被搜索", async () => {
+    const rows = await db.select({ id: s.trace.id }).from(s.trace)
+      .where(dialect.textSearch(s.trace.name, "\\"));
+    expect(rows).toEqual([]);
+  });
 });
 
 describe("hasTags（替代 @> ARRAY）", () => {
@@ -124,6 +146,21 @@ describe("hasTags（替代 @> ARRAY）", () => {
     const rows = await db.select({ id: s.trace.id }).from(s.trace)
       .where(dialect.hasTags(s.trace.tags, ["prod"]));
     expect(rows.map((r) => r.id)).not.toContain("t3");
+  });
+
+  it("非法 JSON 的脏数据不致错，且被判为不含标签", async () => {
+    // 模拟手工改库 / 早期版本遗留的脏数据：tags 不是合法 JSON 数组。
+    // 修复前 json_each 会抛 "malformed JSON" 使整个查询失败（列表页 500）；
+    // 修复后应正常返回且不含该行。测后立即清理，避免污染其他用例。
+    await db.run(sql`INSERT INTO trace (id, projectId, name, timestamp, tags) VALUES ('dirty1', 'p1', 'dirty', 0, 'not-json')`);
+    try {
+      const rows = await db.select({ id: s.trace.id }).from(s.trace)
+        .where(dialect.hasTags(s.trace.tags, ["prod"]));
+      expect(rows.map((r) => r.id).sort()).toEqual(["t1", "t2"]);
+      expect(rows.map((r) => r.id)).not.toContain("dirty1");
+    } finally {
+      await db.run(sql`DELETE FROM trace WHERE id = 'dirty1'`);
+    }
   });
 });
 

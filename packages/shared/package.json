@@ -21,6 +21,10 @@
       "types": "./dist/db.d.ts",
       "default": "./dist/db.js"
     },
+    "./sqlite-migrate": {
+      "types": "./dist/sqlite-migrate.d.ts",
+      "default": "./dist/sqlite-migrate.js"
+    },
     "./env": {
       "types": "./dist/env.d.ts",
       "default": "./dist/env.js"

@@ -121,18 +121,148 @@ function setupEnvironment(): void {
 type SqliteDb = SqliteHandle;
 
 /**
- * 增量补列（SQLite 不支持 ADD COLUMN IF NOT EXISTS，用 PRAGMA table_info 判断）。
- * 对应原 Postgres schema.sql 末尾的 ALTER TABLE ... ADD COLUMN IF NOT EXISTS。
+ * 检测「旧版 PGlite 数据 + 新版 SQLite 库」并存的情况。
+ *
+ * 引擎切换（PGlite → SQLite）改变了落盘布局：
+ *   - 旧版：DATA_DIR/pglite/pgdata/（PGlite 目录结构）
+ *   - 新版：DATA_DIR/machora.db
+ *
+ * 若不检测，老用户升级后会在同目录建一个**全新的空 machora.db**，
+ * 历史 trace/observation 全部读不到（其实还在旧目录，但不会被读取），
+ * 且不会报任何错 —— 属于最危险的静默失效。这里明确中止启动并给出指引。
  */
-function ensureColumn(db: SqliteDb, table: string, column: string, ddl: string): void {
-  const exists = (db.prepare(`PRAGMA table_info("${table}")`).all() as { name: string }[])
-    .some((c) => c.name === column);
-  if (exists) return;
-  db.exec(`ALTER TABLE "${table}" ADD COLUMN ${ddl}`);
-  console.log(`[Schema] 补列 ${table}.${column}`);
+function assertNoLegacyPgliteData(): void {
+  const dataDir = resolve(process.cwd(), DATA_DIR);
+  const pgliteDir = resolve(dataDir, "pglite");
+  const sqliteFile = resolve(dataDir, "machora.db");
+
+  if (!existsSync(pgliteDir)) return;
+  if (existsSync(sqliteFile)) return; // 已迁移或已在用 SQLite，不打扰
+
+  console.error(
+    [
+      "",
+      "=".repeat(64),
+      "[迁移阻断] 检测到旧版 PGlite 数据目录，但尚无 SQLite 数据库：",
+      `  PGlite 数据: ${pgliteDir}`,
+      `  SQLite 库:   ${sqliteFile}（不存在）`,
+      "",
+      "本版本已将存储引擎由 PGlite（进程内 Postgres）切换为 SQLite，",
+      "两种格式不兼容，无法自动迁移。若直接启动将创建一个空库，",
+      "历史数据虽仍在旧目录中，但不会被读取。",
+      "",
+      "请按以下方式之一处理：",
+      "  1) 保留旧数据：先把旧目录改名备份，再启动新版本（历史数据不会出现在新库中）",
+      `     mv "${pgliteDir}" "${pgliteDir}.bak"`,
+      "  2) 无需旧数据：确认后删除旧目录再启动",
+      `     rm -rf "${pgliteDir}"`,
+      "  3) 如需把历史数据导入新库，请先用旧版本导出，再通过 ingestion API 重新写入",
+      "=".repeat(64),
+      "",
+    ].join("\n"),
+  );
+  process.exit(1);
 }
 
-function applySchemaSql(db: SqliteDb): void {
+/**
+ * 检测「旧版 SQLite schema」的库并提供明确处理指引。
+ *
+ * 背景：本项目在 SQLite 时代改过一次列语义 ——
+ *   - 旧版 Trace 的时间列叫 `createdAt`
+ *   - 新版改名为 `timestamp`（并加了 `Trace_projectId_timestamp_idx`）
+ *
+ * 这类列**改名**无法自动迁移：SQLite 没有「重命名列并保证语义一致」的安全路径，
+ * 而 schema.sql 的 CREATE TABLE IF NOT EXISTS 不会改动已存在的旧表。结果是：
+ *   - 启动本身能走通（缺列的索引已被容错跳过）
+ *   - 但所有读取 trace 的页面/API 都会 500（查询层按新列名 `timestamp` 取数）
+ *
+ * 这种「起得来、但用不了」的状态对用户最不友好，因此显式中止启动并给出指引。
+ * 与 assertNoLegacyPgliteData 保持一致的处置风格：宁可明确报错，不要静默半可用。
+ */
+function assertNoLegacySqliteSchema(
+  db: SqliteDb,
+  migrate: typeof import("@machora/shared/sqlite-migrate"),
+): void {
+  const issues = migrate.detectLegacySchema(db);
+  if (issues.length === 0) return;
+
+  const dataDir = resolve(process.cwd(), DATA_DIR);
+  const sqliteFile = resolve(dataDir, "machora.db");
+
+  const lines: string[] = [
+    "",
+    "=".repeat(64),
+    "[迁移阻断] 检测到旧版 SQLite 库结构，无法安全自动迁移：",
+    `  SQLite 库: ${sqliteFile}`,
+    "",
+  ];
+  for (const it of issues) {
+    const rows = db.prepare(`SELECT COUNT(*) c FROM "${it.table}"`).get() as { c: number };
+    lines.push(
+      `  表 ${it.table}：旧列 "${it.legacyColumn}" 已改名为 "${it.expectedColumn}"（现有 ${rows.c} 行）`,
+    );
+  }
+  lines.push(
+    "",
+    "该结构无法安全自动迁移。若强行启动，进程虽能起来，",
+    "但所有 trace 相关页面与 API 都会返回 500（查询层按新列名取数）。",
+    "",
+    "请按以下方式之一处理：",
+    "  1) 保留旧数据：先把旧库改名备份，再启动新版本（历史数据不会出现在新库中）",
+    `     mv "${sqliteFile}" "${sqliteFile}.bak"`,
+    "  2) 无需旧数据：确认后删除旧库再启动",
+    `     rm -f "${sqliteFile}" "${sqliteFile}-wal" "${sqliteFile}-shm"`,
+    "  3) 如需保留历史数据：请用旧版本启动并导出",
+    "     （Web UI 的“导出”或 /api/export/traces、/api/export/generations），",
+    "     再用新版本通过 /api/public/ingestion 重新写入。",
+    "=".repeat(64),
+    "",
+  );
+  console.error(lines.join("\n"));
+  process.exit(1);
+}
+
+/** 与 schema.sql 完全一致的 Evaluation 建表 DDL（用于存量库重建以补 datasetItemId 外键） */
+const EVALUATION_DDL = `CREATE TABLE "Evaluation" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "projectId" TEXT NOT NULL,
+    "traceId" TEXT REFERENCES "Trace"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    "datasetItemId" TEXT REFERENCES "DatasetItem"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    "name" TEXT NOT NULL,
+    "evaluatorType" TEXT NOT NULL,
+    "config" TEXT,
+    "status" TEXT NOT NULL DEFAULT 'PENDING',
+    "mode" TEXT NOT NULL DEFAULT 'EXPERIMENT',
+    "error" TEXT,
+    "result" TEXT,
+    "createdAt" INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+    "updatedAt" INTEGER NOT NULL
+)`;
+
+/** Evaluation 表在 schema.sql 中定义的索引（重建后需恢复） */
+const EVALUATION_INDEXES = [
+  {
+    name: "Evaluation_projectId_createdAt_idx",
+    ddl: `CREATE INDEX IF NOT EXISTS "Evaluation_projectId_createdAt_idx" ON "Evaluation"("projectId", "createdAt")`,
+  },
+  {
+    name: "Evaluation_traceId_idx",
+    ddl: `CREATE INDEX IF NOT EXISTS "Evaluation_traceId_idx" ON "Evaluation"("traceId")`,
+  },
+  {
+    name: "Evaluation_status_idx",
+    ddl: `CREATE INDEX IF NOT EXISTS "Evaluation_status_idx" ON "Evaluation"("status")`,
+  },
+  {
+    name: "Evaluation_datasetItemId_idx",
+    ddl: `CREATE INDEX IF NOT EXISTS "Evaluation_datasetItemId_idx" ON "Evaluation"("datasetItemId")`,
+  },
+];
+
+function applySchemaSql(
+  db: SqliteDb,
+  migrate: typeof import("@machora/shared/sqlite-migrate"),
+): void {
   const root = resolve(import.meta.dirname, "..", "..");
   const sqlPath = resolve(root, "packages", "shared", "sql", "schema.sql");
   if (!existsSync(sqlPath)) {
@@ -142,12 +272,53 @@ function applySchemaSql(db: SqliteDb): void {
   }
 
   console.log("[Schema] 执行 schema.sql 幂等建表...");
-  db.exec(readFileSync(sqlPath, "utf8"));
+  // 旧版 SQLite 结构（Trace 时间列名为 createdAt）无法安全自动迁移，
+  // 起得来但所有 trace 读路径都会 500 —— 在任何 DDL 之前先明确阻断。
+  assertNoLegacySqliteSchema(db, migrate);
+  // 逐条容错执行：schema.sql 里的 CREATE INDEX IF NOT EXISTS 只按索引名去重，
+  // 不校验被索引的列是否存在。旧版本建库的用户（列名/列集更旧）会因为
+  // 某条索引引用了缺失列而整文件执行失败，导致启动崩溃。
+  // 这里改为先跳过这类索引，等下面的补列/表重建跑完再重试一次。
+  const sqlText = readFileSync(sqlPath, "utf8");
+  const first = migrate.applySchemaSql(db, sqlText);
+  for (const s of first.skipped) {
+    console.warn(
+      `[Schema] 暂缓索引（列缺失，待补列后重试）: ${s.statement.replace(/\s+/g, " ")} — 缺 ${s.missing.join(", ")}`,
+    );
+  }
 
   // 存量库补列（新建库时这些列已在 CREATE TABLE 中，此处为 no-op）
-  ensureColumn(db, "EvaluationConfig", "autoRun", `"autoRun" INTEGER NOT NULL DEFAULT 0`);
-  ensureColumn(db, "Evaluation", "mode", `"mode" TEXT NOT NULL DEFAULT 'EXPERIMENT'`);
-  ensureColumn(db, "Evaluation", "datasetItemId", `"datasetItemId" TEXT`);
+  // 无外键的列走轻量 ADD COLUMN
+  if (migrate.ensureColumn(db, "EvaluationConfig", "autoRun", `"autoRun" INTEGER NOT NULL DEFAULT 0`)) {
+    console.log("[Schema] 补列 EvaluationConfig.autoRun");
+  }
+  if (migrate.ensureColumn(db, "Evaluation", "mode", `"mode" TEXT NOT NULL DEFAULT 'EXPERIMENT'`)) {
+    console.log("[Schema] 补列 Evaluation.mode");
+  }
+  // datasetItemId 带 REFERENCES，必须走表重建 ——
+  // ALTER TABLE ADD COLUMN 无法附加外键，补出来的是裸列，
+  // 会导致删除 DatasetItem 后关联 Evaluation 成为孤儿残留
+  if (
+    migrate.ensureColumnWithFk(db, "Evaluation", "datasetItemId", {
+      targetDdl: EVALUATION_DDL,
+      indexes: EVALUATION_INDEXES,
+    })
+  ) {
+    console.log(
+      `[Schema] 重建表 Evaluation 以补齐带外键的列 datasetItemId（已恢复 ${EVALUATION_INDEXES.length} 个索引）`,
+    );
+  }
+
+  // 补列后再跑一次 schema.sql，把第一轮跳过的索引补建回来（已是幂等 + 容错）
+  const second = migrate.applySchemaSql(db, sqlText);
+  if (second.applied > 0) {
+    console.log(`[Schema] 二次同步完成（应用 ${second.applied} 条语句）`);
+  }
+  for (const s of second.skipped) {
+    console.warn(
+      `[Schema] 索引仍被跳过（列缺失）: ${s.statement.replace(/\s+/g, " ")} — 缺 ${s.missing.join(", ")}`,
+    );
+  }
 
   console.log("[Schema] 完成");
 }
@@ -359,11 +530,15 @@ async function main() {
     collectSystemMetrics: shared.collectSystemMetrics,
   };
 
+  // 先拦截「旧 PGlite 数据 + 无 SQLite 库」的升级场景 ——
+  // 必须在 getSqliteHandle() 建库之前判断，否则空库已被创建、条件失效
+  assertNoLegacyPgliteData();
+
   // SQLite 句柄由 @machora/shared 的 db 单例惰性创建（DATA_DIR/machora.db）
   const sqlite = shared.getSqliteHandle();
   console.log(`[SQLite] 已就绪: ${shared.getDbPath()}`);
 
-  applySchemaSql(sqlite);
+  applySchemaSql(sqlite, shared.sqliteMigrate);
   await seedStandaloneData();
 
   // 自观测：确保 system 项目存在并启动周期落库（60s），队列/请求指标由此采集；

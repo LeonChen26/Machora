@@ -30,7 +30,7 @@ import {
   writeFileSync,
   readFileSync,
 } from "node:fs";
-import { resolve } from "node:path";
+import { resolve, sep } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
 const argVersion = process.argv.find((a) => a.startsWith("--version="));
@@ -69,7 +69,7 @@ function rmForce(p) {
   } catch (e) {
     // 偶发失败（如目标已被并发删除）通常可忽略，但记录路径与错误，
     // 避免权限/占用类真实问题被静默掩盖
-    console.warn(`[release] rmForce 删除失败（后续组装会覆盖）: ${p}`, (e as Error)?.message ?? e);
+    console.warn(`[release] rmForce 删除失败（后续组装会覆盖）: ${p}`, e?.message ?? e);
   }
 }
 
@@ -126,12 +126,47 @@ copy("web/next-env.d.ts", "web/next-env.d.ts");
 copy("web/public", "web/public");
 // web/.next：production next({ dev: false }) 依赖；filter 排除 .next/dev
 // （dev 模式构建缓存，可达数百 MB，曾因 rmSync 在 Windows 上未删净导致发布包暴涨到 261MB）
+//
+// .next/node_modules 必须打进去：Next.js 把 external 化的原生模块（better-sqlite3）
+// 以「内容哈希别名」链接在此（better-sqlite3-<hash> → .pnpm 真实目录），
+// 服务端 chunk 通过该别名 require，缺了会报
+// "Failed to load external module better-sqlite3-<hash>"。
+// 但它是 pnpm 符号链接/junction，直接 cpSync 会尝试解引用 →
+// 在 Windows 上目标解析失败会抛 ENOENT 中断整个打包。
+// 故先单独 rm 掉，再用 dereference:true 拷贝成真实目录（且去掉原哈希名，
+// 改为 better-sqlite3，同时保证下一段 node_modules 裁剪逻辑能正常处理）。
 const webNextSrc = resolve(root, "web", ".next");
 if (existsSync(webNextSrc)) {
   cpSync(webNextSrc, resolve(staging, "web", ".next"), {
     recursive: true,
-    filter: (src) => !src.startsWith(resolve(webNextSrc, "dev")),
+    filter: (src) => {
+      if (src.startsWith(resolve(webNextSrc, "dev"))) return false;
+      // 先跳过 .next/node_modules，稍后单独解引用拷贝
+      const nm = resolve(webNextSrc, "node_modules");
+      if (src === nm || src.startsWith(nm + sep)) return false;
+      return true;
+    },
   });
+
+  // 单独把 .next/node_modules 解引用成真实目录（内含 better-sqlite3-<hash>）
+  const srcNm = resolve(webNextSrc, "node_modules");
+  if (existsSync(srcNm)) {
+    const destNm = resolve(staging, "web", ".next", "node_modules");
+    for (const entry of readdirSync(srcNm)) {
+      const src = resolve(srcNm, entry);
+      const dest = resolve(destNm, entry);
+      try {
+        cpSync(src, dest, { recursive: true, dereference: true });
+        console.log(`[release] .next 外部模块已固化: ${entry}`);
+      } catch (e) {
+        // 解引用失败不致命：根 node_modules 里已有 better-sqlite3 真实副本，
+        // 记录后继续，避免因单个可选外部模块中断整个打包。
+        console.warn(
+          `[release] .next 外部模块固化失败（将从根 node_modules 解析）: ${entry} — ${e?.message ?? e}`,
+        );
+      }
+    }
+  }
 }
 rmForce(resolve(staging, "web", ".next", "dev"));
 
@@ -337,9 +372,9 @@ console.log(`  大小  : ${(statSync(zipPath).size / 1024 / 1024).toFixed(1)} MB
 console.log(`  形态  : ${withDeps ? "完整包（含 node_modules，解压即用）" : "轻量包（目标机需 pnpm install）"}`);
 console.log(`  平台  : ${process.platform} ${process.arch}（完整包仅同平台可用）`);
 console.log("");
-console.log("关键特性（Drizzle 版）：");
-console.log("  ✓ 运行时零 Prisma CLI / engines（drizzle-orm + pg 纯 JS）");
-console.log("  ✓ schema.sql 幂等建表，启动直接 exec");
+console.log("关键特性（SQLite 版）：");
+console.log("  ✓ 运行时零 ORM CLI / engines（drizzle-orm + better-sqlite3，嵌入式无外部服务）");
+console.log("  ✓ schema.sql 幂等建表，启动直接 exec；存量库自动补列/重建并容错跳过缺列索引");
 console.log("");
 console.log("发布指引：");
 if (withDeps) {

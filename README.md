@@ -25,12 +25,21 @@
 
 要求：Node.js 与 pnpm workspace（根 `package.json` 的 `devEngines` 指定 pnpm 11.10.0；npm registry 走 npmmirror，见 `.npmrc`）
 
+> **Node 版本**：要求 `>=20 <27`（见根 `package.json` 的 `engines`）。存储层用 `better-sqlite3`
+> 原生模块，其预编译二进制**与 Node 大版本的 ABI 强绑定**。用 A 版本 Node 安装、换 B 版本 Node
+> 运行会直接报 `NODE_MODULE_VERSION` 不匹配（`ERR_DLOPEN_FAILED`）。切换 Node 版本后请重跑
+> `pnpm install`（或 `pnpm rebuild better-sqlite3`）。
+
 > 安装说明：`better-sqlite3` 需预编译二进制。若无法直连 GitHub Releases，请先设置镜像环境变量再安装：
 > ```powershell
 > $env:npm_config_better_sqlite3_binary_host_mirror="https://registry.npmmirror.com/-/binary/better-sqlite3"
 > pnpm install
 > ```
 > （`.npmrc` 中已写入同名配置，但 pnpm 不会将其透传给生命周期脚本，故仍需环境变量。）
+
+> **从旧版本升级（PGlite → SQLite）**：本版本存储引擎已切换为 SQLite，**两种数据格式不兼容**。
+> 若 `DATA_DIR` 下存在旧版 `pglite/` 目录而尚无 `machora.db`，启动会**明确报错并中止**（避免静默建空库）。
+> 按提示备份或删除旧目录后再启动。
 
 ```bash
 pnpm install
