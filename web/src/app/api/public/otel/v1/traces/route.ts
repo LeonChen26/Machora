@@ -3,12 +3,15 @@ import {
   decodeOtelTraceRequest,
   OtelDecodeError,
   selfMetrics,
+  queueBus,
+  QUEUES,
 } from "@machora/shared";
 
 // OTLP HTTP traces 注入端点
 // 支持 JSON / protobuf，以及 gzip / deflate / br 压缩
 // LangChain / LangGraph / LlamaIndex 等框架通过
 // OTEL_EXPORTER_OTLP_TRACES_ENDPOINT 指向本端点
+// 这是唯一的写入通道：落库成功后触发在线自动评估（QUEUES.ingestion）
 export async function POST(req: Request) {
   let body;
   try {
@@ -24,6 +27,13 @@ export async function POST(req: Request) {
   }
 
   const result = await processOtelTraces(body);
+
+  // 写入后触发在线自动评估：对 autoRun 的评估配置按 trace 逐条创建任务
+  // （非阻塞：queueBus 内部 setImmediate 投递）
+  for (const traceId of result.traceIds) {
+    queueBus.enqueue(QUEUES.ingestion, { traceId });
+  }
+
   selfMetrics.inc("machora.traces.requests", 1, { status: "ok" });
   return Response.json({
     success: true,

@@ -16,7 +16,6 @@
 #   GET  /api/public/scores?limit
 #   GET  /api/public/evaluations?limit
 #   GET  /api/public/evaluations/{id}
-#   POST /api/public/ingestion
 #   POST /api/public/otel/v1/traces   (OTLP JSON)
 #   POST /api/public/otel/v1/metrics  (OTLP JSON)
 #   POST /api/public/scores           (annotation)
@@ -71,9 +70,11 @@ Write-Host "  Machora API 验证  BaseUrl=$BaseUrl"
 Write-Host "======================================================"
 
 $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
-$traceId = "t-verify-$stamp"
-$obsId = "o-verify-$stamp"
-$now = [DateTime]::UtcNow.ToString("o")
+# 主键取自 OTLP 通道：processor 直接用 OTLP traceId / spanId 作 trace.id / observation.id
+# （见 packages/shared/src/otel/processor.ts 的 TraceRecord.id / ObservationRecord.id）
+# 下方 B1 的 OTLP 请求即用这两个值，C/D/E 段据此读回与关联评分/评估。
+$traceId = "0000000000000000000000000000000$stamp"
+$obsId = "0000000000000001"
 $nowNano = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds().ToString() + "000000"
 
 # ============================================================================
@@ -96,22 +97,10 @@ $r = Invoke-Api -Method GET -Path "/api/public/evaluations?limit=5"
 Check "evaluations list 200" ($r.Status -eq 200) "status=$($r.Status)"
 
 # ============================================================================
-Write-Step "B. 注入 API（ingestion + OTLP traces + OTLP metrics）"
+Write-Step "B. 注入 API（OTLP traces + OTLP metrics）"
 # ============================================================================
 
-# B1. /api/public/ingestion —— trace + observation + score 批量
-$ingBody = @{
-  batch = @(
-    @{ type = "trace-create"; body = @{ id = $traceId; name = "verify-ingestion"; timestamp = $now; environment = "verify"; input = "hello"; output = "world"; tags = @("verify") } },
-    @{ type = "observation-create"; body = @{ id = $obsId; traceId = $traceId; type = "LLM"; name = "llm-call"; startTime = $now; endTime = $now; model = "gpt-4o-mini"; input = "hi"; output = "bye"; level = "DEFAULT"; usage = @{ promptTokens = 10; completionTokens = 5 } } },
-    @{ type = "score-create"; body = @{ traceId = $traceId; name = "verify-score"; value = 0.9; dataType = "NUMERIC" } }
-  )
-} | ConvertTo-Json -Depth 10
-$r = Invoke-Api -Method POST -Path "/api/public/ingestion" -Body $ingBody
-$ok = $r.Status -eq 200 -and $r.Body -match '"success":true' -and $r.Body -match '"received":3'
-Check "ingestion 批量写入 200" $ok "status=$($r.Status) body=$($r.Body)"
-
-# B2. /api/public/otel/v1/traces —— OTLP JSON 通道
+# B1. /api/public/otel/v1/traces —— OTLP JSON 通道
 $otelTraceBody = @{
   resourceSpans = @(
     @{
@@ -121,8 +110,8 @@ $otelTraceBody = @{
           scope = @{}
           spans = @(
             @{
-              traceId = "0000000000000000000000000000000$stamp"
-              spanId = "0000000000000001"
+              traceId = $traceId
+              spanId = $obsId
               parentSpanId = ""
               name = "verify-otel-span"
               kind = 2
@@ -140,7 +129,7 @@ $r = Invoke-Api -Method POST -Path "/api/public/otel/v1/traces" -Body $otelTrace
 $ok = $r.Status -eq 200 -and $r.Body -match '"success":true' -and $r.Body -match '"traces":1'
 Check "OTLP traces 注入 200" $ok "status=$($r.Status) body=$($r.Body)"
 
-# B3. /api/public/otel/v1/metrics —— OTLP JSON gauge
+# B2. /api/public/otel/v1/metrics —— OTLP JSON gauge
 $otelMetricBody = @{
   resourceMetrics = @(
     @{
@@ -168,13 +157,10 @@ Write-Step "C. 详情查询（读回刚写入的数据）"
 # ============================================================================
 
 $r = Invoke-Api -Method GET -Path "/api/public/traces/$traceId"
-Check "traces/{id} 200 且 name 匹配" ($r.Status -eq 200 -and $r.Body -match "verify-ingestion") "status=$($r.Status)"
+Check "traces/{id} 200 且 name 匹配" ($r.Status -eq 200 -and $r.Body -match "verify-otel-span") "status=$($r.Status)"
 
 $r = Invoke-Api -Method GET -Path "/api/public/observations/$obsId"
 Check "observations/{id} 200" ($r.Status -eq 200) "status=$($r.Status)"
-
-$r = Invoke-Api -Method GET -Path "/api/public/scores?traceId=$traceId"
-Check "scores?traceId 过滤" ($r.Status -eq 200 -and $r.Body -match '"totalCount":[1-9]') "status=$($r.Status) body=$($r.Body)"
 
 $r = Invoke-Api -Method GET -Path "/api/public/traces?name=verify-otel-span"
 Check "traces?name 过滤（OTLP 链路）" ($r.Status -eq 200 -and $r.Body -match "verify-otel") "status=$($r.Status)"
@@ -187,6 +173,10 @@ Write-Step "D. 标注 + 评估（public scores POST / evaluations POST）"
 $scoreBody = @{ traceId = $traceId; name = "verify-annotation"; value = 1; dataType = "BOOLEAN"; comment = "verify" } | ConvertTo-Json
 $r = Invoke-Api -Method POST -Path "/api/public/scores" -Body $scoreBody
 Check "public scores POST 201" ($r.Status -eq 201) "status=$($r.Status) body=$($r.Body)"
+
+# 评分写回后，按 traceId 过滤应能查到（原先依赖已移除的 ingestion 预置评分）
+$r = Invoke-Api -Method GET -Path "/api/public/scores?traceId=$traceId"
+Check "scores?traceId 过滤" ($r.Status -eq 200 -and $r.Body -match '"totalCount":[1-9]') "status=$($r.Status) body=$($r.Body)"
 
 # D2. POST /api/public/evaluations —— 异步评估任务（内置 error 评估器）
 $evalBody = @{ traceId = $traceId; name = "verify-eval"; evaluatorType = "error" } | ConvertTo-Json
@@ -222,9 +212,6 @@ Write-Step "F. 负向用例"
 
 $r = Invoke-Api -Method GET -Path "/api/public/traces/not-exist-id"
 Check "不存在 trace → 404" ($r.Status -eq 404) "status=$($r.Status)"
-
-$r = Invoke-Api -Method POST -Path "/api/public/ingestion" -Body '{"foo":"bar"}'
-Check "坏 ingestion payload → 400" ($r.Status -eq 400) "status=$($r.Status)"
 
 $r = Invoke-Api -Method POST -Path "/api/public/otel/v1/traces" -Body '{'
 Check "坏 OTLP JSON → 400" ($r.Status -eq 400) "status=$($r.Status)"

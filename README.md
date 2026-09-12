@@ -18,8 +18,7 @@
 - **Agents / Models 双实体视图**：`/agents`、`/models` 目录页（KPI 卡 + 环比 + 趋势 sparkline + 异常标记），详情页含指标卡、可切每日趋势、版本/工具/模型分布（Agent）、按 Agent 分布与调用明细（Model）、关联会话与评分汇总；对象间可互跳
 - **统一异常信号**：阈值集中在 `web/src/server/signals.ts`，覆盖指标信号（成本↑ / 错误率↑ / P95↑）与轨迹信号（重复调用 / 疑似无效循环 / 长任务），在 Overview「待关注」、目录「标记」列、Analytics 异常卡、Traces「信号」列与 Trace 详情信号条统一呈现；指标口径约定见 [OBSERVABILITY.md](OBSERVABILITY.md)
 - **OTLP 接入**：`POST /api/public/otel/v1/traces` 接收 OpenTelemetry 数据（JSON + protobuf 双通道），任意 OTLP exporter 可直接上报（示例见 `scripts/connect-openclaw.sh`、`sdk/python/examples/langgraph_demo.py`）
-- **批量注入 API**：`POST /api/public/ingestion`，单批 ≤1000 条、按收到顺序写入（同一批先建 trace 再挂 observation，满足外键依赖）；支持 `parentObservationId` 构建嵌套调用树
-- **Python SDK**（`sdk/python`，包名 `machora-sdk`）：原生注入客户端 + LangChain 回调（`MachoraCallbackHandler`）
+- **Python SDK**（`sdk/python`，包名 `machora-sdk`）：OTel 探针 —— LangChain 回调（`MachoraOtelCallbackHandler`）与 LangGraph 图级探针（`MachoraOtelGraphProbe`），直接输出 `machora.*` 语义
 - **Web UI**：侧边栏分「观测 / 质量 / 平台」三组——观测（Overview / Traces / Sessions / Agents / Models / Analytics：总览 / Agent 拓扑 / Generations）、质量（Scores / Evaluations）、平台（System / Docs）；三态主题（亮色 / 暗色 / 跟随系统）、异常行高亮、SVG 导航图标、统一过滤表单、CSV 导出、docs 目录滚动高亮、图表 hover 数值浮层；依赖拓扑为 Agent → Tool → Model 三层 SVG，节点按五色语义着色
 
 ## 快速开始

@@ -34,7 +34,7 @@ function createDb(): MachoraDb {
   // 必须显式开启：否则 schema 中 8 个 ON DELETE CASCADE 会静默失效，
   // 删除 Project 后会残留孤儿 Trace/Observation/Score
   sqlite.pragma("foreign_keys = ON");
-  // 并发写入排队等待而非立即抛 SQLITE_BUSY（ingestion 批量写入场景）
+  // 并发写入排队等待而非立即抛 SQLITE_BUSY（批量写入场景）
   sqlite.pragma("busy_timeout = 5000");
 
   globalThis.__machoraSqlite = sqlite;

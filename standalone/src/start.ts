@@ -241,7 +241,7 @@ async function main() {
   console.log("\n" + "=".repeat(60));
   console.log("  Machora 已启动！");
   console.log(`  Web UI:  http://localhost:${WEB_PORT}`);
-  console.log(`  API:     http://localhost:${WEB_PORT}/api/public/ingestion`);
+  console.log(`  Ingest:  http://localhost:${WEB_PORT}/api/public/otel/v1/traces`);
   console.log(`  Health:  http://localhost:${WEB_PORT}/api/public/health`);
   console.log("=".repeat(60));
 

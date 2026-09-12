@@ -357,6 +357,11 @@ function firstDefinedByAttr(
 export interface OtelProcessResult {
   traces: number;
   observations: number;
+  /**
+   * 本批成功落库的 trace id（含 upsert 更新）。
+   * 供接入层在写入后触发在线自动评估（见 worker 的 QUEUES.ingestion 消费者）。
+   */
+  traceIds: string[];
   errors: { id: string; message: string }[];
 }
 
@@ -365,6 +370,7 @@ export async function persistOtelRecords(
   observations: ObservationRecord[],
 ): Promise<OtelProcessResult> {
   const errors: { id: string; message: string }[] = [];
+  const traceIds: string[] = [];
 
   // Prisma.JsonNull 的 drizzle 等价：JSON 字段为 null 时写 SQL NULL（读取语义一致）
   const jsonOrNull = (v: unknown) =>
@@ -424,6 +430,7 @@ export async function persistOtelRecords(
             },
           })
           .run();
+        traceIds.push(t.id);
       } catch (e) {
         errors.push({ id: t.id, message: (e as Error).message });
       }
@@ -486,7 +493,7 @@ export async function persistOtelRecords(
     }
   });
 
-  return { traces: traces.length, observations: observations.length, errors };
+  return { traces: traces.length, observations: observations.length, traceIds, errors };
 }
 
 /** 端到端入口：解析 + 落库 */

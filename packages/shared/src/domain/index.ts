@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 // 参考 Langfuse packages/shared/src/domain/traces.ts
-// 宽事件契约：注入 API 和 tRPC 共用
+// 领域创建契约：供评分等内部 API 复用（trace / observation 经 OTLP 通道接入，不走此契约）
 
 export const jsonSchema = z.any();
 
@@ -94,21 +94,3 @@ export const ScoreCreateSchema = z.object({
 });
 
 export type ScoreCreate = z.infer<typeof ScoreCreateSchema>;
-
-// ---------------------------------------------------------------------------
-// 批量注入
-// ---------------------------------------------------------------------------
-
-export const IngestionEventSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("trace-create"), body: TraceCreateSchema }),
-  z.object({ type: z.literal("observation-create"), body: ObservationCreateSchema }),
-  z.object({ type: z.literal("score-create"), body: ScoreCreateSchema }),
-]);
-
-export type IngestionEvent = z.infer<typeof IngestionEventSchema>;
-
-export const IngestionBatchSchema = z.object({
-  batch: z.array(IngestionEventSchema).max(1000),
-});
-
-export type IngestionBatch = z.infer<typeof IngestionBatchSchema>;

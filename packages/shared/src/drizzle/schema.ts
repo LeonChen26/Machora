@@ -177,7 +177,7 @@ export const evaluationConfig = sqliteTable(
     evaluatorType: text("evaluatorType").notNull(), // llm | error | latency ...
     config: text("config", { mode: "json" }), // 评估器参数（model/apiKey/systemPrompt 或阈值）
     enabled: integer("enabled", { mode: "boolean" }).notNull().default(true), // 可手动触发
-    autoRun: integer("autoRun", { mode: "boolean" }).notNull().default(false), // 在线自动评估（ingestion 后自动触发）
+    autoRun: integer("autoRun", { mode: "boolean" }).notNull().default(false), // 在线自动评估（trace 写入后自动触发）
     createdAt: ts("createdAt").notNull().default(sql`(unixepoch() * 1000)`),
     updatedAt: ts("updatedAt").notNull(),
   },

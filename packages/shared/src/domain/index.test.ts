@@ -3,7 +3,6 @@ import {
   TraceCreateSchema,
   ObservationCreateSchema,
   ScoreCreateSchema,
-  IngestionBatchSchema,
 } from "./index.ts";
 
 describe("TraceCreateSchema", () => {
@@ -93,56 +92,5 @@ describe("ScoreCreateSchema", () => {
       dataType: "BOOLEAN",
     });
     expect(v.id).toBeUndefined();
-  });
-});
-
-describe("IngestionBatchSchema", () => {
-  it("区分三种事件类型", () => {
-    const r = IngestionBatchSchema.safeParse({
-      batch: [
-        { type: "trace-create", body: { id: "t", timestamp: "2026-08-01T00:00:00Z" } },
-        {
-          type: "observation-create",
-          body: {
-            id: "o",
-            traceId: "t",
-            type: "LLM",
-            startTime: "2026-08-01T00:00:00Z",
-          },
-        },
-        { type: "score-create", body: { traceId: "t", name: "q", value: 0.9, dataType: "NUMERIC" } },
-      ],
-    });
-    expect(r.success).toBe(true);
-    if (r.success) {
-      expect(r.data.batch[0].type).toBe("trace-create");
-      expect(r.data.batch[1].type).toBe("observation-create");
-      expect(r.data.batch[2].type).toBe("score-create");
-      // 类型收窄后可读 source 默认值
-      if (r.data.batch[2].type === "score-create") {
-        expect(r.data.batch[2].body.source).toBe("API");
-      }
-    }
-  });
-
-  it("body 类型不匹配时拒绝", () => {
-    const r = IngestionBatchSchema.safeParse({
-      batch: [
-        {
-          type: "trace-create",
-          body: { type: "LLM" }, // trace body 缺 id/timestamp
-        },
-      ],
-    });
-    expect(r.success).toBe(false);
-  });
-
-  it("超过 1000 条拒绝", () => {
-    const batch = Array.from({ length: 1001 }, (_, i) => ({
-      type: "trace-create" as const,
-      body: { id: `t${i}`, timestamp: "2026-08-01T00:00:00Z" },
-    }));
-    const r = IngestionBatchSchema.safeParse({ batch });
-    expect(r.success).toBe(false);
   });
 });

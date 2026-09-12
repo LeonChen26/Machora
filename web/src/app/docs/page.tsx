@@ -9,7 +9,6 @@ const NAV_SECTIONS = [
     label: "API 参考",
     items: [
       { href: "#api-endpoint", label: "端点与上报" },
-      { href: "#api-ingestion", label: "批量注入" },
       { href: "#api-query", label: "查询与评估" },
       { href: "#api-endpoints", label: "其它端点" },
     ],
@@ -45,7 +44,7 @@ export default async function DocsPage() {
       <div className="page-head">
         <div>
           <h1>Docs</h1>
-          <div className="sub">推荐经 OTLP 通道接入各类 Agent / 框架（machora.* 原生语义或 OpenInference / gen_ai 兼容语义）；亦支持 REST API 注入 trace / observation / score</div>
+          <div className="sub">经 OTLP 通道接入各类 Agent / 框架（machora.* 原生语义或 OpenInference / gen_ai 兼容语义）；REST API 仅用于查询与评分</div>
         </div>
       </div>
 
@@ -64,7 +63,7 @@ export default async function DocsPage() {
             <div id="api-endpoint" className="docs-section">
               <div className="section-title">1.1 端点与上报</div>
               <div className="card docs-card">
-                <div className="label">OTLP 端点（推荐 · 零埋点接入）</div>
+                <div className="label">OTLP 端点（唯一写入通道 · 零埋点接入）</div>
                 <pre className="code">{`POST ${baseUrl}/api/public/otel/v1/traces    # trace / span（JSON / Protobuf）
 POST ${baseUrl}/api/public/otel/v1/metrics   # metrics（JSON / Protobuf）`}</pre>
                 <div className="muted">
@@ -72,119 +71,12 @@ POST ${baseUrl}/api/public/otel/v1/metrics   # metrics（JSON / Protobuf）`}</p
                   LangChain、JiuwenSwarm 等）直接指向该端点即可自动上报完整链路，零业务埋点。
                   详细接入见「二、接入指南」。
                 </div>
-                <div className="label">批量注入端点（REST API）</div>
-                <pre className="code">{`POST ${baseUrl}/api/public/ingestion`}</pre>
-              </div>
-            </div>
-
-            {/* ---------- 批量注入 ---------- */}
-            <div id="api-ingestion" className="docs-section">
-              <div className="section-title">1.2 批量注入</div>
-              <div className="card docs-card">
-                <pre className="code">{`{
-  "batch": [
-    {
-      "type": "trace-create" | "observation-create" | "score-create",
-      "body": { ... }
-    }
-  ]
-}`}</pre>
-                <div className="muted">
-                  batch 内事件按顺序处理（trace 须先于其 observation 创建，否则外键失败）。
-                </div>
-              </div>
-
-              <div className="table-wrap mb-2">
-                <table>
-                  <thead>
-                    <tr>
-                      <th scope="col">type</th>
-                      <th scope="col">关键字段</th>
-                      <th scope="col">说明</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td><span className="badge blue">trace-create</span></td>
-                      <td className="mono">id, name, timestamp</td>
-                      <td className="muted">创建一条 Trace，id 由客户端指定</td>
-                    </tr>
-                    <tr>
-                      <td><span className="badge purple">observation-create</span></td>
-                      <td className="mono">id, traceId, type, startTime</td>
-                      <td className="muted">type 与 span.kind 一致（ENTRY/AGENT/STEP/LLM/TOOL/EMBEDDING/CHAIN/RETRIEVER/RERANKER/EVENT/SPAN）</td>
-                    </tr>
-                    <tr>
-                      <td><span className="badge amber">score-create</span></td>
-                      <td className="mono">id, traceId, name, value, dataType, source</td>
-                      <td className="muted">dataType ∈ NUMERIC / BOOLEAN / CATEGORICAL</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="section-title" style={{ marginTop: "1.25rem" }}>完整示例</div>
-              <div className="card docs-card">
-                <pre className="code">{`curl -X POST ${baseUrl}/api/public/ingestion \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "batch": [
-      {
-        "type": "trace-create",
-        "body": {
-          "id": "trace-1",
-          "name": "chat-session",
-          "timestamp": "${new Date().toISOString()}",
-          "userId": "user-42",
-          "metadata": {"channel": "web"}
-        }
-      },
-      {
-        "type": "observation-create",
-        "body": {
-          "id": "obs-1",
-          "traceId": "trace-1",
-          "type": "LLM",
-          "name": "llm-call",
-          "startTime": "${new Date().toISOString()}",
-          "model": "gpt-4o-mini",
-          "input": [{"role": "user", "content": "你好"}],
-          "output": [{"role": "assistant", "content": "你好！有什么可以帮你？"}]
-        }
-      },
-      {
-        "type": "score-create",
-        "body": {
-          "id": "score-1",
-          "traceId": "trace-1",
-          "name": "helpfulness",
-          "value": 0.95,
-          "dataType": "NUMERIC",
-          "source": "API",
-          "comment": "回答切题"
-        }
-      }
-    ]
-  }'`}</pre>
-              </div>
-
-              <div className="section-title" style={{ marginTop: "1.25rem" }}>响应</div>
-              <div className="card docs-card">
-                <pre className="code">{`// 成功
-{ "success": true, "received": 3 }
-
-// 部分失败（仍返回 200，逐条记录错误）
-{
-  "success": true,
-  "received": 3,
-  "errors": [{ "index": 1, "error": "Foreign key constraint violated" }]
-}`}</pre>
               </div>
             </div>
 
             {/* ---------- 查询与评估 ---------- */}
             <div id="api-query" className="docs-section">
-              <div className="section-title">1.3 查询与评估</div>
+              <div className="section-title">1.2 查询与评估</div>
               <div className="card docs-card">
                 <div className="muted">
                   查询 API 对齐 Langfuse 公开 API：列表返回{" "}
@@ -214,7 +106,7 @@ curl -X POST ${baseUrl}/api/public/evaluations \\
 
             {/* ---------- 其它端点 ---------- */}
             <div id="api-endpoints" className="docs-section">
-              <div className="section-title">1.4 其它端点一览</div>
+              <div className="section-title">1.3 其它端点一览</div>
               <div className="table-wrap">
                 <table>
                   <thead>
@@ -229,11 +121,6 @@ curl -X POST ${baseUrl}/api/public/evaluations \\
                       <td><span className="badge green">GET</span></td>
                       <td className="mono">/api/public/health</td>
                       <td className="muted">健康检查</td>
-                    </tr>
-                    <tr>
-                      <td><span className="badge blue">POST</span></td>
-                      <td className="mono">/api/public/ingestion</td>
-                      <td className="muted">批量注入</td>
                     </tr>
                     <tr>
                       <td><span className="badge blue">POST</span></td>
