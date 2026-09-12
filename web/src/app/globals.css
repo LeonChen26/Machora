@@ -743,6 +743,26 @@ pre.code .s {
   border-color: var(--accent);
 }
 
+/* 折叠式高级筛选 */
+.filter-advanced summary {
+  user-select: none;
+  list-style: none;
+}
+.filter-advanced summary::-webkit-details-marker {
+  display: none;
+}
+.filter-advanced summary::before {
+  content: "▸ ";
+  display: inline;
+  transition: transform 0.15s;
+}
+.filter-advanced[open] summary::before {
+  transform: rotate(90deg);
+}
+.cursor-pointer {
+  cursor: pointer;
+}
+
 /* ---------- P3: 通用工具类 ---------- */
 
 /* 全局表单元素（替代 6 套 inputStyle） */

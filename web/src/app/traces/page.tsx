@@ -172,6 +172,22 @@ export default async function TracesPage({
         .map((id) => byId.get(id))
         .filter((it): it is (typeof items)[number] => it != null)
     : items;
+  // 信号列：全量数据无信号时整列隐藏
+  const hasSignals = [...signalMap.values()].some(
+    (s) => s && (s.ineffectiveStreak > 0 || s.repeatStreak > 0 || s.longTask),
+  );
+  // 同名 trace 序号
+  const nameCount = new Map<string, number>();
+  for (const tr of shown) {
+    const n = tr.name ?? "";
+    nameCount.set(n, (nameCount.get(n) ?? 0) + 1);
+  }
+  const nameIndex = new Map<string, number>();
+  // 高级筛选数
+  const advancedCount =
+    [userId, sessionId, model, agent, tags.length > 0 ? "tags" : null, level, env]
+      .filter(Boolean).length;
+  const hasAdvancedFilters = advancedCount > 0;
   // 表头排序链接
   function sortHref(key: string): string {
     const nextDir =
@@ -309,66 +325,75 @@ export default async function TracesPage({
       </div>
 
       {/* 过滤表单（GET 提交，纯服务端） */}
-      <form className="card filter-bar mb-3">
-        <label>
-          <span>名称搜索</span>
-          <input name="q" defaultValue={q ?? ""} placeholder="trace 名称..." />
-        </label>
-        <label>
-          <span>用户</span>
-          <input name="user" defaultValue={userId ?? ""} placeholder="userId 模糊匹配..." />
-        </label>
-        <label>
-          <span>会话</span>
-          <input name="session" defaultValue={sessionId ?? ""} placeholder="sessionId 模糊匹配..." />
-        </label>
-        <label>
-          <span>模型</span>
-          <input name="model" defaultValue={model ?? ""} placeholder="模型名，如 deepseek" />
-        </label>
-        <label>
-          <span>Agent</span>
-          <input name="agent" defaultValue={agent ?? ""} placeholder="agentName 模糊匹配..." />
-        </label>
-        <label>
-          <span>标签</span>
-          <input name="tag" defaultValue={tags.join(",")} placeholder="逗号分隔，全部命中" />
-        </label>
-        <label>
-          <span>级别</span>
-          <select name="level" defaultValue={level ?? ""}>
-            <option value="">全部</option>
-            <option value="ERROR">ERROR</option>
-            <option value="WARNING">WARNING</option>
-            <option value="DEFAULT">DEFAULT</option>
-            <option value="DEBUG">DEBUG</option>
-          </select>
-        </label>
-        <label>
-          <span>环境</span>
-          <select name="env" defaultValue={env ?? ""}>
-            <option value="">全部</option>
-            {envs.map((e) => (
-              <option key={e.environment} value={e.environment}>
-                {e.environment}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>起始时间</span>
-          <input type="datetime-local" name="from" defaultValue={toLocalInput(from)} />
-        </label>
-        <label>
-          <span>结束时间</span>
-          <input type="datetime-local" name="to" defaultValue={toLocalInput(to)} />
-        </label>
-        <button type="submit" className="btn primary">
-          查询
-        </button>
-        <Link className="btn" href="/traces" prefetch={false}>
-          重置
-        </Link>
+      <form className="card mb-3">
+        <div className="filter-bar">
+          <label>
+            <span>名称搜索</span>
+            <input name="q" defaultValue={q ?? ""} placeholder="trace 名称..." />
+          </label>
+          <button type="submit" className="btn primary">
+            查询
+          </button>
+          <Link className="btn" href="/traces" prefetch={false}>
+            重置
+          </Link>
+        </div>
+        <details open={hasAdvancedFilters || undefined} className="filter-advanced">
+          <summary className="text-sm mute2 cursor-pointer">
+            更多筛选{advancedCount > 0 && <span className="badge ml-1">{advancedCount}</span>}
+          </summary>
+          <div className="filter-bar mt-2">
+            <label>
+              <span>用户</span>
+              <input name="user" defaultValue={userId ?? ""} placeholder="userId 模糊匹配..." />
+            </label>
+            <label>
+              <span>会话</span>
+              <input name="session" defaultValue={sessionId ?? ""} placeholder="sessionId 模糊匹配..." />
+            </label>
+            <label>
+              <span>模型</span>
+              <input name="model" defaultValue={model ?? ""} placeholder="模型名，如 deepseek" />
+            </label>
+            <label>
+              <span>Agent</span>
+              <input name="agent" defaultValue={agent ?? ""} placeholder="agentName 模糊匹配..." />
+            </label>
+            <label>
+              <span>标签</span>
+              <input name="tag" defaultValue={tags.join(",")} placeholder="逗号分隔，全部命中" />
+            </label>
+            <label>
+              <span>级别</span>
+              <select name="level" defaultValue={level ?? ""}>
+                <option value="">全部</option>
+                <option value="ERROR">ERROR</option>
+                <option value="WARNING">WARNING</option>
+                <option value="DEFAULT">DEFAULT</option>
+                <option value="DEBUG">DEBUG</option>
+              </select>
+            </label>
+            <label>
+              <span>环境</span>
+              <select name="env" defaultValue={env ?? ""}>
+                <option value="">全部</option>
+                {envs.map((e) => (
+                  <option key={e.environment} value={e.environment}>
+                    {e.environment}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>起始时间</span>
+              <input type="datetime-local" name="from" defaultValue={toLocalInput(from)} />
+            </label>
+            <label>
+              <span>结束时间</span>
+              <input type="datetime-local" name="to" defaultValue={toLocalInput(to)} />
+            </label>
+          </div>
+        </details>
       </form>
 
       {/* 当前筛选回显：每个 tag 点击即移除该筛选条件 */}
@@ -468,17 +493,12 @@ export default async function TracesPage({
           <table>
             <thead>
               <tr>
-                <th scope="col">名称</th>
-                <th scope="col" className="col-narrow">信号</th>
-                <th scope="col" className="col-narrow">Agent</th>
                 <th scope="col">Trace ID</th>
+                {hasSignals && <th scope="col" className="col-narrow">信号</th>}
+                <th scope="col" className="col-narrow">Agent</th>
                 {sortTh("时间", "time")}
-                <th scope="col" className="col-narrow">用户</th>
-                <th scope="col" className="col-narrow">模型</th>
                 {sortTh("耗时", "latency", "trace 总跨度（最晚结束 − 最早开始），与详情页一致")}
-                {sortTh("Token", "token")}
-                {sortTh("成本", "cost")}
-                <th scope="col">Obs</th>
+                {sortTh("Token / 成本", "token")}
                 <th scope="col">Score</th>
                 <th scope="col">环境</th>
               </tr>
@@ -487,18 +507,15 @@ export default async function TracesPage({
               {shown.map((t) => {
                 const latency = traceSpan(t);
                 const sig = signalMap.get(t.id);
+                const tName = t.name ?? "";
+                const idx = (nameIndex.get(tName) ?? 0) + 1;
+                nameIndex.set(tName, idx);
+                const showSeq = (nameCount.get(tName) ?? 0) > 1;
                 const hasError = t.observations.some(
                   (o) => o.level === "ERROR",
                 );
                 const hasWarn = !hasError && t.observations.some(
                   (o) => o.level === "WARNING",
-                );
-                const models = Array.from(
-                  new Set(
-                    t.observations
-                      .map((o) => o.model)
-                      .filter(Boolean) as string[],
-                  ),
                 );
                 return (
                   <tr
@@ -506,7 +523,7 @@ export default async function TracesPage({
                     data-level={hasError ? "ERROR" : hasWarn ? "WARNING" : undefined}
                   >
                     <td>
-                      <Link href={`/traces/${t.id}`} prefetch={false}>
+                      <Link href={`/traces/${t.id}`} prefetch={false} className="mono" title={t.id}>
                         {hasError && (
                           <span
                             className="text-danger mr-1"
@@ -523,7 +540,7 @@ export default async function TracesPage({
                             ●
                           </span>
                         )}
-                        {t.name || <span className="mute2">（未命名）</span>}
+                        {t.id}
                       </Link>
                       {t.tags.length > 0 && (
                         <div className="mt-2px">
@@ -548,6 +565,7 @@ export default async function TracesPage({
                         </div>
                       )}
                     </td>
+                    {hasSignals && (
                     <td className="col-narrow">
                       {sig ? (
                         <>
@@ -580,6 +598,7 @@ export default async function TracesPage({
                         <span className="mute2">—</span>
                       )}
                     </td>
+                    )}
                     <td className="col-narrow">
                       {t.agentName ? (
                         <Link
@@ -598,28 +617,8 @@ export default async function TracesPage({
                         </span>
                       ) : null}
                     </td>
-                    <td className="mono muted" title={t.id}>{t.id.slice(0, 8)}</td>
                     <td className="muted" title={formatDateTime(t.timestamp)}>
                       {formatRelative(t.timestamp)}
-                    </td>
-                    <td className="mono muted col-narrow">
-                      {t.userId ? short(t.userId) : <span className="mute2">—</span>}
-                    </td>
-                    <td className="col-narrow">
-                      {models.length > 0 ? (
-                        models.map((m) => (
-                          <Link
-                            key={m}
-                            href={`/models/${encodeURIComponent(m)}`}
-                            prefetch={false}
-                            title={`查看模型 ${m} 详情`}
-                          >
-                            <span className="badge purple mr-1">{m}</span>
-                          </Link>
-                        ))
-                      ) : (
-                        <span className="mute2">—</span>
-                      )}
                     </td>
                     <td className="mono">
                       {latency != null ? (
@@ -642,14 +641,10 @@ export default async function TracesPage({
                       {formatTokens(
                         t.observations.reduce((s, o) => s + (o.totalTokens ?? 0), 0),
                       )}
-                    </td>
-                    <td className="mono cost">
+                      <span className="mute2"> / </span>
                       {formatCost(
                         t.observations.reduce((s, o) => s + (o.totalCost ?? 0), 0),
                       )}
-                    </td>
-                    <td>
-                      <span className="badge blue">{t._count.observations}</span>
                     </td>
                     <td>
                       {t.scores.length > 0 ? (
