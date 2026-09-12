@@ -1,13 +1,11 @@
 // 评估中心：任务（Tab 1）+ 配置（Tab 2）+ 数据集（Tab 3）+ 趋势（Tab 4）
 // SSR 直查 db（force-dynamic），交互走 /api/evaluations REST
 import { Link } from "../../components/NativeLink";
-import { and, desc, eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { db, evaluation, evaluationConfig, trace } from "@machora/shared";
 import { formatRelative, formatDateTime } from "../../lib/format";
 import { EmptyIcon } from "../../components/EmptyIcon";
 import { LineChart } from "../../components/LineChart";
-import { getCurrentProjectId } from "../../server/project";
-import { requireUser } from "../../server/session";
 import { EvalConfigForm } from "./EvalConfigForm";
 import { EvalConfigActions } from "./EvalConfigActions";
 import { DatasetBatchPanel } from "./DatasetBatchPanel";
@@ -31,21 +29,16 @@ export default async function EvaluationsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireUser();
-
   const sp = await searchParams;
   const str = (v: string | string[] | undefined) =>
     Array.isArray(v) ? v[0] : v;
   const tabRaw = str(sp.tab);
   const tab: TabKey = TAB_KEYS.includes(tabRaw as TabKey) ? (tabRaw as TabKey) : "tasks";
 
-  const projectId = await getCurrentProjectId();
-
   // 任务列表
   const tasks =
-    tab === "tasks" && projectId
+    tab === "tasks"
       ? await db.query.evaluation.findMany({
-          where: eq(evaluation.projectId, projectId),
           orderBy: (t, { desc }) => [desc(t.createdAt)],
           limit: 200,
           with: { trace: true, datasetItem: true },
@@ -59,20 +52,18 @@ export default async function EvaluationsPage({
 
   // 配置列表
   const configs =
-    (tab === "config" || tab === "datasets") && projectId
+    tab === "config" || tab === "datasets"
       ? await db.query.evaluationConfig.findMany({
-          where: eq(evaluationConfig.projectId, projectId),
           orderBy: (t, { asc }) => [asc(t.createdAt)],
         })
       : [];
 
   // 数据集占位：trace 按 tag 分组计数（后续扩展为 Dataset 表）
   const datasets: { tag: string; count: number }[] = [];
-  if (tab === "datasets" && projectId) {
+  if (tab === "datasets") {
     const rows = await db
       .select({ tag: trace.tags })
       .from(trace)
-      .where(eq(trace.projectId, projectId))
       .limit(500);
     const byTag = new Map<string, number>();
     for (const r of rows) {
@@ -100,13 +91,10 @@ export default async function EvaluationsPage({
     count7: number;
     count30: number;
   } = { rows: [], avg7: 0, avg30: 0, count7: 0, count30: 0 };
-  if (tab === "trend" && projectId) {
+  if (tab === "trend") {
     const since = new Date(Date.now() - TREND_DAYS * 24 * 3600 * 1000);
     const completed = await db.query.evaluation.findMany({
-      where: and(
-        eq(evaluation.projectId, projectId),
-        eq(evaluation.status, "COMPLETED"),
-      ),
+      where: eq(evaluation.status, "COMPLETED"),
       orderBy: (t, { asc }) => [asc(t.createdAt)],
     });
     const within = completed.filter((t) => t.createdAt >= since);

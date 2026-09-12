@@ -1,12 +1,10 @@
 import { Link } from "../../components/NativeLink";
-import { and, count, desc, eq, gte, lt, type SQL } from "drizzle-orm";
+import { and, count, desc, gte, lt, type SQL } from "drizzle-orm";
 import { db, score, textSearch } from "@machora/shared";
 import { formatRelative, formatDateTime } from "../../lib/format";
 import { BarChart } from "../../components/BarChart";
 import { EmptyIcon } from "../../components/EmptyIcon";
 import { Pager } from "../../components/Pager";
-import { getCurrentProjectId } from "../../server/project";
-import { requireUser } from "../../server/session";
 
 export const dynamic = "force-dynamic";
 
@@ -29,8 +27,6 @@ export default async function ScoresPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireUser();
-
   const sp = await searchParams;
   const str = (v: string | string[] | undefined) =>
     Array.isArray(v) ? v[0] : v;
@@ -40,10 +36,9 @@ export default async function ScoresPage({
   const name = str(sp.name)?.trim();
   const cursor = str(sp.cursor);
 
-  const projectId = await getCurrentProjectId();
   const since = days > 0 ? new Date(Date.now() - days * DAY_MS) : undefined;
 
-  const conds: SQL<unknown>[] = [eq(score.projectId, projectId)];
+  const conds: SQL<unknown>[] = [];
   if (name) conds.push(textSearch(score.name, name));
   if (since) conds.push(gte(score.timestamp, since));
 

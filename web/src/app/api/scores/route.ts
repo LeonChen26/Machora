@@ -1,9 +1,7 @@
-// 内部评分 API（UI 标注用）：session 鉴权，归属校验到当前项目
+// 内部评分 API（UI 标注用）
 import { NextRequest } from "next/server";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db, observation, score, trace, ScoreCreateSchema } from "@machora/shared";
-import { getApiUser } from "../../../server/session";
-import { getCurrentProjectId } from "../../../server/project";
 
 // Annotation 提交：source 强制 ANNOTATION，traceId/observationId 至少一个
 const AnnotationScoreSchema = ScoreCreateSchema.extend({
@@ -13,14 +11,6 @@ const AnnotationScoreSchema = ScoreCreateSchema.extend({
 });
 
 export async function POST(req: NextRequest) {
-  if (!(await getApiUser())) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  const projectId = await getCurrentProjectId();
-  if (!projectId) {
-    return Response.json({ error: "No project" }, { status: 400 });
-  }
-
   let body: unknown;
   try {
     body = await req.json();
@@ -37,10 +27,10 @@ export async function POST(req: NextRequest) {
   }
   const d = parsed.data;
 
-  // 归属校验：trace/observation 必须属于当前项目
+  // 校验：trace/observation 必须存在
   if (d.traceId) {
     const traceRow = await db.query.trace.findFirst({
-      where: and(eq(trace.id, d.traceId), eq(trace.projectId, projectId)),
+      where: eq(trace.id, d.traceId),
       columns: { id: true },
     });
     if (!traceRow) {
@@ -49,10 +39,7 @@ export async function POST(req: NextRequest) {
   }
   if (d.observationId) {
     const obsRow = await db.query.observation.findFirst({
-      where: and(
-        eq(observation.id, d.observationId),
-        eq(observation.projectId, projectId),
-      ),
+      where: eq(observation.id, d.observationId),
       columns: { id: true },
     });
     if (!obsRow) {
@@ -66,7 +53,6 @@ export async function POST(req: NextRequest) {
       id: d.id ?? undefined,
       traceId: d.traceId ?? null,
       observationId: d.observationId ?? null,
-      projectId,
       name: d.name,
       value: d.value,
       dataType: d.dataType,

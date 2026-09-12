@@ -13,14 +13,12 @@ import {
   score,
   hasTags,
 } from "@machora/shared";
-import { getApiUser } from "../../../../server/session";
-import { getCurrentProjectId } from "../../../../server/project";
 
 const BatchSchema = z.object({
   configId: z.string().min(1, "configId 必填"),
   tag: z.string().optional(),
   traceIds: z.array(z.string().min(1)).max(1000).optional(),
-  // 低分回流：score < 阈值 的 trace（用当前项目 Score 过滤）
+  // 低分回流：score < 阈值 的 trace（用 Score 过滤）
   maxScore: z.number().min(0).max(1).optional(),
   // Prompt 级数据集评测：对数据集（DatasetItem.name 分组）内全部用例建任务
   datasetId: z.string().optional(),
@@ -29,12 +27,6 @@ const BatchSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  if (!(await getApiUser())) {
-    return NextResponse.json({ error: "未登录" }, { status: 401 });
-  }
-  const projectId = await getCurrentProjectId();
-  if (!projectId) return NextResponse.json({ error: "No project" }, { status: 400 });
-
   let body: unknown;
   try {
     body = await req.json();
@@ -53,7 +45,6 @@ export async function POST(req: NextRequest) {
   const cfg = await db.query.evaluationConfig.findFirst({
     where: and(
       eq(evaluationConfig.id, configId),
-      eq(evaluationConfig.projectId, projectId),
       eq(evaluationConfig.enabled, true),
     ),
   });
@@ -76,7 +67,7 @@ export async function POST(req: NextRequest) {
       .select({ id: datasetItem.id })
       .from(datasetItem)
       .where(
-        and(eq(datasetItem.projectId, projectId), eq(datasetItem.name, datasetId)),
+        eq(datasetItem.name, datasetId),
       )
       .limit(1000);
     targetItems = rows.map((r) => r.id);
@@ -85,7 +76,7 @@ export async function POST(req: NextRequest) {
       .select({ id: trace.id })
       .from(trace)
       .where(
-        and(eq(trace.projectId, projectId), inArray(trace.id, traceIds)),
+        inArray(trace.id, traceIds),
       );
     targetTraces = rows.map((r) => r.id);
   } else if (tag) {
@@ -94,23 +85,17 @@ export async function POST(req: NextRequest) {
       .select({ id: trace.id })
       .from(trace)
       .where(
-        and(
-          eq(trace.projectId, projectId),
-          hasTags(trace.tags, [tag]),
-        ),
+        hasTags(trace.tags, [tag]),
       )
       .limit(1000);
     targetTraces = rows.map((r) => r.id);
   } else if (maxScore !== undefined) {
-    // 低分回流：该项目内 score < 阈值 的 trace（EVALUATION/ANNOTATION 均可）
+    // 低分回流：score < 阈值 的 trace（EVALUATION/ANNOTATION 均可）
     const rows = await db
       .selectDistinct({ traceId: score.traceId })
       .from(score)
       .where(
-        and(
-          eq(score.projectId, projectId),
-          sql`${score.value} < ${maxScore}`,
-        ),
+        sql`${score.value} < ${maxScore}`,
       )
       .limit(1000);
     targetTraces = rows.map((r) => r.traceId).filter((v): v is string => !!v);
@@ -132,7 +117,6 @@ export async function POST(req: NextRequest) {
       .insert(evaluation)
       .values({
         id: crypto.randomUUID(),
-        projectId,
         traceId,
         name: cfg.name,
         evaluatorType: cfg.evaluatorType,
@@ -142,7 +126,6 @@ export async function POST(req: NextRequest) {
       })
       .returning({ id: evaluation.id });
     await queueBus.enqueue(QUEUES.evaluation, {
-      projectId,
       evaluationId: task.id,
     });
     created.push(task.id);
@@ -152,7 +135,6 @@ export async function POST(req: NextRequest) {
       .insert(evaluation)
       .values({
         id: crypto.randomUUID(),
-        projectId,
         datasetItemId: itemId,
         name: cfg.name,
         evaluatorType: cfg.evaluatorType,
@@ -162,7 +144,6 @@ export async function POST(req: NextRequest) {
       })
       .returning({ id: evaluation.id });
     await queueBus.enqueue(QUEUES.evaluation, {
-      projectId,
       evaluationId: task.id,
     });
     created.push(task.id);

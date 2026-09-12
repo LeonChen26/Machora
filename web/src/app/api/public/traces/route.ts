@@ -1,6 +1,5 @@
 import { and, count, desc, eq, lt, type SQL } from "drizzle-orm";
 import { db, trace, textSearch, hasTags } from "@machora/shared";
-import { verifyApiKey } from "../../../../server/auth";
 import {
   TRACE_COLUMNS,
   TRACE_SELECT_FIELDS,
@@ -14,12 +13,6 @@ import {
 
 // GET /api/public/traces?from&to&name&userId&sessionId&tags&limit&cursor&select
 export async function GET(req: Request) {
-  const auth = await verifyApiKey(req.headers.get("authorization") ?? undefined);
-  if (!auth) {
-    countOpenApiQuery("unauthorized");
-    return Response.json({ error: "Invalid API key" }, { status: 401 });
-  }
-
   const sp = new URL(req.url).searchParams;
   const parsed = parseCommonQuery(sp);
   if (!parsed.ok) {
@@ -38,10 +31,7 @@ export async function GET(req: Request) {
     ? sp.get("tags")!.split(",").map((t) => t.trim()).filter(Boolean)
     : undefined;
 
-  const conds: SQL<unknown>[] = [
-    eq(trace.projectId, auth.projectId),
-    ...timeWindow(trace.timestamp, from, to),
-  ];
+  const conds: SQL<unknown>[] = [...timeWindow(trace.timestamp, from, to)];
   if (name) conds.push(eq(trace.name, name));
   if (userId) conds.push(eq(trace.userId, userId));
   if (sessionId) conds.push(eq(trace.sessionId, sessionId));

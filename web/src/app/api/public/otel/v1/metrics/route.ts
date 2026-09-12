@@ -1,5 +1,4 @@
 import {
-  verifyApiKey,
   parseOtelMetricsPayload,
   decodeOtlpMetricsProtobuf,
   db,
@@ -9,17 +8,9 @@ import {
 
 // OTLP HTTP metrics 注入端点（JSON + protobuf 双通道）
 // 任意 OTLP metrics exporter（Prometheus RemoteWrite→OTLP、SDK metrics 等）
-// 经 OTEL_EXPORTER_OTLP_METRICS_ENDPOINT + Basic Auth 指向本端点
+// 经 OTEL_EXPORTER_OTLP_METRICS_ENDPOINT 指向本端点
 export async function POST(req: Request) {
   const start = Date.now();
-  const auth = await verifyApiKey(
-    req.headers.get("authorization") ?? undefined,
-  );
-  if (!auth) {
-    selfMetrics.inc("machora.metrics.requests", 1, { status: "unauthorized" });
-    return Response.json({ error: "Invalid API key" }, { status: 401 });
-  }
-
   const contentType = (req.headers.get("content-type") ?? "").toLowerCase();
   let body: unknown;
 
@@ -45,12 +36,11 @@ export async function POST(req: Request) {
     }
   }
 
-  const samples = parseOtelMetricsPayload(body as any, auth.projectId);
+  const samples = parseOtelMetricsPayload(body as any);
   let written = 0;
   if (samples.length > 0) {
     await db.insert(metricSample).values(
       samples.map((s) => ({
-        projectId: s.projectId,
         name: s.name,
         unit: s.unit,
         kind: s.kind,

@@ -1,9 +1,7 @@
-// 导出 generations 列表为 CSV（复用列表页筛选条件，session 鉴权）
+// 导出 generations 列表为 CSV（复用列表页筛选条件）
 import { NextRequest } from "next/server";
 import { and } from "drizzle-orm";
 import { db, observation } from "@machora/shared";
-import { getApiUser } from "../../../../server/session";
-import { getCurrentProjectId } from "../../../../server/project";
 import {
   parseGenerationFilters,
   buildGenerationWhere,
@@ -18,16 +16,12 @@ function csvCell(v: unknown): string {
 }
 
 export async function GET(req: NextRequest) {
-  const user = await getApiUser();
-  if (!user) return new Response("Unauthorized", { status: 401 });
-  const projectId = await getCurrentProjectId();
-
   const sp: Record<string, string | string[] | undefined> = {};
   for (const [k, v] of req.nextUrl.searchParams) sp[k] = v;
   const f = parseGenerationFilters(sp);
 
   const items = await db.query.observation.findMany({
-    where: and(...buildGenerationWhere(projectId, f)),
+    where: and(...buildGenerationWhere(f)),
     orderBy: (o, { desc }) => [desc(o.startTime)],
     limit: LIMIT,
     columns: {

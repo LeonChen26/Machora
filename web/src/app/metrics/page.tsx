@@ -1,5 +1,5 @@
-import { and, desc, eq, gte } from "drizzle-orm";
-import { db, metricSample, project as projectTable } from "@machora/shared";
+import { desc, gte } from "drizzle-orm";
+import { db, metricSample } from "@machora/shared";
 import { formatDateTime, formatRelative } from "../../lib/format";
 import { EmptyIcon } from "../../components/EmptyIcon";
 import { Link } from "../../components/NativeLink";
@@ -10,8 +10,6 @@ import {
   attrsText,
   MetricCardGrid,
 } from "../../components/metricsShared";
-import { requireUser } from "../../server/session";
-import { getCurrentProjectId } from "../../server/project";
 
 export const dynamic = "force-dynamic";
 
@@ -20,35 +18,17 @@ export default async function MetricsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireUser();
-
   const sp = await searchParams;
   const raw = Array.isArray(sp.range) ? sp.range[0] : sp.range;
   const range = RANGES.find((r) => r.key === raw) ?? RANGES[0]!;
 
-  // 项目指标：当前项目经 OTLP metrics 端点上报的外部指标
-  const projectId = await getCurrentProjectId();
-  const project = projectId
-    ? await db.query.project.findFirst({
-        where: eq(projectTable.id, projectId),
-        columns: { id: true, name: true },
-      })
-    : null;
-
   const since = new Date(Date.now() - range.ms);
-  const samples = project
-    ? await db
-        .select()
-        .from(metricSample)
-        .where(
-          and(
-            eq(metricSample.projectId, project.id),
-            gte(metricSample.timestamp, since),
-          ),
-        )
-        .orderBy(desc(metricSample.timestamp))
-        .limit(MAX_SAMPLES)
-    : [];
+  const samples = await db
+    .select()
+    .from(metricSample)
+    .where(gte(metricSample.timestamp, since))
+    .orderBy(desc(metricSample.timestamp))
+    .limit(MAX_SAMPLES);
 
   return (
     <>
@@ -56,7 +36,6 @@ export default async function MetricsPage({
         <div>
           <h1>Metrics</h1>
           <div className="sub">
-            {project ? `${project.name} · ` : ""}
             {samples.length} 条采样
             {samples.length === MAX_SAMPLES ? "（已达上限）" : ""} · 近 {range.label}
           </div>
@@ -78,8 +57,8 @@ export default async function MetricsPage({
           ))}
         </div>
         <div className="hint mt-2">
-          当前项目的 OTLP metrics 端点上报指标（Basic Auth，见 Docs 接入说明）。
-          图表按时间桶聚合展示吞吐与趋势；平台自身运行指标见「System」页。
+          经 OTLP metrics 端点上报的指标。图表按时间桶聚合展示吞吐与趋势；
+          平台自身运行指标见「System」页。
         </div>
       </div>
 

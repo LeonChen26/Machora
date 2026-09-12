@@ -1,5 +1,5 @@
-import { and, desc, eq, gte } from "drizzle-orm";
-import { db, metricSample, SYSTEM_PROJECT_ID, getSelfStartedAt } from "@machora/shared";
+import { desc, gte } from "drizzle-orm";
+import { db, metricSample, getSelfStartedAt } from "@machora/shared";
 import { formatDateTime, formatRelative } from "../../lib/format";
 import { EmptyIcon } from "../../components/EmptyIcon";
 import { Link } from "../../components/NativeLink";
@@ -13,7 +13,6 @@ import {
   bucketLabel,
   MetricCardGrid,
 } from "../../components/metricsShared";
-import { requireUser } from "../../server/session";
 
 export const dynamic = "force-dynamic";
 
@@ -59,14 +58,12 @@ function bucketSums(
 }
 
 // 平台自身健康面板：运行状态卡 + machora.* 指标趋势。
-// 数据源为 machora-system 专用项目的自观测采样（60s 窗口 SUM）。
+// 数据源为服务内自观测采样（60s 窗口 SUM）。
 export default async function SystemPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireUser();
-
   const sp = await searchParams;
   const raw = Array.isArray(sp.range) ? sp.range[0] : sp.range;
   const range = RANGES.find((r) => r.key === raw) ?? RANGES[0]!;
@@ -75,12 +72,7 @@ export default async function SystemPage({
   const samples = await db
     .select()
     .from(metricSample)
-    .where(
-      and(
-        eq(metricSample.projectId, SYSTEM_PROJECT_ID),
-        gte(metricSample.timestamp, since),
-      ),
-    )
+    .where(gte(metricSample.timestamp, since))
     .orderBy(desc(metricSample.timestamp))
     .limit(MAX_SAMPLES);
 
@@ -106,7 +98,7 @@ export default async function SystemPage({
     {
       label: "采样数",
       value: fmtNum(samples.length),
-      hint: `近 ${range.label} · machora-system`,
+      hint: `近 ${range.label} · 自观测`,
     },
     {
       label: "错误计数",

@@ -1,6 +1,5 @@
 import { and, count, desc, eq, lt, type SQL } from "drizzle-orm";
 import { db, observation, textSearch } from "@machora/shared";
-import { verifyApiKey } from "../../../../server/auth";
 import {
   OBSERVATION_COLUMNS,
   OBSERVATION_SELECT_FIELDS,
@@ -14,12 +13,6 @@ import {
 
 // GET /api/public/observations?traceId&from&to&type&name&level&model&limit&cursor&select
 export async function GET(req: Request) {
-  const auth = await verifyApiKey(req.headers.get("authorization") ?? undefined);
-  if (!auth) {
-    countOpenApiQuery("unauthorized");
-    return Response.json({ error: "Invalid API key" }, { status: 401 });
-  }
-
   const sp = new URL(req.url).searchParams;
   const parsed = parseCommonQuery(sp);
   if (!parsed.ok) {
@@ -38,7 +31,6 @@ export async function GET(req: Request) {
   const skill = sp.get("skill") || undefined;
 
   const conds: SQL<unknown>[] = [
-    eq(observation.projectId, auth.projectId),
     ...timeWindow(observation.startTime, from, to),
   ];
   if (traceId) conds.push(eq(observation.traceId, traceId));

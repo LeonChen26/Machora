@@ -9,16 +9,9 @@ import {
   observation as observationTable,
   score as scoreTable,
 } from "@machora/shared";
-import { verifyApiKey } from "../../../../server/auth";
 
 export async function POST(req: Request) {
   const start = Date.now();
-  const auth = await verifyApiKey(req.headers.get("authorization") ?? undefined);
-  if (!auth) {
-    selfMetrics.inc("machora.ingestion.requests", 1, { status: "unauthorized" });
-    return Response.json({ error: "Invalid API key" }, { status: 401 });
-  }
-  const projectId = auth.projectId;
 
   let body: unknown;
   try {
@@ -47,7 +40,6 @@ export async function POST(req: Request) {
       if (event.type === "trace-create") {
         await db.insert(traceTable).values({
           id: event.body.id,
-          projectId,
           name: event.body.name ?? null,
           timestamp: new Date(event.body.timestamp),
           environment: event.body.environment,
@@ -62,7 +54,6 @@ export async function POST(req: Request) {
           tags: event.body.tags,
         });
         queueBus.enqueue(QUEUES.ingestion, {
-          projectId,
           traceId: event.body.id,
         });
       } else if (event.type === "observation-create") {
@@ -76,7 +67,6 @@ export async function POST(req: Request) {
         await db.insert(observationTable).values({
           id: event.body.id,
           traceId: event.body.traceId,
-          projectId,
           type: event.body.type,
           name: event.body.name ?? null,
           parentObservationId: event.body.parentObservationId ?? null,
@@ -100,7 +90,6 @@ export async function POST(req: Request) {
           id: event.body.id,
           traceId: event.body.traceId ?? null,
           observationId: event.body.observationId ?? null,
-          projectId,
           name: event.body.name,
           value: event.body.value,
           dataType: event.body.dataType,

@@ -1,6 +1,6 @@
 import { Link } from "../../../components/NativeLink";
 import { notFound } from "next/navigation";
-import { and, asc, eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { db, trace } from "@machora/shared";
 import {
   formatDateTime,
@@ -8,8 +8,6 @@ import {
   formatTokens,
   formatCost,
 } from "../../../lib/format";
-import { getCurrentProjectId } from "../../../server/project";
-import { requireUser } from "../../../server/session";
 import { EmptyIcon } from "../../../components/EmptyIcon";
 
 export const dynamic = "force-dynamic";
@@ -19,13 +17,10 @@ export default async function SessionDetailPage({
 }: {
   params: Promise<{ sessionId: string }>;
 }) {
-  await requireUser();
-
   const { sessionId } = await params;
-  const projectId = await getCurrentProjectId();
 
   const traces = await db.query.trace.findMany({
-    where: and(eq(trace.sessionId, sessionId), eq(trace.projectId, projectId)),
+    where: eq(trace.sessionId, sessionId),
     orderBy: (t, { asc }) => [asc(t.timestamp)],
     with: {
       observations: {

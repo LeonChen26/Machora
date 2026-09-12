@@ -1,17 +1,9 @@
-import { verifyApiKey, processOtelTraces, decodeOtlpProtobuf, selfMetrics } from "@machora/shared";
+import { processOtelTraces, decodeOtlpProtobuf, selfMetrics } from "@machora/shared";
 
 // OTLP HTTP 注入端点（Phase 0：JSON；Phase 2：protobuf）
 // LangChain / LangGraph / LlamaIndex 等框架通过
-// OTEL_EXPORTER_OTLP_TRACES_ENDPOINT + Basic Auth 指向本端点
+// OTEL_EXPORTER_OTLP_TRACES_ENDPOINT 指向本端点
 export async function POST(req: Request) {
-  const auth = await verifyApiKey(
-    req.headers.get("authorization") ?? undefined,
-  );
-  if (!auth) {
-    selfMetrics.inc("machora.traces.requests", 1, { status: "unauthorized" });
-    return Response.json({ error: "Invalid API key" }, { status: 401 });
-  }
-
   const contentType = (req.headers.get("content-type") ?? "").toLowerCase();
   let body: unknown;
 
@@ -38,7 +30,7 @@ export async function POST(req: Request) {
     }
   }
 
-  const result = await processOtelTraces(auth.projectId, body);
+  const result = await processOtelTraces(body);
   selfMetrics.inc("machora.traces.requests", 1, { status: "ok" });
   return Response.json({
     success: true,

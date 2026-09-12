@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { and, count, desc, eq, lt, type SQL } from "drizzle-orm";
 import { db, evaluation, queueBus, QUEUES, getEvaluator, trace, selfMetrics } from "@machora/shared";
-import { verifyApiKey } from "../../../../server/auth";
 import { countOpenApiQuery, listEnvelope, parseCommonQuery, timeWindow } from "../../../../server/publicQuery";
 
 const EvaluationCreateSchema = z.object({
@@ -13,12 +12,6 @@ const EvaluationCreateSchema = z.object({
 
 // POST /api/public/evaluations —— 创建服务端评估任务（异步，worker 执行后写回 Score）
 export async function POST(req: Request) {
-  const auth = await verifyApiKey(req.headers.get("authorization") ?? undefined);
-  if (!auth) {
-    selfMetrics.inc("machora.ingestion.requests", 1, { status: "unauthorized" });
-    return Response.json({ error: "Invalid API key" }, { status: 401 });
-  }
-
   let body: unknown;
   try {
     body = await req.json();
@@ -58,7 +51,6 @@ export async function POST(req: Request) {
     .insert(evaluation)
     .values({
       id: crypto.randomUUID(),
-      projectId: auth.projectId,
       traceId,
       name: name ?? evaluatorType,
       evaluatorType,
@@ -69,7 +61,6 @@ export async function POST(req: Request) {
     .returning();
 
   await queueBus.enqueue(QUEUES.evaluation, {
-    projectId: auth.projectId,
     evaluationId: evaluationRow.id,
   });
 
@@ -79,12 +70,6 @@ export async function POST(req: Request) {
 
 // GET /api/public/evaluations?traceId&status&from&to&limit&cursor —— 查询评估任务列表
 export async function GET(req: Request) {
-  const auth = await verifyApiKey(req.headers.get("authorization") ?? undefined);
-  if (!auth) {
-    countOpenApiQuery("unauthorized");
-    return Response.json({ error: "Invalid API key" }, { status: 401 });
-  }
-
   const sp = new URL(req.url).searchParams;
   const parsed = parseCommonQuery(sp);
   if (!parsed.ok) {
@@ -97,7 +82,6 @@ export async function GET(req: Request) {
   const status = sp.get("status") || undefined;
 
   const conds: SQL<unknown>[] = [
-    eq(evaluation.projectId, auth.projectId),
     ...timeWindow(evaluation.createdAt, from, to),
   ];
   if (traceId) conds.push(eq(evaluation.traceId, traceId));

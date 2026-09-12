@@ -1,5 +1,5 @@
 // 内部评估 API（UI 用）：评估配置 CRUD + 触发评估任务
-// session 鉴权，归属校验到当前项目；REST 路由（Server Actions 在本项目 in-process 生产模式不兼容）
+// REST 路由（Server Actions 在本项目 in-process 生产模式不兼容）
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { and, eq } from "drizzle-orm";
@@ -13,8 +13,6 @@ import {
   selfMetrics,
   trace,
 } from "@machora/shared";
-import { getApiUser } from "../../../server/session";
-import { getCurrentProjectId } from "../../../server/project";
 
 // ---------------------------------------------------------------------------
 // 配置 Schema
@@ -52,18 +50,11 @@ function unmaskSecret(config: Record<string, unknown> | null, prev: Record<strin
 // ---------------------------------------------------------------------------
 
 export async function GET(req: NextRequest) {
-  if (!(await getApiUser())) {
-    return NextResponse.json({ error: "未登录" }, { status: 401 });
-  }
-  const projectId = await getCurrentProjectId();
-  if (!projectId) return NextResponse.json({ error: "No project" }, { status: 400 });
-
   const sp = new URL(req.url).searchParams;
   const view = sp.get("view") ?? "config";
 
   if (view === "tasks") {
     const tasks = await db.query.evaluation.findMany({
-      where: eq(evaluation.projectId, projectId),
       orderBy: (t, { desc }) => [desc(t.createdAt)],
       limit: 100,
     });
@@ -71,7 +62,6 @@ export async function GET(req: NextRequest) {
   }
 
   const configs = await db.query.evaluationConfig.findMany({
-    where: eq(evaluationConfig.projectId, projectId),
     orderBy: (t, { asc }) => [asc(t.createdAt)],
   });
   return NextResponse.json({
@@ -106,12 +96,6 @@ const CreateBodySchema = z.discriminatedUnion("kind", [
 ]);
 
 export async function POST(req: NextRequest) {
-  if (!(await getApiUser())) {
-    return NextResponse.json({ error: "未登录" }, { status: 401 });
-  }
-  const projectId = await getCurrentProjectId();
-  if (!projectId) return NextResponse.json({ error: "No project" }, { status: 400 });
-
   let body: unknown;
   try {
     body = await req.json();
@@ -134,10 +118,7 @@ export async function POST(req: NextRequest) {
 
   if (d.kind === "config") {
     const exists = await db.query.evaluationConfig.findFirst({
-      where: and(
-        eq(evaluationConfig.projectId, projectId),
-        eq(evaluationConfig.name, d.name),
-      ),
+      where: eq(evaluationConfig.name, d.name),
       columns: { id: true },
     });
     if (exists) {
@@ -146,7 +127,6 @@ export async function POST(req: NextRequest) {
     const [row] = await db
       .insert(evaluationConfig)
       .values({
-        projectId,
         name: d.name,
         evaluatorType: d.evaluatorType,
         config: d.config ?? undefined,
@@ -161,13 +141,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ config: row }, { status: 201 });
   }
 
-  // kind === "run"：校验 trace 归属并创建评估任务
+  // kind === "run"：校验 trace 存在并创建评估任务
   const traceRow = await db.query.trace.findFirst({
-    where: and(eq(trace.id, d.traceId), eq(trace.projectId, projectId)),
+    where: eq(trace.id, d.traceId),
     columns: { id: true },
   });
   if (!traceRow) {
-    return NextResponse.json({ error: "Trace 不存在或不属于当前项目" }, { status: 404 });
+    return NextResponse.json({ error: "Trace 不存在" }, { status: 404 });
   }
 
   // 支持 configId：从配置表读取完整参数（LLM judge 的 model/apiKey 等）
@@ -177,7 +157,6 @@ export async function POST(req: NextRequest) {
     const cfg = await db.query.evaluationConfig.findFirst({
       where: and(
         eq(evaluationConfig.id, d.configId),
-        eq(evaluationConfig.projectId, projectId),
         eq(evaluationConfig.enabled, true),
       ),
     });
@@ -195,7 +174,6 @@ export async function POST(req: NextRequest) {
     .insert(evaluation)
     .values({
       id: crypto.randomUUID(),
-      projectId,
       traceId: d.traceId,
       name: d.name,
       evaluatorType,
@@ -206,7 +184,6 @@ export async function POST(req: NextRequest) {
     .returning();
 
   await queueBus.enqueue(QUEUES.evaluation, {
-    projectId,
     evaluationId: task.id,
   });
 
@@ -221,12 +198,6 @@ export async function POST(req: NextRequest) {
 // ---------------------------------------------------------------------------
 
 export async function PATCH(req: NextRequest) {
-  if (!(await getApiUser())) {
-    return NextResponse.json({ error: "未登录" }, { status: 401 });
-  }
-  const projectId = await getCurrentProjectId();
-  if (!projectId) return NextResponse.json({ error: "No project" }, { status: 400 });
-
   let body: unknown;
   try {
     body = await req.json();
@@ -243,7 +214,7 @@ export async function PATCH(req: NextRequest) {
   const { id, ...updates } = parsed.data;
 
   const prev = await db.query.evaluationConfig.findFirst({
-    where: and(eq(evaluationConfig.id, id), eq(evaluationConfig.projectId, projectId)),
+    where: eq(evaluationConfig.id, id),
   });
   if (!prev) {
     return NextResponse.json({ error: "配置不存在" }, { status: 404 });
@@ -279,17 +250,11 @@ export async function PATCH(req: NextRequest) {
 // ---------------------------------------------------------------------------
 
 export async function DELETE(req: NextRequest) {
-  if (!(await getApiUser())) {
-    return NextResponse.json({ error: "未登录" }, { status: 401 });
-  }
-  const projectId = await getCurrentProjectId();
-  if (!projectId) return NextResponse.json({ error: "No project" }, { status: 400 });
-
   const id = new URL(req.url).searchParams.get("id");
   if (!id) return NextResponse.json({ error: "id 必填" }, { status: 400 });
 
   const prev = await db.query.evaluationConfig.findFirst({
-    where: and(eq(evaluationConfig.id, id), eq(evaluationConfig.projectId, projectId)),
+    where: eq(evaluationConfig.id, id),
     columns: { id: true },
   });
   if (!prev) return NextResponse.json({ error: "配置不存在" }, { status: 404 });

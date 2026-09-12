@@ -15,7 +15,6 @@ export function countOpenApiQuery(
 
 export const TRACE_SELECT_FIELDS = [
   "id",
-  "projectId",
   "name",
   "timestamp",
   "environment",
@@ -34,7 +33,6 @@ export const TRACE_SELECT_FIELDS = [
 export const OBSERVATION_SELECT_FIELDS = [
   "id",
   "traceId",
-  "projectId",
   "type",
   "name",
   "parentObservationId",
@@ -58,7 +56,6 @@ export const SCORE_SELECT_FIELDS = [
   "id",
   "traceId",
   "observationId",
-  "projectId",
   "name",
   "value",
   "dataType",
@@ -70,7 +67,6 @@ export const SCORE_SELECT_FIELDS = [
 /** 字段白名单 → drizzle 列映射（供 db.select(columns) 动态列选择） */
 export const TRACE_COLUMNS = {
   id: trace.id,
-  projectId: trace.projectId,
   name: trace.name,
   timestamp: trace.timestamp,
   environment: trace.environment,
@@ -89,7 +85,6 @@ export const TRACE_COLUMNS = {
 export const OBSERVATION_COLUMNS = {
   id: observation.id,
   traceId: observation.traceId,
-  projectId: observation.projectId,
   type: observation.type,
   name: observation.name,
   parentObservationId: observation.parentObservationId,
@@ -113,7 +108,6 @@ export const SCORE_COLUMNS = {
   id: score.id,
   traceId: score.traceId,
   observationId: score.observationId,
-  projectId: score.projectId,
   name: score.name,
   value: score.value,
   dataType: score.dataType,

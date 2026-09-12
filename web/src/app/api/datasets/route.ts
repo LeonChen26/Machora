@@ -1,11 +1,8 @@
 // 数据集 API：Prompt 级评测用例管理（Langfuse dataset 简化版：name 为数据集名，item 为用例）
-// session 鉴权，归属校验到当前项目
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { and, eq, sql } from "drizzle-orm";
 import { db, datasetItem, evaluation, selfMetrics } from "@machora/shared";
-import { getApiUser } from "../../../server/session";
-import { getCurrentProjectId } from "../../../server/project";
 
 const ItemSchema = z.object({
   name: z.string().trim().min(1, "数据集名必填").max(60),
@@ -17,14 +14,7 @@ const ItemSchema = z.object({
 
 // GET /api/datasets —— 数据集列表（按 name 分组，含每条用例）
 export async function GET(req: NextRequest) {
-  if (!(await getApiUser())) {
-    return NextResponse.json({ error: "未登录" }, { status: 401 });
-  }
-  const projectId = await getCurrentProjectId();
-  if (!projectId) return NextResponse.json({ error: "No project" }, { status: 400 });
-
   const items = await db.query.datasetItem.findMany({
-    where: eq(datasetItem.projectId, projectId),
     orderBy: (t, { desc }) => [desc(t.createdAt)],
     limit: 2000,
   });
@@ -39,7 +29,6 @@ export async function GET(req: NextRequest) {
   // 评测统计：每个数据集名 × 配置名 → 平均分/通过率/次数（仅 COMPLETED 数据集任务）
   const tasks = await db.query.evaluation.findMany({
     where: and(
-      eq(evaluation.projectId, projectId),
       sql`${evaluation.datasetItemId} IS NOT NULL`,
       eq(evaluation.status, "COMPLETED"),
     ),
@@ -85,12 +74,6 @@ export async function GET(req: NextRequest) {
 
 // POST /api/datasets —— 新增数据集用例
 export async function POST(req: NextRequest) {
-  if (!(await getApiUser())) {
-    return NextResponse.json({ error: "未登录" }, { status: 401 });
-  }
-  const projectId = await getCurrentProjectId();
-  if (!projectId) return NextResponse.json({ error: "No project" }, { status: 400 });
-
   let body: unknown;
   try {
     body = await req.json();
@@ -109,7 +92,6 @@ export async function POST(req: NextRequest) {
   const [row] = await db
     .insert(datasetItem)
     .values({
-      projectId,
       name,
       input: input ?? null,
       output: output ?? null,
@@ -125,12 +107,6 @@ export async function POST(req: NextRequest) {
 
 // DELETE /api/datasets?id=xxx 删单条用例；?name=xxx 删整个数据集
 export async function DELETE(req: NextRequest) {
-  if (!(await getApiUser())) {
-    return NextResponse.json({ error: "未登录" }, { status: 401 });
-  }
-  const projectId = await getCurrentProjectId();
-  if (!projectId) return NextResponse.json({ error: "No project" }, { status: 400 });
-
   const sp = new URL(req.url).searchParams;
   const id = sp.get("id");
   const name = sp.get("name");
@@ -140,14 +116,14 @@ export async function DELETE(req: NextRequest) {
 
   if (id) {
     const prev = await db.query.datasetItem.findFirst({
-      where: and(eq(datasetItem.id, id), eq(datasetItem.projectId, projectId)),
+      where: eq(datasetItem.id, id),
       columns: { id: true },
     });
     if (!prev) return NextResponse.json({ error: "用例不存在" }, { status: 404 });
     await db.delete(datasetItem).where(eq(datasetItem.id, id));
   } else {
     const rows = await db.query.datasetItem.findMany({
-      where: and(eq(datasetItem.projectId, projectId), eq(datasetItem.name, name!)),
+      where: eq(datasetItem.name, name!),
       columns: { id: true },
       limit: 2000,
     });

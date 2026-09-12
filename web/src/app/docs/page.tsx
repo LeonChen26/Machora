@@ -1,6 +1,5 @@
 import { Link } from "../../components/NativeLink";
 import { DocsNav } from "../../components/DocsNav";
-import { requireUser } from "../../server/session";
 
 export const dynamic = "force-dynamic";
 
@@ -9,7 +8,7 @@ const NAV_SECTIONS = [
   {
     label: "API 参考",
     items: [
-      { href: "#api-endpoint", label: "端点与认证" },
+      { href: "#api-endpoint", label: "端点与上报" },
       { href: "#api-ingestion", label: "批量注入" },
       { href: "#api-query", label: "查询与评估" },
       { href: "#api-endpoints", label: "其它端点" },
@@ -18,7 +17,7 @@ const NAV_SECTIONS = [
   {
     label: "接入指南",
     items: [
-      { href: "#agents-otlp", label: "OTLP 通道与认证" },
+      { href: "#agents-otlp", label: "OTLP 通道" },
       { href: "#agents-zero", label: "零埋点框架接入" },
       { href: "#agents-probes", label: "Machora 原生探针" },
     ],
@@ -38,10 +37,7 @@ const NAV_SECTIONS = [
 ];
 
 export default async function DocsPage() {
-  await requireUser();
   const port = process.env.PORT ?? "3100";
-  const publicKey = process.env.MACHORA_INIT_PROJECT_PUBLIC_KEY ?? "pk-machora-dev-000000000000000000000";
-  const secretKey = process.env.MACHORA_INIT_PROJECT_SECRET_KEY ?? "sk-machora-dev-000000000000000000000";
   const baseUrl = `http://localhost:${port}`;
 
   return (
@@ -61,13 +57,12 @@ export default async function DocsPage() {
           <section className="docs-section" id="api">
             <div className="section-title">一、API 参考</div>
             <div className="docs-subtitle">
-              所有公开端点使用 <span className="mono">Basic Auth</span> 鉴权（username / password 分别为
-              public key / secret key）。本页示例中的变量取自已配置的环境变量。
+              所有公开端点无需鉴权，直接上报 / 查询即可。本页示例中的端点取自已配置的服务地址。
             </div>
 
-            {/* ---------- 端点与认证 ---------- */}
+            {/* ---------- 端点与上报 ---------- */}
             <div id="api-endpoint" className="docs-section">
-              <div className="section-title">1.1 端点与认证</div>
+              <div className="section-title">1.1 端点与上报</div>
               <div className="card docs-card">
                 <div className="label">OTLP 端点（推荐 · 零埋点接入）</div>
                 <pre className="code">{`POST ${baseUrl}/api/public/otel/v1/traces    # trace / span（JSON / Protobuf）
@@ -79,14 +74,6 @@ POST ${baseUrl}/api/public/otel/v1/metrics   # metrics（JSON / Protobuf）`}</p
                 </div>
                 <div className="label">批量注入端点（REST API）</div>
                 <pre className="code">{`POST ${baseUrl}/api/public/ingestion`}</pre>
-                <div>
-                  <div className="label">认证（Basic Auth，全部公开端点）</div>
-                  <pre className="code">{`用户名: ${publicKey}
-密码:   ${secretKey}`}</pre>
-                  <div className="muted">
-                    本地调试可设 <span className="mono">MACHORA_AUTH_DISABLED=true</span> 免认证（仅限本地，见 2.0）。
-                  </div>
-                </div>
               </div>
             </div>
 
@@ -139,7 +126,6 @@ POST ${baseUrl}/api/public/otel/v1/metrics   # metrics（JSON / Protobuf）`}</p
               <div className="section-title" style={{ marginTop: "1.25rem" }}>完整示例</div>
               <div className="card docs-card">
                 <pre className="code">{`curl -X POST ${baseUrl}/api/public/ingestion \\
-  -u "${publicKey}:${secretKey}" \\
   -H "Content-Type: application/json" \\
   -d '{
     "batch": [
@@ -201,23 +187,20 @@ POST ${baseUrl}/api/public/otel/v1/metrics   # metrics（JSON / Protobuf）`}</p
               <div className="section-title">1.3 查询与评估</div>
               <div className="card docs-card">
                 <div className="muted">
-                  查询 API 对齐 Langfuse 公开 API：Basic Auth 认证，列表返回{" "}
+                  查询 API 对齐 Langfuse 公开 API：列表返回{" "}
                   <span className="mono">{"{ data, meta: { limit, nextCursor, hasMore, totalCount } }"}</span>{" "}
                   信封；支持时间窗（from/to）、游标分页（limit/cursor）与字段选择（select=name,tags）。示例：
                 </div>
                 <pre className="code">{`# 查询近 7 天 Trace（只取部分字段）
-curl -u "${publicKey}:${secretKey}" \\
-  "${baseUrl}/api/public/traces?from=${new Date(Date.now() - 7 * 864e5).toISOString()}&select=id,name,tags"
+curl "${baseUrl}/api/public/traces?from=${new Date(Date.now() - 7 * 864e5).toISOString()}&select=id,name,tags"
 
 # 提交 annotation 评分
-curl -u "${publicKey}:${secretKey}" \\
-  -X POST ${baseUrl}/api/public/scores \\
+curl -X POST ${baseUrl}/api/public/scores \\
   -H "Content-Type: application/json" \\
   -d '{"traceId":"<traceId>","name":"helpfulness","value":0.95,"dataType":"NUMERIC"}'
 
 # 运行服务端评估（error 规则：trace 是否含 ERROR observation）
-curl -u "${publicKey}:${secretKey}" \\
-  -X POST ${baseUrl}/api/public/evaluations \\
+curl -X POST ${baseUrl}/api/public/evaluations \\
   -H "Content-Type: application/json" \\
   -d '{"traceId":"<traceId>","evaluatorType":"error"}'`}</pre>
                 <div className="muted">
@@ -255,12 +238,12 @@ curl -u "${publicKey}:${secretKey}" \\
                     <tr>
                       <td><span className="badge blue">POST</span></td>
                       <td className="mono">/api/public/otel/v1/traces</td>
-                      <td className="muted">OTLP 注入（JSON / protobuf，Basic Auth）</td>
+                      <td className="muted">OTLP 注入（JSON / protobuf）</td>
                     </tr>
                     <tr>
                       <td><span className="badge blue">POST</span></td>
                       <td className="mono">/api/public/otel/v1/metrics</td>
-                      <td className="muted">OTLP metrics 注入（JSON / protobuf，Basic Auth）</td>
+                      <td className="muted">OTLP metrics 注入（JSON / protobuf）</td>
                     </tr>
                     <tr>
                       <td><span className="badge green">GET</span></td>
@@ -307,20 +290,16 @@ curl -u "${publicKey}:${secretKey}" \\
               仓库维护的<b>原生探针</b>（examples/ 与 sdk/python）。
             </div>
 
-            {/* ---------- OTLP 通道与认证 ---------- */}
+            {/* ---------- OTLP 通道 ---------- */}
             <div id="agents-otlp" className="docs-section">
-              <div className="section-title">2.0 OTLP 通道与认证</div>
+              <div className="section-title">2.0 OTLP 通道</div>
               <div className="card docs-card">
                 <div className="label">统一端点（JSON / Protobuf 双协议）</div>
-                <pre className="code">{`POST ${baseUrl}/api/public/otel/v1/traces
-Authorization: Basic <BASE64(pk:sk)>`}</pre>
+                <pre className="code">{`POST ${baseUrl}/api/public/otel/v1/traces`}</pre>
                 <div className="muted">通用环境变量写法（Python / Node 均适用）：</div>
                 <pre className="code">{`OTEL_EXPORTER_OTLP_ENDPOINT = "${baseUrl}/api/public/otel/v1/traces"
-OTEL_EXPORTER_OTLP_HEADERS  = "Authorization=Basic <BASE64(pk:sk)>"
 OTEL_SERVICE_NAME           = "my-agent"`}</pre>
                 <div className="muted">
-                  本地调试设 <span className="mono">MACHORA_AUTH_DISABLED=true</span> 免认证
-                  （数据写默认项目，<span className="text-danger">仅限本地</span>）。
                   <span className="text-danger">注意</span>：端点须为完整路径（部分 exporter 不自动拼接
                   /v1/traces）；进程结束前等待 BatchSpanProcessor flush。
                 </div>
@@ -339,28 +318,23 @@ OTEL_SERVICE_NAME           = "my-agent"`}</pre>
                 <div className="label">OpenLLMetry（traceloop-sdk · 100+ 集成一键打点）</div>
                 <pre className="code">{`Traceloop.init(app_name="my-agent",
     api_endpoint="${baseUrl}/api/public/otel",           # 自动拼接 /v1/traces
-    headers={"Authorization": "Basic <base64(pk:sk)>"},
     telemetry_enabled=False)`}</pre>
                 <div className="label">LangChain / LangGraph（examples/langchain-agent · gen_ai.*）</div>
                 <pre className="code">{`$env:LANGSMITH_TRACING = "true"
 $env:LANGSMITH_TRACING_MODE = "otel"
 $env:OTEL_EXPORTER_OTLP_ENDPOINT = "${baseUrl}/api/public/otel/v1/traces"
-$env:OTEL_EXPORTER_OTLP_HEADERS = "Authorization=Basic <base64(pk:sk)>"
 python agent.py`}</pre>
                 <div className="label">LlamaIndex（examples/llamaindex-agent · OpenInference 语义）</div>
                 <pre className="code">{`LlamaIndexInstrumentor().instrument(tracer_provider=provider)   # OTLPSpanExporter 同 2.0`}</pre>
                 <div className="label">LoongSuite（examples/loongsuite-agent · gen_ai.span.kind）</div>
                 <pre className="code">{`export OTEL_EXPORTER_OTLP_ENDPOINT=${baseUrl}/api/public/otel/v1/traces
-export OTEL_EXPORTER_OTLP_HEADERS=Authorization=Basic <b64(pk:sk)>
 python agent.py`}</pre>
                 <div className="label">JiuwenSwarm（九问 · 须配置文件，走 langfuse 兼容键）</div>
                 <pre className="code">{`# ~/.jiuwenswarm/config/config.yaml
 team_observability:
   enabled: true
   exporter: otlp_http
-  endpoint: "${baseUrl}/api/public/otel/v1/traces"
-  langfuse_public_key: "${publicKey}"
-  langfuse_secret_key: "${secretKey}"`}</pre>
+  endpoint: "${baseUrl}/api/public/otel/v1/traces"`}</pre>
                 <div className="label">π-Agent（标准 OTel · openinference.span.kind 手写 span）</div>
                 <pre className="code">{`with tracer.start_as_current_span("pi.main") as s:
     s.set_attribute("openinference.span.kind", "AGENT")
@@ -392,7 +366,6 @@ graph = probe.wrap(graph)
 probe.invoke(graph, {"messages": [...]})`}</pre>
                 <div className="muted">
                   环境变量：<span className="mono">MACHORA_OTEL_ENDPOINT</span> /{" "}
-                  <span className="mono">MACHORA_OTEL_HEADERS</span>（JSON 对象）/{" "}
                   <span className="mono">MACHORA_OTEL_SERVICE_NAME</span>。
                 </div>
               </div>
@@ -407,8 +380,7 @@ probe.invoke(graph, {"messages": [...]})`}</pre>
                 <pre className="code">{`pip install 'hermes-agent[otlp]'
 hermes plugins enable observability/otel_machora
 
-export HERMES_OTEL_MACHORA_ENDPOINT=${baseUrl}/api/public/otel/v1/traces
-export HERMES_OTEL_MACHORA_HEADERS=Authorization=Basic <base64(pk:sk)>`}</pre>
+export HERMES_OTEL_MACHORA_ENDPOINT=${baseUrl}/api/public/otel/v1/traces`}</pre>
               </div>
 
               <div className="card docs-card">
@@ -425,8 +397,7 @@ export HERMES_OTEL_MACHORA_HEADERS=Authorization=Basic <base64(pk:sk)>`}</pre>
   "diagnostics": { "otel": { "enabled": true, "traces": true, "captureContent": true } },
   "plugins": { "entries": {
     "machora-openinference": { "config": {
-      "endpoint": "${baseUrl}/api/public/otel/v1/traces",
-      "headers": { "Authorization": "Basic <BASE64(pk:sk)>" }
+      "endpoint": "${baseUrl}/api/public/otel/v1/traces"
     } }
   } }
 }`}</pre>
