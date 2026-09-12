@@ -10,16 +10,17 @@
 
 - **Traces / Observations / Scores**：observation.type 与 span.kind 一致的多值角色（ENTRY/AGENT/STEP/LLM/TOOL/EMBEDDING/CHAIN/RETRIEVER/RERANKER/EVENT/SPAN），支持父子调用树（`parentObservationId` 嵌套层级）与详情选中详览
 - **Trace 详情 5 Tab**：Langfuse 式分区——调用树（左树右详情）、时间线（gantt）、推理轨迹（五色语义 DAG：ENTRY/AGENT/STEP/LLM/TOOL）、对话（从 LLM input/output.messages 提取气泡视图）、评分（ScoreForm + 评分表）；trace 级详情（kv + IO + metadata）并入 tree/timeline 右侧面板
-- **Generations 页**：独立 LLM 调用列表，支持按模型/级别/时间窗筛选与排序（时间/耗时/Token/成本）
+- **Generations 视图**（Analytics 分组下）：独立 LLM 调用列表，支持按模型/级别/时间窗筛选与排序（时间/耗时/Token/成本）
 - **CSV 导出**：`GET /api/export/traces`、`GET /api/export/generations`，按当前筛选条件导出
-- **Scores API**：UI 标注 `POST /api/scores`（session 鉴权）；公开查询/写入 `GET/POST /api/public/scores`（Basic Auth），支持人工/自动评分写入与查询
+- **Scores API**：UI 标注 `POST /api/scores`；公开查询/写入 `GET/POST /api/public/scores`，支持人工/自动评分写入与查询
 - **评估中心**（`/evaluations`）：可插拔评估器（5 规则：error/latency/cost/token/tag + **LLM-as-judge** 对 trace/轨迹打分并输出理由 reasoning）；在线（`autoRun`，ingestion 后自动触发 ONLINE 任务）/实验（手动/批量）双模式；**Prompt 级数据集**（DatasetItem 用例 + 多配置对比评测报告）；按天评分**趋势**折线图；低分样本回流（score&lt;阈值）；评估任务**人工评审**（改分 + 备注写回 ANNOTATION score）
-- **Sessions 页**：按 sessionId 聚合 trace（成本/Token/跨度/耗时汇总 + 时间线串联），详情页提供**会话对话视图**——跨 trace 平铺 LLM input/output.messages 为聊天气泡（role 分色 + model 徽标 + 工具调用 + 跳转对应 trace）
+- **Sessions 页**：按 sessionId 聚合 trace（Trace 数 / 成功率 / 平均 Trace 耗时 / Token / 成本 / 跨度汇总 + 时间线串联），支持 sessionId 搜索与分页；详情页提供**会话对话视图**——跨 trace 平铺 LLM input/output.messages 为聊天气泡（role 分色 + model 徽标 + 工具调用 + 跳转对应 trace）
+- **Agents / Models 双实体视图**：`/agents`、`/models` 目录页（KPI 卡 + 环比 + 趋势 sparkline + 异常标记），详情页含指标卡、可切每日趋势、版本/工具/模型分布（Agent）、按 Agent 分布与调用明细（Model）、关联会话与评分汇总；对象间可互跳
+- **统一异常信号**：阈值集中在 `web/src/server/signals.ts`，覆盖指标信号（成本↑ / 错误率↑ / P95↑）与轨迹信号（重复调用 / 疑似无效循环 / 长任务），在 Overview「待关注」、目录「标记」列、Analytics 异常卡、Traces「信号」列与 Trace 详情信号条统一呈现；指标口径约定见 [OBSERVABILITY.md](OBSERVABILITY.md)
 - **OTLP 接入**：`POST /api/public/otel/v1/traces` 接收 OpenTelemetry 数据（JSON + protobuf 双通道），任意 OTLP exporter 可直接上报（示例见 `scripts/connect-openclaw.sh`、`sdk/python/examples/langgraph_demo.py`）
-- **批量注入 API**：`POST /api/public/ingestion`，Basic Auth（pk:sk）鉴权，单批 ≤1000 条、按收到顺序写入（同一批先建 trace 再挂 observation，满足外键依赖）；支持 `parentObservationId` 构建嵌套调用树
+- **批量注入 API**：`POST /api/public/ingestion`，单批 ≤1000 条、按收到顺序写入（同一批先建 trace 再挂 observation，满足外键依赖）；支持 `parentObservationId` 构建嵌套调用树
 - **Python SDK**（`sdk/python`，包名 `machora-sdk`）：原生注入客户端 + LangChain 回调（`MachoraCallbackHandler`）
-- **多租户**：Project 隔离 + API Key 管理（bcryptjs 校验）
-- **Web UI**：Overview / Traces / Generations / Analytics（按模型 / 按 Agent / 依赖拓扑）/ Scores / Sessions / Users / Metrics / Projects / API Keys / Docs / System（三态主题：亮色 / 暗色 / 跟随系统；异常行高亮、SVG 导航图标、统一过滤表单、CSV 导出、docs 目录滚动高亮、图表 hover 数值浮层；依赖拓扑为 Agent → Tool → Model 三层 SVG，节点按五色语义着色）
+- **Web UI**：侧边栏分「观测 / 质量 / 平台」三组——观测（Overview / Traces / Sessions / Agents / Models / Analytics：总览 / Agent 拓扑 / Generations）、质量（Scores / Evaluations）、平台（Metrics / System / Docs）；三态主题（亮色 / 暗色 / 跟随系统）、异常行高亮、SVG 导航图标、统一过滤表单、CSV 导出、docs 目录滚动高亮、图表 hover 数值浮层；依赖拓扑为 Agent → Tool → Model 三层 SVG，节点按五色语义着色
 
 ## 快速开始
 
@@ -37,9 +38,9 @@
 > ```
 > （`.npmrc` 中已写入同名配置，但 pnpm 不会将其透传给生命周期脚本，故仍需环境变量。）
 
-> **从旧版本升级（PGlite → SQLite）**：本版本存储引擎已切换为 SQLite，**两种数据格式不兼容**。
-> 若 `DATA_DIR` 下存在旧版 `pglite/` 目录而尚无 `machora.db`，启动会**明确报错并中止**（避免静默建空库）。
-> 按提示备份或删除旧目录后再启动。
+> **从旧版本升级**：本分支不包含任何旧库兼容/迁移逻辑。若 `DATA_DIR` 下存在旧版本数据
+> （旧版 `pglite/` 目录，或旧结构的 `machora.db`），请**先删除整个 `DATA_DIR`** 再启动，
+> 程序会按 `schema.sql` 的全新结构重建数据库。
 
 ```bash
 pnpm install
@@ -48,24 +49,14 @@ pnpm standalone:start   # 生产模式，默认 http://localhost:3100
 
 开发模式（热重载）：`pnpm dev`
 
-首次启动自动 seed：
-
-| 项 | 值 |
-|---|---|
-| Project | `Machora Project`（id: `project-standalone`） |
-| Public Key | `pk-machora-dev-000000000000000000000` |
-| Secret Key | `sk-machora-dev-000000000000000000000` |
-| 管理员账号 | `admin@machora.local` / 由 `MACHORA_INIT_USER_PASSWORD` 指定（部署时建议显式设置） |
-
 常用环境变量（可选）：
 
 | 变量 | 默认 | 说明 |
 |---|---|---|
 | `PORT` | `3100` | Web 端口 |
 | `DATA_DIR` | `./.machora-data` | 数据目录（内含 `machora.db`，删除即清空） |
-| `MACHORA_INIT_USER_PASSWORD` | 无 | 管理员初始密码（建议在应用目录 `.env` 中设置；未设置时首次启动随机生成并打印在日志） |
 
-应用根目录（`start.cmd` / `node standalone/dist/start.js` 所在目录）存在 `.env` 文件时自动加载，可参考 `.env.example` 复制改名。`MACHORA_SESSION_SECRET` 不设置时自动持久化到 `DATA_DIR/session-secret`。
+应用根目录（`start.cmd` / `node standalone/dist/start.js` 所在目录）存在 `.env` 文件时自动加载，可参考 `.env.example` 复制改名。
 
 ## 上报示例
 
@@ -75,7 +66,7 @@ pnpm standalone:start   # 生产模式，默认 http://localhost:3100
 - `call_chain_demo.py`：多层嵌套调用链（演示 parentObservationId 层级树）
 - `langgraph_demo.py`：LangGraph 走 OTel 通道（标准 `OTLPSpanExporter`，`openinference.span.kind` 属性直接落库 type）
 
-上报时把环境变量 `MACHORA_HOST`（默认 `http://localhost:3100`）指向目标实例即可；凭据走 `MACHORA_PUBLIC_KEY` / `MACHORA_SECRET_KEY`。
+上报时把环境变量 `MACHORA_HOST`（默认 `http://localhost:3100`）指向目标实例即可。
 
 ## 架构
 
@@ -83,13 +74,13 @@ pnpm workspace monorepo，依赖方向：`standalone → web + worker + shared`�
 
 | 包 | 说明 |
 |---|---|
-| `packages/shared` | 领域模型（Zod）+ Drizzle schema（schema.sql 幂等建表）+ SQL 方言隔离层 + OTel 解码/解析 + 鉴权 + 队列（单一真源） |
+| `packages/shared` | 领域模型（Zod）+ Drizzle schema（schema.sql 幂等建表）+ SQL 方言隔离层 + OTel 解码/解析 + 队列（单一真源） |
 | `web` | Next.js App Router UI（force-dynamic SSR）+ tRPC + 公共 REST（ingestion / otel / health） |
 | `worker` | 队列处理器（standalone 进程内注册，共享 queueBus，无 Redis） |
-| `standalone` | 单进程入口：SQLite + schema.sql 建表 + seed + Next.js in-process |
+| `standalone` | 单进程入口：SQLite + schema.sql 建表 + Next.js in-process |
 | `sdk/python` | Python SDK（httpx + pydantic，可选 langchain-core） |
 
-技术栈：TypeScript · Next.js · tRPC · Drizzle ORM · SQLite（better-sqlite3，嵌入式）· Zod · OpenTelemetry（protobufjs）· bcryptjs
+技术栈：TypeScript · Next.js · tRPC · Drizzle ORM · SQLite（better-sqlite3，嵌入式）· Zod · OpenTelemetry（protobufjs）
 
 ## 开发命令（仓库根）
 
