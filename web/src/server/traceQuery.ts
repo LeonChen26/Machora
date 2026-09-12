@@ -44,12 +44,8 @@ export function parseTraceFilters(
   };
 }
 
-export function buildTraceWhere(
-  projectId: string,
-  f: TraceFilters,
-): SQL<unknown>[] {
+export function buildTraceWhere(f: TraceFilters): SQL<unknown>[] {
   const conds: SQL<unknown>[] = [
-    eq(trace.projectId, projectId),
     gte(trace.timestamp, f.from),
     lte(trace.timestamp, f.to),
   ];
@@ -107,12 +103,8 @@ export function parseGenerationFilters(
   };
 }
 
-export function buildGenerationWhere(
-  projectId: string,
-  f: GenerationFilters,
-): SQL<unknown>[] {
+export function buildGenerationWhere(f: GenerationFilters): SQL<unknown>[] {
   const conds: SQL<unknown>[] = [
-    eq(observation.projectId, projectId),
     // 模型调用 = LLM / EMBEDDING（type 与 span.kind 一致）
     inArray(observation.type, ["LLM", "EMBEDDING"]),
   ];

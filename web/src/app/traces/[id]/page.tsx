@@ -1,6 +1,6 @@
 import { Link } from "../../../components/NativeLink";
 import { notFound } from "next/navigation";
-import { and, asc, desc, eq } from "drizzle-orm";
+import { asc, desc, eq } from "drizzle-orm";
 import { db, trace as traceTable, observation, evaluationConfig } from "@machora/shared";
 import {
   formatDateTime,
@@ -12,11 +12,9 @@ import {
 } from "../../../lib/format";
 import { CopyButton } from "../../../components/CopyButton";
 import { EmptyIcon } from "../../../components/EmptyIcon";
-import { requireUser } from "../../../server/session";
 import { JsonBlock } from "../../../components/JsonBlock";
 import ScoreForm from "../../../components/ScoreForm";
 import { EvalRunPanel } from "../../../components/trace/EvalRunPanel";
-import { getCurrentProjectId } from "../../../server/project";
 import {
   type ObservationView,
 } from "../../../components/ObservationDetailPanel";
@@ -27,6 +25,7 @@ import { TrajectoryGraph } from "../../../components/trace/TrajectoryGraph";
 import { TraceDetailPanel } from "../../../components/trace/TraceDetailPanel";
 import { MessageView } from "../../../components/trace/MessageView";
 import { buildTrajectoryRows } from "../../../server/trajectory";
+import { traceSignalOf } from "../../../server/signals";
 import { classifyTrajectoryKind } from "@machora/shared";
 import {
   SelectionProvider,
@@ -47,8 +46,6 @@ export default async function TraceDetailPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireUser();
-
   const { id } = await params;
   const sp = await searchParams;
   const str = (v: string | string[] | undefined) =>
@@ -63,15 +60,12 @@ export default async function TraceDetailPage({
   const tab: TabKey = TAB_KEYS.includes(tabRaw as TabKey)
     ? (tabRaw as TabKey)
     : "tree";
-  const projectId = await getCurrentProjectId();
 
-  // 用 findFirst + projectId 过滤，防止跨项目直接访问 trace 详情
   const trace = await db.query.trace.findFirst({
-    where: and(eq(traceTable.id, id), eq(traceTable.projectId, projectId)),
+    where: eq(traceTable.id, id),
     with: {
       observations: { orderBy: (o, { asc }) => [asc(o.startTime)] },
       scores: { orderBy: (s, { desc }) => [desc(s.timestamp)] },
-      project: { columns: { name: true } },
     },
   });
 
@@ -82,10 +76,7 @@ export default async function TraceDetailPage({
   // 启用的评估配置（评分 Tab 自动评估入口）
   const evalConfigs = (
     await db.query.evaluationConfig.findMany({
-      where: and(
-        eq(evaluationConfig.projectId, projectId),
-        eq(evaluationConfig.enabled, true),
-      ),
+      where: eq(evaluationConfig.enabled, true),
       orderBy: (t, { asc }) => [asc(t.createdAt)],
       columns: { id: true, name: true, evaluatorType: true },
     })
@@ -276,6 +267,16 @@ export default async function TraceDetailPage({
     ? numericScores.reduce((s, sc) => s + sc.value, 0) / numericScores.length
     : null;
 
+  // 轨迹信号（重复调用 / 疑似无效循环 / 长任务）：与列表页信号列、Overview 汇总共用同一口径。
+  // 基于全量 observation 计算（不受「仅异常」过滤影响）。
+  const traceSig = traceSignalOf(trace.observations);
+  // 归属对象：模型（来自 observation.model）
+  const traceModels = Array.from(
+    new Set(
+      trace.observations.map((o) => o.model).filter(Boolean) as string[],
+    ),
+  );
+
   function barPos(start: Date, end: Date | null): { left: number; width: number } {
     const s = start.getTime();
     const e = end ? end.getTime() : start.getTime() + Math.min(span * 0.05, 500);
@@ -416,9 +417,26 @@ export default async function TraceDetailPage({
         <dt>Agent</dt>
         <dd>
           {trace.agentName ? (
-            <Link href={`/traces?agent=${encodeURIComponent(trace.agentName)}`} prefetch={false}>
+            <Link href={`/agents/${encodeURIComponent(trace.agentName)}`} prefetch={false}>
               <span className="badge green">{trace.agentName}</span>
             </Link>
+          ) : (
+            <span className="mute2">—</span>
+          )}
+        </dd>
+        <dt>模型</dt>
+        <dd>
+          {traceModels.length > 0 ? (
+            traceModels.map((m) => (
+              <Link
+                key={m}
+                href={`/models/${encodeURIComponent(m)}`}
+                prefetch={false}
+                className="mr-1"
+              >
+                <span className="badge purple">{m}</span>
+              </Link>
+            ))
           ) : (
             <span className="mute2">—</span>
           )}
@@ -497,7 +515,7 @@ export default async function TraceDetailPage({
         <div>
           <h1>{trace.name || "（未命名 Trace）"}</h1>
           <div className="sub">
-            {trace.project.name} · {formatDateTime(trace.timestamp)} ·{" "}
+            {formatDateTime(trace.timestamp)} ·{" "}
             {trace.observations.length} obs · {trace.scores.length} scores
             {totalTokens > 0 && <> · {formatTokens(totalTokens)} tokens</>}
             {costCount > 0 && (
@@ -517,6 +535,36 @@ export default async function TraceDetailPage({
           </Link>
         </div>
       </div>
+
+      {/* 轨迹信号条：与列表页「信号」列、Overview「待关注」共用同一口径，进详情页仍能看到结论 */}
+      {(traceSig.ineffectiveStreak > 0 ||
+        traceSig.repeatStreak > 0 ||
+        traceSig.longTask) && (
+        <div className="form-inline mb-2">
+          <span className="mute2 text-sm">轨迹信号</span>
+          {traceSig.ineffectiveStreak > 0 && (
+            <span
+              className="badge red"
+              title="同名工具连续调用且段内含无进展信号（ERROR / 空输出）"
+            >
+              无效循环 ×{traceSig.ineffectiveStreak}
+            </span>
+          )}
+          {traceSig.repeatStreak > 0 && (
+            <span
+              className="badge amber"
+              title="同名工具在决策序列中连续调用 ≥3 次"
+            >
+              重复调用 ×{traceSig.repeatStreak}
+            </span>
+          )}
+          {traceSig.longTask && (
+            <span className="badge amber" title="STEP 思考节点 ≥ 8">
+              长任务
+            </span>
+          )}
+        </div>
+      )}
 
       {/* 聚合指标徽章行（参照 Langfuse Header 思路，替代原 grid-4 统计卡） */}
       <TraceStatsRow

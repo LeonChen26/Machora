@@ -1,7 +1,7 @@
 import { Link } from "../../components/NativeLink";
 import { EmptyIcon } from "../../components/EmptyIcon";
 import { Pager } from "../../components/Pager";
-import { and, asc, count, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, sql } from "drizzle-orm";
 import { db, trace, observation, score } from "@machora/shared";
 import type { ReactNode } from "react";
 import {
@@ -10,13 +10,11 @@ import {
   formatTokens,
   formatCost,
 } from "../../lib/format";
-import { getCurrentProjectId } from "../../server/project";
-import { requireUser } from "../../server/session";
-import { isGenerationType } from "@machora/shared";
 import {
   parseTraceFilters,
   buildTraceWhere,
 } from "../../server/traceQuery";
+import { getTraceSignalMap } from "../../server/signals";
 
 export const dynamic = "force-dynamic";
 
@@ -27,57 +25,92 @@ export default async function TracesPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireUser();
-
   const sp = await searchParams;
   const str = (v: string | string[] | undefined) =>
     Array.isArray(v) ? v[0] : v;
 
-  const projectId = await getCurrentProjectId();
   const f = parseTraceFilters(sp);
   const { from, to } = f;
   const { q, userId, sessionId, model, tags, level, env, agent } = f;
   const rawPage = Number.parseInt(str(sp.page) ?? "", 10);
   const page = rawPage >= 1 ? rawPage : 1;
 
-  const where = buildTraceWhere(projectId, f);
+  // 排序：time / cost / latency / token。
+  // 排序键是 trace 级聚合值，必须下推到 SQL 对「全量结果」排序后再取当前页，
+  // 否则只排当前页会出错（例如第 2 页出现比第 1 页更大的成本）。
+  const sortKey = str(sp.sort)?.trim() || "time";
+  const sortDir = str(sp.dir) === "asc" ? "asc" : "desc";
+  // 耗时口径 = trace 总跨度（max(endTime ?? startTime) − min(startTime)），
+  // 与 Trace 详情页「总跨度」一致，不再是「首个 generation 的耗时」。
+  const spanExpr = sql`(max(coalesce(${observation.endTime}, ${observation.startTime})) - min(${observation.startTime}))`;
+  const sortExpr =
+    sortKey === "cost"
+      ? sql`coalesce(sum(${observation.totalCost}), 0)`
+      : sortKey === "token"
+        ? sql`coalesce(sum(${observation.totalTokens}), 0)`
+        : sortKey === "latency"
+          ? spanExpr
+          : null;
 
-  // 环境下拉选项（当前项目去重）
+  const where = buildTraceWhere(f);
+
+  // 环境下拉选项
   const envs = await db
     .selectDistinct({ environment: trace.environment })
     .from(trace)
-    .where(eq(trace.projectId, projectId))
     .orderBy(asc(trace.environment));
 
-  const rows = await db.query.trace.findMany({
-    where: and(...where),
-    orderBy: (t, { desc }) => [desc(t.timestamp)],
-    offset: (page - 1) * PAGE_SIZE,
-    limit: PAGE_SIZE,
-    with: {
-      observations: {
-        columns: {
-          model: true,
-          type: true,
-          level: true,
-          startTime: true,
-          endTime: true,
-          totalTokens: true,
-          totalCost: true,
+  // 非时间排序：先在全量结果上按聚合排序键分页，拿到有序的 trace id 列表
+  let pageIds: string[] | null = null;
+  if (sortExpr) {
+    const keyRows = await db
+      .select({ id: trace.id })
+      .from(trace)
+      .leftJoin(observation, eq(observation.traceId, trace.id))
+      .where(and(...where))
+      .groupBy(trace.id)
+      .orderBy(
+        sql`${sortExpr} is null`,
+        sortDir === "asc" ? asc(sortExpr) : desc(sortExpr),
+      )
+      .offset((page - 1) * PAGE_SIZE)
+      .limit(PAGE_SIZE);
+    pageIds = keyRows.map((r) => r.id);
+  }
+
+  const emptyPage = pageIds !== null && pageIds.length === 0;
+
+  const rows = emptyPage
+    ? []
+    : await db.query.trace.findMany({
+        where: and(...where, ...(pageIds ? [inArray(trace.id, pageIds)] : [])),
+        // 固定按时间序取行；pageIds 路径随后会按聚合排序键重排
+        orderBy: (t, { desc }) => [desc(t.timestamp)],
+        ...(pageIds ? {} : { offset: (page - 1) * PAGE_SIZE, limit: PAGE_SIZE }),
+        with: {
+          observations: {
+            columns: {
+              model: true,
+              type: true,
+              level: true,
+              startTime: true,
+              endTime: true,
+              totalTokens: true,
+              totalCost: true,
+            },
+            orderBy: (o, { asc }) => [asc(o.startTime)],
+          },
+          scores: {
+            columns: { id: true, name: true, value: true, dataType: true },
+            orderBy: (s, { desc }) => [desc(s.timestamp)],
+            limit: 3,
+          },
         },
-        orderBy: (o, { asc }) => [asc(o.startTime)],
-      },
-      scores: {
-        columns: { id: true, name: true, value: true, dataType: true },
-        orderBy: (s, { desc }) => [desc(s.timestamp)],
-        limit: 3,
-      },
-    },
-  });
+      });
 
   // _count：与 Prisma include._count 等价的两条聚合查询
   const ids = rows.map((r) => r.id);
-  const [obsCounts, scoreCounts] = await Promise.all([
+  const [obsCounts, scoreCounts, signalMap] = await Promise.all([
     ids.length > 0
       ? db
           .select({ traceId: observation.traceId, c: count() })
@@ -92,6 +125,7 @@ export default async function TracesPage({
           .where(inArray(score.traceId, ids))
           .groupBy(score.traceId)
       : Promise.resolve([]),
+    getTraceSignalMap(ids),
   ]);
   const obsCountMap = new Map(obsCounts.map((r) => [r.traceId, r.c]));
   const scoreCountMap = new Map(scoreCounts.map((r) => [r.traceId, r.c]));
@@ -110,30 +144,14 @@ export default async function TracesPage({
       .where(and(...where))
   )[0].c;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const shown = items;
 
-  // 排序：time / cost / latency / token（JS 层排序当前页；跨页精确排序留待聚合查询）
-  const sortKey = str(sp.sort)?.trim() || "time";
-  const sortDir = str(sp.dir) === "asc" ? "asc" : "desc";
-  function sortValue(
-    t: (typeof shown)[number],
-    key: string,
-  ): number | null {
-    if (key === "cost")
-      return t.observations.reduce((s, o) => s + (o.totalCost ?? 0), 0);
-    if (key === "token")
-      return t.observations.reduce((s, o) => s + (o.totalTokens ?? 0), 0);
-    if (key === "latency") return firstGenLatency(t);
-    return t.timestamp.getTime();
-  }
-  const sortedShown = [...shown].sort((a, b) => {
-    const va = sortValue(a, sortKey);
-    const vb = sortValue(b, sortKey);
-    if (va == null && vb == null) return 0;
-    if (va == null) return 1;
-    if (vb == null) return -1;
-    return sortDir === "asc" ? va - vb : vb - va;
-  });
+  // pageIds 路径已按聚合排序键在「全量结果」上排好序，按其顺序重排展示行
+  const byId = new Map(items.map((it) => [it.id, it]));
+  const shown = pageIds
+    ? pageIds
+        .map((id) => byId.get(id))
+        .filter((it): it is (typeof items)[number] => it != null)
+    : items;
   // 表头排序链接
   function sortHref(key: string): string {
     const nextDir =
@@ -154,10 +172,10 @@ export default async function TracesPage({
       page: 1,
     })}`;
   }
-  function sortTh(label: string, sortFor: string): ReactNode {
+  function sortTh(label: string, sortFor: string, title?: string): ReactNode {
     const active = sortKey === sortFor;
     return (
-      <th scope="col">
+      <th scope="col" title={title}>
         <Link
           href={sortHref(sortFor)}
           prefetch={false}
@@ -190,11 +208,19 @@ export default async function TracesPage({
   };
   const activeRange = RANGES.find((r) => isRange(from, to, r.ms));
 
-  // 统计本页 latency（基于 observation 第一个 generation 的耗时）
-  function firstGenLatency(t: (typeof shown)[number]): number | null {
-    const g = t.observations.find((o) => isGenerationType(o.type) && o.endTime);
-    if (!g?.endTime) return null;
-    return g.endTime.getTime() - g.startTime.getTime();
+  // trace 耗时 = 总跨度（其 observation 的最晚结束 − 最早开始），
+  // 与 Trace 详情页「总跨度」同口径（原实现取「首个 generation 的耗时」，与详情页不一致）
+  function traceSpan(t: (typeof shown)[number]): number | null {
+    if (t.observations.length === 0) return null;
+    let min = Infinity;
+    let max = -Infinity;
+    for (const o of t.observations) {
+      const s = o.startTime.getTime();
+      if (s < min) min = s;
+      const e = (o.endTime ?? o.startTime).getTime();
+      if (e > max) max = e;
+    }
+    return max >= min ? max - min : null;
   }
 
   return (
@@ -330,12 +356,13 @@ export default async function TracesPage({
             <thead>
               <tr>
                 <th scope="col">名称</th>
+                <th scope="col" className="col-narrow">信号</th>
                 <th scope="col" className="col-narrow">Agent</th>
                 <th scope="col">Trace ID</th>
                 {sortTh("时间", "time")}
                 <th scope="col" className="col-narrow">用户</th>
                 <th scope="col" className="col-narrow">模型</th>
-                {sortTh("耗时", "latency")}
+                {sortTh("耗时", "latency", "trace 总跨度（最晚结束 − 最早开始），与详情页一致")}
                 {sortTh("Token", "token")}
                 {sortTh("成本", "cost")}
                 <th scope="col">Obs</th>
@@ -344,8 +371,9 @@ export default async function TracesPage({
               </tr>
             </thead>
             <tbody>
-              {sortedShown.map((t) => {
-                const latency = firstGenLatency(t);
+              {shown.map((t) => {
+                const latency = traceSpan(t);
+                const sig = signalMap.get(t.id);
                 const hasError = t.observations.some(
                   (o) => o.level === "ERROR",
                 );
@@ -393,10 +421,61 @@ export default async function TracesPage({
                           ))}
                         </div>
                       )}
+                      {t.sessionId && (
+                        <div className="mt-2px">
+                          <Link
+                            href={`/sessions/${encodeURIComponent(t.sessionId)}`}
+                            prefetch={false}
+                            title={`会话 ${t.sessionId}`}
+                          >
+                            <span className="badge blue">
+                              会话 {short(t.sessionId, 8)}
+                            </span>
+                          </Link>
+                        </div>
+                      )}
+                    </td>
+                    <td className="col-narrow">
+                      {sig ? (
+                        <>
+                          {sig.ineffectiveStreak > 0 && (
+                            <span
+                              className="badge red mr-1"
+                              title="同名工具连续调用且段内含无进展信号（ERROR / 空输出）"
+                            >
+                              无效循环 ×{sig.ineffectiveStreak}
+                            </span>
+                          )}
+                          {sig.repeatStreak > 0 && (
+                            <span
+                              className="badge amber mr-1"
+                              title="同名工具在决策序列中连续调用 ≥3 次"
+                            >
+                              重复调用 ×{sig.repeatStreak}
+                            </span>
+                          )}
+                          {sig.longTask && (
+                            <span
+                              className="badge amber mr-1"
+                              title="STEP 思考节点 ≥ 8"
+                            >
+                              长任务
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <span className="mute2">—</span>
+                      )}
                     </td>
                     <td className="col-narrow">
                       {t.agentName ? (
-                        <span className="badge green">{t.agentName}</span>
+                        <Link
+                          href={`/agents/${encodeURIComponent(t.agentName)}`}
+                          prefetch={false}
+                          title={`查看 ${t.agentName} 详情`}
+                        >
+                          <span className="badge green">{t.agentName}</span>
+                        </Link>
                       ) : (
                         <span className="mute2">—</span>
                       )}
@@ -416,9 +495,14 @@ export default async function TracesPage({
                     <td className="col-narrow">
                       {models.length > 0 ? (
                         models.map((m) => (
-                          <span key={m} className="badge purple mr-1">
-                            {m}
-                          </span>
+                          <Link
+                            key={m}
+                            href={`/models/${encodeURIComponent(m)}`}
+                            prefetch={false}
+                            title={`查看模型 ${m} 详情`}
+                          >
+                            <span className="badge purple mr-1">{m}</span>
+                          </Link>
                         ))
                       ) : (
                         <span className="mute2">—</span>
@@ -428,9 +512,9 @@ export default async function TracesPage({
                       {latency != null ? (
                         <span
                           className={
-                            latency < 2000
+                            latency < 5000
                               ? "latency-low"
-                              : latency < 8000
+                              : latency < 20000
                                 ? "latency-mid"
                                 : "latency-high"
                           }

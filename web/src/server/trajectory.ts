@@ -29,8 +29,21 @@ export type TrajectoryRow = {
   badge: string | null;
 };
 
-type Obs = typeof observationTable.$inferSelect;
+export type Obs = typeof observationTable.$inferSelect;
 export type ObsNode = Obs & { children: ObsNode[] };
+
+/** 按 parentObservationId 构建调用树（根 = 父不在本集合内的节点；输入顺序决定同级顺序） */
+export function buildObsTree(obs: readonly Obs[]): ObsNode[] {
+  const byId = new Map<string, ObsNode>();
+  for (const o of obs) byId.set(o.id, { ...o, children: [] });
+  const roots: ObsNode[] = [];
+  for (const n of byId.values()) {
+    const parent = n.parentObservationId ? byId.get(n.parentObservationId) : undefined;
+    if (parent) parent.children.push(n);
+    else roots.push(n);
+  }
+  return roots;
+}
 
 // 判定“是否有 Agent 语义数据”的角色集合（排除入口/其它/日志）
 const AGENTISH = new Set<TrajectoryKind>([

@@ -1,14 +1,19 @@
 import { Link } from "../../components/NativeLink";
-import type { ReactNode } from "react";
-import { and, eq, gte, inArray } from "drizzle-orm";
+import { and, gte, inArray } from "drizzle-orm";
 import { db, observation } from "@machora/shared";
 import { formatDuration, formatTokens, formatCost } from "../../lib/format";
 import { StackedBarChart } from "../../components/StackedBarChart";
-import { EmptyIcon } from "../../components/EmptyIcon";
 import { BarChart } from "../../components/BarChart";
 import { StatCard } from "../../components/StatCard";
-import { getCurrentProjectId } from "../../server/project";
-import { requireUser } from "../../server/session";
+import {
+  emptyStat,
+  summarize,
+  type ModelStat,
+} from "../../server/agentStats";
+import {
+  detectMetricSignals,
+  formatSignalDetails,
+} from "../../server/signals";
 
 export const dynamic = "force-dynamic";
 
@@ -22,39 +27,6 @@ const METRICS = [
 ] as const;
 type MetricKey = (typeof METRICS)[number]["key"];
 
-interface ModelStat {
-  count: number;
-  latencies: number[];
-  errors: number;
-  warnings: number;
-  tokens: number;
-  cost: number;
-}
-
-function emptyStat(): ModelStat {
-  return { count: 0, latencies: [], errors: 0, warnings: 0, tokens: 0, cost: 0 };
-}
-
-function summarize(m: ModelStat) {
-  const sorted = [...m.latencies].sort((a, b) => a - b);
-  const avg = sorted.length
-    ? sorted.reduce((s, x) => s + x, 0) / sorted.length
-    : null;
-  const p95 = sorted.length
-    ? sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))]
-    : null;
-  return {
-    count: m.count,
-    avg,
-    p95,
-    errors: m.errors,
-    warnings: m.warnings,
-    errorRate: m.count ? m.errors / m.count : 0,
-    tokens: m.tokens,
-    cost: m.cost,
-  };
-}
-
 function buildQuery(days: number, metric: MetricKey): string {
   const params = new URLSearchParams();
   params.set("days", String(days));
@@ -67,8 +39,6 @@ export default async function AnalyticsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireUser();
-
   const sp = await searchParams;
   const str = (v: string | string[] | undefined) =>
     Array.isArray(v) ? v[0] : v;
@@ -80,18 +50,15 @@ export default async function AnalyticsPage({
     ? (rawMetric as MetricKey)
     : "count";
 
-  const projectId = await getCurrentProjectId();
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   // 当前窗口（含今天）与等长的前窗口，用于趋势与异常对比
   const since = new Date(today.getTime() - (days - 1) * DAY_MS);
-  const prevEnd = since;
   const prevSince = new Date(since.getTime() - days * DAY_MS);
 
   const gens = await db
     .select({
       model: observation.model,
-      agentName: observation.agentName,
       startTime: observation.startTime,
       endTime: observation.endTime,
       level: observation.level,
@@ -101,7 +68,6 @@ export default async function AnalyticsPage({
     .from(observation)
     .where(
       and(
-        eq(observation.projectId, projectId),
         inArray(observation.type, ["LLM", "EMBEDDING"]),
         gte(observation.startTime, prevSince),
       ),
@@ -114,8 +80,7 @@ export default async function AnalyticsPage({
   const perDay = new Map<string, Map<string, ModelStat>>();
   for (const g of gens) {
     const model = g.model ?? "unknown";
-    const isCur = g.startTime >= since;
-    if (isCur) {
+    if (g.startTime >= since) {
       const s = cur.get(model) ?? emptyStat();
       s.count++;
       if (g.endTime) s.latencies.push(g.endTime.getTime() - g.startTime.getTime());
@@ -156,67 +121,20 @@ export default async function AnalyticsPage({
     Array.from(prev.entries()).map(([name, s]) => [name, summarize(s)]),
   );
 
-  // 按 Agent 聚合（agentName 为空归 "unknown"），当前 + 前窗口
-  const agentCur = new Map<string, ModelStat>();
-  const agentPrev = new Map<string, ModelStat>();
-  for (const g of gens) {
-    const agent = g.agentName ?? "unknown";
-    const target = g.startTime >= since ? agentCur : agentPrev;
-    const s = target.get(agent) ?? emptyStat();
-    s.count++;
-    if (g.endTime) s.latencies.push(g.endTime.getTime() - g.startTime.getTime());
-    if (g.level === "ERROR") s.errors++;
-    if (g.level === "WARNING") s.warnings++;
-    s.tokens += g.totalTokens ?? 0;
-    s.cost += g.totalCost ?? 0;
-    target.set(agent, s);
-  }
-  const agentSummary = new Map(
-    Array.from(agentCur.entries()).map(([name, s]) => [name, summarize(s)]),
-  );
-  const agentPrevSummary = new Map(
-    Array.from(agentPrev.entries()).map(([name, s]) => [name, summarize(s)]),
-  );
-  const agents = Array.from(agentSummary.entries())
-    .map(([name, c]) => ({ name, ...c }))
-    .sort((a, b) => b.count - a.count);
-
-  // 异常检测：当前窗口 vs 前窗口
+  // 异常检测：当前窗口 vs 前窗口（阈值统一由 signals.ts 提供）
   const anomalies = new Map<string, string[]>();
   for (const [name, c] of curSummary) {
     const p = prevSummary.get(name);
     if (!p || p.count === 0) continue;
-    const flags: string[] = [];
-    // 成本突增：>1.5 倍且增量 ≥ $0.005
-    if (p.cost >= 0.005 && c.cost >= p.cost * 1.5 && c.cost - p.cost >= 0.005) {
-      flags.push(
-        `成本 ${formatCost(p.cost)} → ${formatCost(c.cost)}（↑${Math.round((c.cost / p.cost - 1) * 100)}%）`,
-      );
-    }
-    // 错误率上升：样本 ≥3，绝对上升 ≥10 个百分点
-    if (
-      p.count >= 3 &&
-      c.count >= 3 &&
-      c.errorRate >= p.errorRate + 0.1 &&
-      c.errorRate >= 0.1
-    ) {
-      flags.push(
-        `错误率 ${(p.errorRate * 100).toFixed(0)}% → ${(c.errorRate * 100).toFixed(0)}%`,
-      );
-    }
-    // 延迟恶化：P95 放大 1.5 倍且增量 ≥500ms
-    if (
-      p.count >= 3 &&
-      c.count >= 3 &&
-      p.p95 != null &&
-      c.p95 != null &&
-      c.p95 >= p.p95 * 1.5 &&
-      c.p95 - p.p95 >= 500
-    ) {
-      flags.push(
-        `P95 ${formatDuration(p.p95)} → ${formatDuration(c.p95)}`,
-      );
-    }
+    const flags = formatSignalDetails(
+      detectMetricSignals({
+        scope: "model",
+        name,
+        cur: { cost: c.cost, steps: c.count, errorRate: c.errorRate, p95: c.p95 },
+        prev: { cost: p.cost, steps: p.count, errorRate: p.errorRate, p95: p.p95 },
+        days,
+      }),
+    );
     if (flags.length > 0) anomalies.set(name, flags);
   }
 
@@ -288,29 +206,6 @@ export default async function AnalyticsPage({
 
   const metricLabel = METRICS.find((m) => m.key === metric)?.label ?? "调用量";
 
-  // 变化率渲染 helper
-  function delta(a: number | null, b: number | null): number | null {
-    if (a == null || b == null) return null;
-    if (a === 0) return null;
-    return (b - a) / a;
-  }
-  function pct(v: number): string {
-    const r = v * 100;
-    return `${r >= 0 ? "↑" : "↓"}${Math.abs(r).toFixed(0)}%`;
-  }
-  function deltaCell(cur: number | null, prev: number | null): ReactNode {
-    const d = delta(prev, cur);
-    if (d == null) return <span className="mute2">—</span>;
-    // 复用全局色阶：相对前窗涨（恶化）红 / 跌（改善）绿 / 持平灰
-    const cls =
-      d > 0.05 ? "delta-up" : d < -0.05 ? "delta-down" : "delta-flat";
-    return (
-      <span className={cls} title="相对前一窗口">
-        {pct(d)}
-      </span>
-    );
-  }
-
   return (
     <>
       <div className="page-head">
@@ -330,6 +225,9 @@ export default async function AnalyticsPage({
         </Link>
         <Link href="/analytics/topology" prefetch={false} className="seg-btn">
           Agent 拓扑
+        </Link>
+        <Link href="/analytics/generations" prefetch={false} className="seg-btn">
+          Generations
         </Link>
       </div>
 
@@ -363,7 +261,7 @@ export default async function AnalyticsPage({
         ))}
       </div>
 
-      {/* 异常告警 */}
+      {/* 异常告警（模型级环比；对象视角收敛到 /models） */}
       {anomalies.size > 0 && (
         <div className="card alert-danger mt-3">
           <div className="label text-danger">
@@ -371,7 +269,13 @@ export default async function AnalyticsPage({
           </div>
           {Array.from(anomalies.entries()).map(([name, flags]) => (
             <div key={name} className="text-md mt-1">
-              <span className="badge purple">{name}</span>{" "}
+              <Link
+                href={`/models/${encodeURIComponent(name)}?days=${days}`}
+                prefetch={false}
+                title={`查看模型 ${name} 详情`}
+              >
+                <span className="badge purple">{name}</span>
+              </Link>{" "}
               {flags.map((f) => (
                 <span key={f} className="badge red ml-2">
                   {f}
@@ -394,7 +298,7 @@ export default async function AnalyticsPage({
         <StatCard
           label="P95 延迟"
           value={formatDuration(totalP95)}
-          hint="95% 调用在此之内"
+          hint="全部 generation 调用时长的 P95（调用级）"
           size="md"
           icon="gauge"
         />
@@ -404,6 +308,7 @@ export default async function AnalyticsPage({
           hint={`${totalErrors} ERROR · ${totalWarnings} WARNING`}
           tone="danger"
           icon="alert"
+          title="ERROR generation 调用 / 全部 generation 调用（调用级口径）"
         />
       </div>
 
@@ -439,168 +344,51 @@ export default async function AnalyticsPage({
         <BarChart data={histData} color="var(--purple)" emptyText="暂无延迟数据" />
       </div>
 
+      {/* 归因入口：模型 / Agent 的对象视角已收敛到实体页，本页只做全局指标与趋势 */}
       <div className="section-title">
-        按模型汇总 <span className="count">对比列 = 相对前 {days} 天的变化</span>
+        归因入口{" "}
+        <span className="count">对象视角收敛到实体页，避免同一对象多套口径</span>
       </div>
-      {models.length === 0 ? (
-        <div className="card empty">
-          <EmptyIcon type="grid" />
-          暂无数据。
+      <div className="card">
+        <div className="muted">
+          模型与 Agent 的调用量、Trace 数、成功率、错误率、P95、成本、分布与调用明细，
+          已分别收敛到 <span className="mono">/models</span> 与{" "}
+          <span className="mono">/agents</span>；本页专注全局指标、趋势与延迟分布。
+          跳转后沿用同一时间窗（{days} 天）。
         </div>
-      ) : (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">模型</th>
-                <th scope="col">调用数</th>
-                <th scope="col">变化</th>
-                <th scope="col">Token</th>
-                <th scope="col">成本</th>
-                <th scope="col">成本变化</th>
-                <th scope="col">平均延迟</th>
-                <th scope="col">P95</th>
-                <th scope="col">P95 变化</th>
-                <th scope="col">ERROR</th>
-                <th scope="col">WARNING</th>
-                <th scope="col">错误率</th>
-                <th scope="col">错误率变化</th>
-              </tr>
-            </thead>
-            <tbody>
-              {models.map((m) => {
-                const p = prevSummary.get(m.name);
-                const flagged = anomalies.has(m.name);
-                return (
-                  <tr key={m.name} className={flagged ? "is-anomaly" : undefined}>
-                    <td>
-                      <Link
-                        href={`/analytics/models?model=${encodeURIComponent(m.name)}&days=${days}`}
-                        prefetch={false}
-                        title={`查看 ${m.name} 明细`}
-                      >
-                        <span className="badge purple">{m.name}</span>
-                      </Link>
-                      {flagged && <span className="badge red ml-2">!</span>}
-                    </td>
-                    <td className="mono">{m.count}</td>
-                    <td>{deltaCell(m.count, p?.count ?? null)}</td>
-                    <td className="mono">{formatTokens(m.tokens)}</td>
-                    <td className={m.cost > 0 ? "mono cost" : "mono"}>
-                      {formatCost(m.cost)}
-                    </td>
-                    <td>{deltaCell(m.cost, p?.cost ?? null)}</td>
-                    <td className="mono">{formatDuration(m.avg)}</td>
-                    <td className="mono">{formatDuration(m.p95)}</td>
-                    <td>{deltaCell(m.p95, p?.p95 ?? null)}</td>
-                    <td>
-                      {m.errors > 0 ? (
-                        <span className="badge red">{m.errors}</span>
-                      ) : (
-                        <span className="mute2">0</span>
-                      )}
-                    </td>
-                    <td>
-                      {m.warnings > 0 ? (
-                        <span className="badge amber">{m.warnings}</span>
-                      ) : (
-                        <span className="mute2">0</span>
-                      )}
-                    </td>
-                    <td>
-                      <span
-                        className="err-rate"
-                        data-grade={m.errorRate >= 0.1 ? "high" : m.errorRate > 0 ? "mid" : "low"}
-                      >
-                        {(m.errorRate * 100).toFixed(1)}%
-                      </span>
-                    </td>
-                    <td>{deltaCell(m.errorRate, p?.errorRate ?? null)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div className="btn-group mt-2">
+          <Link className="btn primary" href={`/models?days=${days}`} prefetch={false}>
+            打开 Models 目录 →
+          </Link>
+          <Link className="btn" href={`/agents?days=${days}`} prefetch={false}>
+            打开 Agents 目录 →
+          </Link>
+          <Link className="btn" href={`/analytics/topology?days=${days}`} prefetch={false}>
+            Agent 拓扑 →
+          </Link>
         </div>
-      )}
-      <div className="section-title">
-        按 Agent 汇总 <span className="count">gen_ai.agent.name 维度 · 空值归 unknown</span>
+        {models.length > 0 && (
+          <div className="mt-2">
+            <span className="mute2 text-sm">
+              近 {days} 天模型（按调用量）：
+            </span>{" "}
+            {models.slice(0, 12).map((m) => (
+              <Link
+                key={m.name}
+                href={`/models/${encodeURIComponent(m.name)}?days=${days}`}
+                prefetch={false}
+                className="mr-1"
+                title={`查看 ${m.name} 详情`}
+              >
+                <span className="badge purple">{m.name}</span>
+              </Link>
+            ))}
+            {models.length > 12 && (
+              <span className="mute2 text-xs"> 等 {models.length} 个</span>
+            )}
+          </div>
+        )}
       </div>
-      {agents.length === 0 ? (
-        <div className="card empty">
-          <EmptyIcon type="grid" />
-          暂无数据。
-        </div>
-      ) : (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">Agent</th>
-                <th scope="col">调用数</th>
-                <th scope="col">变化</th>
-                <th scope="col">Token</th>
-                <th scope="col">成本</th>
-                <th scope="col">成本变化</th>
-                <th scope="col">平均延迟</th>
-                <th scope="col">ERROR</th>
-                <th scope="col">WARNING</th>
-                <th scope="col">错误率</th>
-                <th scope="col">错误率变化</th>
-              </tr>
-            </thead>
-            <tbody>
-              {agents.map((a) => {
-                const p = agentPrevSummary.get(a.name);
-                return (
-                  <tr key={a.name}>
-                    <td>
-                      <Link
-                        href={`/analytics/agents?name=${encodeURIComponent(a.name)}&days=${days}`}
-                        prefetch={false}
-                        title={`查看 ${a.name} 明细`}
-                      >
-                        <span className="badge green">{a.name}</span>
-                      </Link>
-                    </td>
-                    <td className="mono">{a.count}</td>
-                    <td>{deltaCell(a.count, p?.count ?? null)}</td>
-                    <td className="mono">{formatTokens(a.tokens)}</td>
-                    <td className={a.cost > 0 ? "mono cost" : "mono"}>
-                      {formatCost(a.cost)}
-                    </td>
-                    <td>{deltaCell(a.cost, p?.cost ?? null)}</td>
-                    <td className="mono">{formatDuration(a.avg)}</td>
-                    <td>
-                      {a.errors > 0 ? (
-                        <span className="badge red">{a.errors}</span>
-                      ) : (
-                        <span className="mute2">0</span>
-                      )}
-                    </td>
-                    <td>
-                      {a.warnings > 0 ? (
-                        <span className="badge amber">{a.warnings}</span>
-                      ) : (
-                        <span className="mute2">0</span>
-                      )}
-                    </td>
-                    <td>
-                      <span
-                        className="err-rate"
-                        data-grade={a.errorRate >= 0.1 ? "high" : a.errorRate > 0 ? "mid" : "low"}
-                      >
-                        {(a.errorRate * 100).toFixed(1)}%
-                      </span>
-                    </td>
-                    <td>{deltaCell(a.errorRate, p?.errorRate ?? null)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
     </>
   );
 }

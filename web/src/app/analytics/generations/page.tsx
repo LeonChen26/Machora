@@ -1,8 +1,8 @@
-import { Link } from "../../components/NativeLink";
-import { EmptyIcon } from "../../components/EmptyIcon";
-import { Pager } from "../../components/Pager";
-import { and, asc, count, desc, eq, inArray } from "drizzle-orm";
-import { db, observation } from "@machora/shared";
+import { Link } from "../../../components/NativeLink";
+import { EmptyIcon } from "../../../components/EmptyIcon";
+import { Pager } from "../../../components/Pager";
+import { and, asc, count, desc, eq, inArray, sql } from "drizzle-orm";
+import { db, observation, trace } from "@machora/shared";
 import type { ReactNode } from "react";
 import {
   formatRelative,
@@ -11,14 +11,12 @@ import {
   durationMs,
   formatTokens,
   formatCost,
-} from "../../lib/format";
-import { levelBadge } from "../../lib/levelBadge";
-import { getCurrentProjectId } from "../../server/project";
-import { requireUser } from "../../server/session";
+} from "../../../lib/format";
+import { levelBadge } from "../../../lib/levelBadge";
 import {
   parseGenerationFilters,
   buildGenerationWhere,
-} from "../../server/traceQuery";
+} from "../../../server/traceQuery";
 
 export const dynamic = "force-dynamic";
 
@@ -29,13 +27,9 @@ export default async function GenerationsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireUser();
-
   const sp = await searchParams;
   const str = (v: string | string[] | undefined) =>
     Array.isArray(v) ? v[0] : v;
-
-  const projectId = await getCurrentProjectId();
 
   const daysRaw = str(sp.days);
   const days = daysRaw ? Number.parseInt(daysRaw, 10) : 7;
@@ -44,40 +38,51 @@ export default async function GenerationsPage({
   const rawPage = Number.parseInt(str(sp.page) ?? "", 10);
   const page = rawPage >= 1 ? rawPage : 1;
 
-  const where = buildGenerationWhere(projectId, gf);
+  const where = buildGenerationWhere(gf);
 
-  // 模型下拉选项（当前项目去重）
+  // 模型下拉选项
   const models = await db
     .selectDistinct({ model: observation.model })
     .from(observation)
-    .where(
-      and(
-        eq(observation.projectId, projectId),
-        inArray(observation.type, ["LLM", "EMBEDDING"]),
-      ),
-    )
+    .where(inArray(observation.type, ["LLM", "EMBEDDING"]))
     .orderBy(asc(observation.model));
 
+  const sortKey = str(sp.sort)?.trim() || "time";
+  const sortDir = str(sp.dir) === "asc" ? "asc" : "desc";
+  // 排序键下推到 SQL：跨页排序必须按全量结果排，不能只排当前页。
+  // 空值统一置后（SQLite 默认 NULL 最小，加一个 is null 前导键即可两种方向都置后）。
+  const sortExpr =
+    sortKey === "cost"
+      ? observation.totalCost
+      : sortKey === "token"
+        ? observation.totalTokens
+        : sortKey === "latency"
+          ? sql`(${observation.endTime} - ${observation.startTime})`
+          : observation.startTime;
+
   const [items, total] = await Promise.all([
-    db.query.observation.findMany({
-      where: and(...where),
-      orderBy: (o, { desc }) => [desc(o.startTime)],
-      offset: (page - 1) * PAGE_SIZE,
-      limit: PAGE_SIZE,
-      columns: {
-        id: true,
-        name: true,
-        model: true,
-        startTime: true,
-        endTime: true,
-        totalTokens: true,
-        totalCost: true,
-        level: true,
-      },
-      with: {
-        trace: { columns: { id: true, name: true } },
-      },
-    }),
+    db
+      .select({
+        id: observation.id,
+        name: observation.name,
+        model: observation.model,
+        startTime: observation.startTime,
+        endTime: observation.endTime,
+        totalTokens: observation.totalTokens,
+        totalCost: observation.totalCost,
+        level: observation.level,
+        traceId: trace.id,
+        traceName: trace.name,
+      })
+      .from(observation)
+      .leftJoin(trace, eq(observation.traceId, trace.id))
+      .where(and(...where))
+      .orderBy(
+        sql`${sortExpr} is null`,
+        sortDir === "asc" ? asc(sortExpr) : desc(sortExpr),
+      )
+      .offset((page - 1) * PAGE_SIZE)
+      .limit(PAGE_SIZE),
     db
       .select({ c: count() })
       .from(observation)
@@ -85,28 +90,6 @@ export default async function GenerationsPage({
       .then((r) => r[0].c),
   ]);
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-
-  // 排序：time / cost / latency / token（JS 层排序当前页）
-  const sortKey = str(sp.sort)?.trim() || "time";
-  const sortDir = str(sp.dir) === "asc" ? "asc" : "desc";
-  function sortValue(
-    o: (typeof items)[number],
-    key: string,
-  ): number | null {
-    if (key === "cost") return o.totalCost ?? null;
-    if (key === "token") return o.totalTokens ?? null;
-    if (key === "latency")
-      return o.endTime ? o.endTime.getTime() - o.startTime.getTime() : null;
-    return o.startTime.getTime();
-  }
-  const sortedShown = [...items].sort((a, b) => {
-    const va = sortValue(a, sortKey);
-    const vb = sortValue(b, sortKey);
-    if (va == null && vb == null) return 0;
-    if (va == null) return 1;
-    if (vb == null) return -1;
-    return sortDir === "asc" ? va - vb : vb - va;
-  });
 
   const qs = (p: number, extra?: Record<string, string>) => {
     const params = new URLSearchParams();
@@ -118,7 +101,7 @@ export default async function GenerationsPage({
     if (p > 1) params.set("page", String(p));
     if (extra) for (const [k, v] of Object.entries(extra)) params.set(k, v);
     const qsStr = params.toString();
-    return `/generations${qsStr ? `?${qsStr}` : ""}`;
+    return `/analytics/generations${qsStr ? `?${qsStr}` : ""}`;
   };
 
   function sortHref(key: string): string {
@@ -160,6 +143,24 @@ export default async function GenerationsPage({
           title="按当前筛选条件导出 CSV"
         >
           导出 CSV
+        </Link>
+      </div>
+
+      {/* 维度导航 */}
+      <div className="seg">
+        <Link href="/analytics" prefetch={false} className="seg-btn">
+          总览
+        </Link>
+        <Link href="/analytics/topology" prefetch={false} className="seg-btn">
+          Agent 拓扑
+        </Link>
+        <Link
+          href="/analytics/generations"
+          prefetch={false}
+          className="seg-btn active"
+          aria-current="true"
+        >
+          Generations
         </Link>
       </div>
 
@@ -221,7 +222,7 @@ export default async function GenerationsPage({
         <button type="submit" className="btn primary">
           查询
         </button>
-        <Link className="btn" href="/generations" prefetch={false}>
+        <Link className="btn" href="/analytics/generations" prefetch={false}>
           重置
         </Link>
       </form>
@@ -247,20 +248,30 @@ export default async function GenerationsPage({
               </tr>
             </thead>
             <tbody>
-              {sortedShown.map((o) => (
+              {items.map((o) => (
                 <tr key={o.id} data-level={o.level === "ERROR" || o.level === "WARNING" ? o.level : undefined}>
                   <td className="mono muted text-xs" style={{ whiteSpace: "nowrap" }}>
                     {formatRelative(o.startTime)}
                   </td>
                   <td>
-                    <Link href={`/traces/${o.trace.id}`} prefetch={false}>
-                      {o.trace.name ?? o.trace.id}
-                    </Link>
+                    {o.traceId ? (
+                      <Link href={`/traces/${o.traceId}`} prefetch={false}>
+                        {o.traceName ?? o.traceId}
+                      </Link>
+                    ) : (
+                      <span className="mute2">—</span>
+                    )}
                   </td>
                   <td>{o.name || <span className="mute2">—</span>}</td>
                   <td>
                     {o.model ? (
-                      <span className="badge purple">{o.model}</span>
+                      <Link
+                        href={`/models/${encodeURIComponent(o.model)}`}
+                        prefetch={false}
+                        title={`查看模型 ${o.model} 详情`}
+                      >
+                        <span className="badge purple">{o.model}</span>
+                      </Link>
                     ) : (
                       <span className="mute2">—</span>
                     )}
@@ -291,7 +302,7 @@ export default async function GenerationsPage({
         prevHref={page > 1 ? qs(page - 1) : undefined}
         nextHref={page < totalPages ? qs(page + 1) : undefined}
         jump={{
-          action: "/generations",
+          action: "/analytics/generations",
           page,
           totalPages,
           hidden: (

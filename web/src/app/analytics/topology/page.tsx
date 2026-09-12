@@ -1,8 +1,6 @@
 import { Link } from "../../../components/NativeLink";
 import { EmptyIcon } from "../../../components/EmptyIcon";
 import { TopologyDiagram } from "../../../components/topology/TopologyDiagram";
-import { getCurrentProjectId } from "../../../server/project";
-import { requireUser } from "../../../server/session";
 import { buildTopology } from "../../../server/topology";
 import { formatDuration, formatTokens, formatCost } from "../../../lib/format";
 
@@ -16,20 +14,17 @@ export default async function TopologyPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireUser();
-
   const sp = await searchParams;
   const str = (v: string | string[] | undefined) =>
     Array.isArray(v) ? v[0] : v;
   const rawDays = Number.parseInt(str(sp.days) ?? "", 10);
   const days = (DAY_OPTIONS as readonly number[]).includes(rawDays) ? rawDays : 7;
 
-  const projectId = await getCurrentProjectId();
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const since = new Date(today.getTime() - (days - 1) * DAY_MS);
 
-  const topo = await buildTopology(projectId, since);
+  const topo = await buildTopology(since);
 
   const agentTools = new Map(
     topo.agents.map((a) => [
@@ -113,7 +108,13 @@ export default async function TopologyPage({
                 return (
                   <tr key={a.name}>
                     <td>
-                      <span className="badge green">{a.name}</span>
+                      <Link
+                        href={`/agents/${encodeURIComponent(a.name)}?days=${days}`}
+                        prefetch={false}
+                        title={`查看 ${a.name} 详情`}
+                      >
+                        <span className="badge green">{a.name}</span>
+                      </Link>
                     </td>
                     <td>
                       {ts.length === 0 ? (
@@ -170,7 +171,13 @@ export default async function TopologyPage({
                     <span className="badge blue">{t.name}</span>
                   </td>
                   <td>
-                    <span className="badge green">{t.agent}</span>
+                    <Link
+                      href={`/agents/${encodeURIComponent(t.agent)}?days=${days}`}
+                      prefetch={false}
+                      title={`查看 ${t.agent} 详情`}
+                    >
+                      <span className="badge green">{t.agent}</span>
+                    </Link>
                   </td>
                   <td className="mono">{t.count}</td>
                   <td className="mono">{formatDuration(t.avgDur)}</td>

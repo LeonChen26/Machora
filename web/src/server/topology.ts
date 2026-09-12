@@ -85,10 +85,7 @@ interface ToolAcc {
   durs: number[];
 }
 
-export async function buildTopology(
-  projectId: string,
-  since: Date,
-): Promise<TopologyData> {
+export async function buildTopology(since: Date): Promise<TopologyData> {
   const rows = (await db
     .select({
       traceId: observation.traceId,
@@ -107,9 +104,7 @@ export async function buildTopology(
     })
     .from(observation)
     .leftJoin(trace, eq(observation.traceId, trace.id))
-    .where(
-      and(eq(observation.projectId, projectId), gte(observation.startTime, since)),
-    )) as Row[];
+    .where(and(gte(observation.startTime, since)))) as Row[];
 
   // trace 级：工具集合 + 模型集合 + agent 归属（tool↔model 共现边用）
   const perTrace = new Map<

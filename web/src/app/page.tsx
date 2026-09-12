@@ -1,188 +1,30 @@
 import { Link } from "../components/NativeLink";
 import { EmptyIcon } from "../components/EmptyIcon";
-import { and, count, desc, eq, gte, inArray } from "drizzle-orm";
-import {
-  db,
-  trace,
-  observation,
-  score,
-  project as projectTable,
-} from "@machora/shared";
-import {
-  formatRelative,
-  formatDateTime,
-  formatDuration,
-  formatTokens,
-  formatCost,
-} from "../lib/format";
-import { BarChart } from "../components/BarChart";
 import { StatCard } from "../components/StatCard";
-import { getCurrentProjectId } from "../server/project";
-import { requireUser } from "../server/session";
+import { Sparkline } from "../components/Sparkline";
+import { SignalList } from "../components/SignalList";
+import { deltaCell } from "../components/DeltaCell";
+import { formatDuration, formatCost } from "../lib/format";
+import { getOverview } from "../server/overview";
 
 export const dynamic = "force-dynamic";
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-const TREND_DAYS = 7;
+const DAYS = 7;
 
 export default async function Home() {
-  await requireUser();
+  const port = process.env.PORT ?? "3100";
+  const days = DAYS;
 
-  const port = process.env.PORT ?? "3000";
-  const projectId = await getCurrentProjectId();
-
-  // 近 7 天起点（当天 00:00）
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const trendSince = new Date(today.getTime() - (TREND_DAYS - 1) * DAY_MS);
-
-  const [
-    project,
-    projectCount,
-    traceCount,
-    obsCount,
-    scoreCount,
-    recentTraces,
-    trendTraces,
-    gens7d,
-    topTraces,
-  ] = await Promise.all([
-    projectId
-      ? db.query.project.findFirst({ where: eq(projectTable.id, projectId) })
-      : Promise.resolve(null),
-    (await db.select({ c: count() }).from(projectTable))[0].c,
-    (await db
-      .select({ c: count() })
-      .from(trace)
-      .where(eq(trace.projectId, projectId)))[0].c,
-    (await db
-      .select({ c: count() })
-      .from(observation)
-      .where(eq(observation.projectId, projectId)))[0].c,
-    (await db
-      .select({ c: count() })
-      .from(score)
-      .where(eq(score.projectId, projectId)))[0].c,
-    db.query.trace.findMany({
-      where: eq(trace.projectId, projectId),
-      orderBy: (t, { desc }) => [desc(t.timestamp)],
-      limit: 6,
-      with: {
-        observations: { columns: { id: true } },
-        scores: { columns: { id: true } },
-      },
-    }),
-    db
-      .select({ timestamp: trace.timestamp, environment: trace.environment })
-      .from(trace)
-      .where(and(eq(trace.projectId, projectId), gte(trace.timestamp, trendSince))),
-    db
-      .select({
-        startTime: observation.startTime,
-        endTime: observation.endTime,
-        totalTokens: observation.totalTokens,
-        totalCost: observation.totalCost,
-        level: observation.level,
-        model: observation.model,
-      })
-      .from(observation)
-      .where(
-        and(
-          eq(observation.projectId, projectId),
-          inArray(observation.type, ["LLM", "EMBEDDING"]),
-          gte(observation.startTime, trendSince),
-        ),
-      ),
-    db.query.trace.findMany({
-      where: and(eq(trace.projectId, projectId), gte(trace.timestamp, trendSince)),
-      orderBy: (t, { desc }) => [desc(t.timestamp)],
-      limit: 200,
-      with: {
-        observations: {
-          columns: {
-            totalCost: true,
-            totalTokens: true,
-            startTime: true,
-            endTime: true,
-            level: true,
-          },
-        },
-      },
-    }),
-  ]);
-
-  // 按天分桶
-  const trendData = Array.from({ length: TREND_DAYS }, (_, i) => {
-    const dayStart = new Date(trendSince.getTime() + i * DAY_MS);
-    const dayEnd = new Date(dayStart.getTime() + DAY_MS);
-    const dayCount = trendTraces.filter(
-      (t) => t.timestamp >= dayStart && t.timestamp < dayEnd,
-    ).length;
-    return {
-      label: `${dayStart.getMonth() + 1}/${dayStart.getDate()}`,
-      value: dayCount,
-    };
-  });
-
-  // generation 延迟统计
-  const latencies = gens7d
-    .map((g) => (g.endTime ? g.endTime.getTime() - g.startTime.getTime() : null))
-    .filter((x): x is number => x != null)
-    .sort((a, b) => a - b);
-  const latencyAvg = latencies.length
-    ? latencies.reduce((s, x) => s + x, 0) / latencies.length
-    : null;
-  const latencyP95 = latencies.length
-    ? latencies[Math.min(latencies.length - 1, Math.floor(latencies.length * 0.95))]
-    : null;
-
-  // 近 7 天聚合：token / 成本 / 错误率
-  const totalTokens7d = gens7d.reduce((s, g) => s + (g.totalTokens ?? 0), 0);
-  const totalCost7d = gens7d.reduce((s, g) => s + (g.totalCost ?? 0), 0);
-  const errors7d = gens7d.filter((g) => g.level === "ERROR").length;
-  const errorRate7d = gens7d.length ? errors7d / gens7d.length : 0;
-
-  // 按模型分布（近 7 天 generation 调用数）
-  const modelCounts = new Map<string, number>();
-  for (const g of gens7d) {
-    const m = g.model ?? "unknown";
-    modelCounts.set(m, (modelCounts.get(m) ?? 0) + 1);
-  }
-  const modelDist = Array.from(modelCounts.entries())
-    .map(([label, value]) => ({ label: label.length > 14 ? `${label.slice(0, 14)}…` : label, value }))
-    .sort((a, b) => b.value - a.value)
-    .slice(0, 8);
-
-  // 按环境分布（近 7 天 trace 数）
-  const envCounts = new Map<string, number>();
-  for (const t of trendTraces) {
-    const e = t.environment ?? "unknown";
-    envCounts.set(e, (envCounts.get(e) ?? 0) + 1);
-  }
-  const envDist = Array.from(envCounts.entries())
-    .map(([label, value]) => ({ label, value }))
-    .sort((a, b) => b.value - a.value);
-
-  // Top N：近 7 天最贵 / 最慢 traces
-  const topStats = topTraces.map((t) => {
-    const cost = t.observations.reduce((s, o) => s + (o.totalCost ?? 0), 0);
-    const starts = t.observations.map((o) => o.startTime.getTime());
-    const ends = t.observations.map((o) =>
-      o.endTime ? o.endTime.getTime() : o.startTime.getTime(),
-    );
-    const latency = starts.length
-      ? Math.max(...ends) - Math.min(...starts)
-      : null;
-    return { t, cost, latency };
-  });
-  const topCost = topStats
-    .filter((x) => x.cost > 0)
-    .sort((a, b) => b.cost - a.cost)
-    .slice(0, 5);
-  const topLatency = topStats
-    .filter((x) => x.latency != null)
-    .sort((a, b) => (b.latency ?? 0) - (a.latency ?? 0))
-    .slice(0, 5);
+  const {
+    totals,
+    prevTotals,
+    watchlist,
+    daily,
+    agents,
+    topCost,
+    topLatency,
+    errorTraces,
+  } = await getOverview(days);
 
   return (
     <>
@@ -190,7 +32,7 @@ export default async function Home() {
         <div>
           <h1>Overview</h1>
           <div className="sub">
-            {project ? `项目：${project.name}` : "未配置项目"} · standalone 模式
+            近 {days} 天 · {totals.traces} 条 Trace · {agents.length} 个 Agent
           </div>
         </div>
         <Link className="btn primary" href="/docs" prefetch={false}>
@@ -198,90 +40,224 @@ export default async function Home() {
         </Link>
       </div>
 
-      <div className="grid grid-4">
-        <StatCard label="Traces" value={traceCount} hint="总记录数" icon="list" accent />
-        <StatCard label="Observations" value={obsCount} hint="span / generation / event" icon="boxes" />
-        <StatCard label="Scores" value={scoreCount} hint="人工 / 自动评分" icon="star" />
-        <StatCard label="Projects" value={projectCount} hint={project?.name ?? "—"} icon="folder" />
-      </div>
+      {/* 待关注：全局 + Agent + 模型 + 轨迹信号，口径统一由 signals.ts 判定 */}
+      {watchlist.length > 0 && (
+        <div className="card alert-danger mb-3">
+          <div className="card-head">
+            <div className="label text-danger">待关注</div>
+            <span className="mute2 text-xs">
+              {watchlist.length} 项 · 对比前 {days} 天
+            </span>
+          </div>
+          <div className="mt-1">
+            <SignalList signals={watchlist} />
+          </div>
+        </div>
+      )}
 
-      <div className="section-title">近 {TREND_DAYS} 天聚合</div>
-      <div className="grid grid-4">
-        <StatCard label="Generation 调用" value={gens7d.length} hint={`近 ${TREND_DAYS} 天`} icon="bolt" />
+      {/* 指标面板：数值 + 环比 + 近 7 天迷你折线（合并原 KPI 行与趋势图） */}
+      <div className="grid grid-5">
         <StatCard
-          label="Token 总量"
-          value={formatTokens(totalTokens7d)}
-          hint={`近 ${TREND_DAYS} 天`}
-          icon="hash"
+          label="Trace 数"
+          value={totals.traces}
+          hint={<>环比 {deltaCell(totals.traces, prevTotals.traces)}</>}
+          icon="list"
+          accent
+          title="该窗口内的 trace 数（一个 trace = 一次完整链路执行）"
+          chart={
+            <Sparkline
+              fit
+              data={daily.map((d) => d.traces)}
+              title={`近 ${days} 天每日 Trace 数`}
+            />
+          }
+        />
+        <StatCard
+          label="模型调用"
+          value={totals.calls}
+          hint={<>环比 {deltaCell(totals.calls, prevTotals.calls)}</>}
+          icon="bolt"
+          title="LLM / Embedding 类调用条数（一个 trace 含多次）"
+          chart={
+            <Sparkline
+              fit
+              color="var(--purple)"
+              data={daily.map((d) => d.calls)}
+              title={`近 ${days} 天每日模型调用`}
+            />
+          }
         />
         <StatCard
           label="总成本"
-          value={formatCost(totalCost7d)}
-          hint={`近 ${TREND_DAYS} 天`}
+          value={formatCost(totals.cost)}
+          hint={<>环比 {deltaCell(totals.cost, prevTotals.cost)}</>}
           tone="success"
           icon="coin"
+          chart={
+            <Sparkline
+              fit
+              color="var(--green)"
+              data={daily.map((d) => d.cost)}
+              title={`近 ${days} 天每日成本`}
+            />
+          }
         />
         <StatCard
           label="错误率"
-          value={`${(errorRate7d * 100).toFixed(1)}%`}
-          hint={`${errors7d} ERROR · 近 ${TREND_DAYS} 天`}
+          value={`${(totals.errorRate * 100).toFixed(1)}%`}
+          hint={<>环比 {deltaCell(totals.errorRate, prevTotals.errorRate)}</>}
           tone="danger"
           icon="alert"
+          title="ERROR 步骤 / 全部步骤 observation（步骤级口径）"
+          chart={
+            <Sparkline
+              fit
+              color="var(--red)"
+              data={daily.map((d) => d.errorRate)}
+              title={`近 ${days} 天每日错误率`}
+            />
+          }
+        />
+        <StatCard
+          label="P95 延迟"
+          value={formatDuration(totals.p95)}
+          hint={<>环比 {deltaCell(totals.p95, prevTotals.p95)}</>}
+          icon="clock"
+          title="全部步骤 observation 时长的 P95（含容器 span，口径接近 trace 级）"
+          chart={
+            <Sparkline
+              fit
+              color="var(--amber)"
+              data={daily.map((d) => d.p95 ?? 0)}
+              title={`近 ${days} 天每日 P95 延迟`}
+            />
+          }
         />
       </div>
 
-      <div className="section-title">近 {TREND_DAYS} 天趋势</div>
-      <div className="grid grid-2">
-        <div className="card">
-          <div className="label">Traces / 天</div>
-          <BarChart data={trendData} />
-        </div>
-        <div className="card">
-          <div className="label">Generation 延迟（近 {TREND_DAYS} 天 · {gens7d.length} 次调用）</div>
-          <div className="grid grid-3 mt-1">
-            <div>
-              <div className="mute2 text-xs">
-                平均
-              </div>
-              <div className="value value-sm">
-                {formatDuration(latencyAvg)}
-              </div>
-            </div>
-            <div>
-              <div className="mute2 text-xs">
-                P95
-              </div>
-              <div className="value value-sm">
-                {formatDuration(latencyP95)}
-              </div>
-            </div>
-            <div>
-              <div className="mute2 text-xs">
-                最高
-              </div>
-              <div className="value value-sm">
-                {formatDuration(latencies.length ? latencies[latencies.length - 1] : null)}
-              </div>
-            </div>
-          </div>
-          <div className="hint">基于 generation 类型 observation 的 endTime − startTime</div>
-        </div>
+      <div className="section-title">
+        Agent 风险榜{" "}
+        <span className="count">
+          按「是否有异常」优先排序 ·{" "}
+          <Link href="/agents" prefetch={false}>
+            查看全部 →
+          </Link>
+        </span>
       </div>
 
-      <div className="section-title">近 {TREND_DAYS} 天分布</div>
-      <div className="grid grid-2">
-        <div className="card">
-          <div className="label">按模型（调用数）</div>
-          <BarChart data={modelDist} color="var(--purple)" />
+      {agents.length === 0 ? (
+        <div className="card empty">
+          <EmptyIcon type="grid" />
+          暂无数据。注入的 trace / observation 带上 agentName 即可聚合。
         </div>
-        <div className="card">
-          <div className="label">按环境（trace 数）</div>
-          <BarChart data={envDist} color="var(--accent)" />
+      ) : (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Agent</th>
+                <th scope="col">版本</th>
+                <th scope="col">Trace 数</th>
+                <th scope="col">成功率</th>
+                <th scope="col">调用数</th>
+                <th scope="col">成本</th>
+                <th scope="col" title="ERROR 步骤 / 全部步骤（步骤级）">错误率</th>
+                <th scope="col" title="全部步骤 observation 时长的 P95">P95</th>
+                <th scope="col">近 {days} 天</th>
+                <th scope="col">标记</th>
+              </tr>
+            </thead>
+            <tbody>
+              {agents.map((a) => (
+                <tr key={a.name}>
+                  <td>
+                    <Link
+                      href={`/agents/${encodeURIComponent(a.name)}?days=${days}`}
+                      prefetch={false}
+                      title={`查看 ${a.name} 详情`}
+                    >
+                      <span className="badge green">{a.name}</span>
+                    </Link>
+                  </td>
+                  <td>
+                    {a.version ? (
+                      <span className="badge purple">{a.version}</span>
+                    ) : (
+                      <span className="mute2">—</span>
+                    )}
+                  </td>
+                  <td className="mono">{a.traces}</td>
+                  <td className="mono">
+                    {a.successRate === null ? (
+                      <span className="mute2">—</span>
+                    ) : (
+                      <span
+                        className={
+                          a.successRate < 0.9 ? "text-danger" : undefined
+                        }
+                      >
+                        {(a.successRate * 100).toFixed(0)}%
+                      </span>
+                    )}
+                  </td>
+                  <td className="mono">
+                    {a.calls}
+                    {a.prevCalls !== null && (
+                      <span className="mute2 text-xs"> /{a.prevCalls}</span>
+                    )}
+                  </td>
+                  <td className={a.cost > 0 ? "mono cost" : "mono"}>
+                    {formatCost(a.cost)}
+                  </td>
+                  <td>
+                    <span
+                      className="err-rate"
+                      data-grade={
+                        a.errorRate >= 0.1
+                          ? "high"
+                          : a.errorRate > 0
+                            ? "mid"
+                            : "low"
+                      }
+                    >
+                      {(a.errorRate * 100).toFixed(1)}%
+                    </span>
+                  </td>
+                  <td className="mono">{formatDuration(a.p95)}</td>
+                  <td>
+                    <Sparkline
+                      data={a.daily}
+                      title={`${a.name} 近 ${days} 天每日调用量`}
+                    />
+                  </td>
+                  <td>
+                    {a.flags.length === 0 ? (
+                      <span className="mute2">—</span>
+                    ) : (
+                      a.flags.map((f) => (
+                        <span key={f} className="badge amber">
+                          {f}
+                        </span>
+                      ))
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-      </div>
+      )}
 
-      <div className="section-title">Top 5（近 {TREND_DAYS} 天）</div>
-      <div className="grid grid-2">
+      <div className="section-title">
+        需要关注{" "}
+        <span className="count">
+          近 {days} 天 ·{" "}
+          <Link href="/traces" prefetch={false}>
+            查看全部 Traces →
+          </Link>
+        </span>
+      </div>
+      <div className="grid grid-3">
         <div className="card">
           <div className="label">最贵</div>
           {topCost.length === 0 ? (
@@ -292,11 +268,9 @@ export default async function Home() {
             topCost.map((x) => (
               <div key={x.t.id} className="stat-list-item">
                 <Link href={`/traces/${x.t.id}`} prefetch={false}>
-                  {x.t.name || <span className="mute2">{x.t.id}</span>}
+                  {x.t.name || <span className="mute2">{x.t.id.slice(0, 8)}</span>}
                 </Link>
-                <span className="mono cost nowrap">
-                  {formatCost(x.cost)}
-                </span>
+                <span className="mono cost nowrap">{formatCost(x.cost)}</span>
               </div>
             ))
           )}
@@ -311,7 +285,7 @@ export default async function Home() {
             topLatency.map((x) => (
               <div key={x.t.id} className="stat-list-item">
                 <Link href={`/traces/${x.t.id}`} prefetch={false}>
-                  {x.t.name || <span className="mute2">{x.t.id}</span>}
+                  {x.t.name || <span className="mute2">{x.t.id.slice(0, 8)}</span>}
                 </Link>
                 <span
                   className={`mono nowrap ${
@@ -328,113 +302,46 @@ export default async function Home() {
             ))
           )}
         </div>
+        <div className="card">
+          <div className="label">错误最多</div>
+          {errorTraces.length === 0 ? (
+            <div className="mute2" style={{ padding: "0.5rem 0" }}>
+              没有出错的 trace
+            </div>
+          ) : (
+            errorTraces.map((x) => (
+              <div key={x.t.id} className="stat-list-item">
+                <Link href={`/traces/${x.t.id}`} prefetch={false}>
+                  {x.t.name || <span className="mute2">{x.t.id.slice(0, 8)}</span>}
+                </Link>
+                <span className="badge red nowrap">{x.errors} ERROR</span>
+              </div>
+            ))
+          )}
+        </div>
       </div>
 
-      <div className="section-title">
-        最近 Traces <span className="count">{recentTraces.length > 0 ? "最新 6 条" : ""}</span>
-      </div>
-
-      {recentTraces.length === 0 ? (
-        <div className="card empty">
-          <EmptyIcon type="list" />
-          暂无 Trace 数据，先用下方命令注入一条试试。
-        </div>
-      ) : (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">名称</th>
-                <th scope="col">Trace ID</th>
-                <th scope="col">时间</th>
-                <th scope="col">Obs</th>
-                <th scope="col">Score</th>
-                <th scope="col">环境</th>
-              </tr>
-            </thead>
-            <tbody>
-              {recentTraces.map((t) => (
-                <tr key={t.id}>
-                  <td>
-                    <Link href={`/traces/${t.id}`} prefetch={false}>
-                      {t.name || <span className="mute2">（未命名）</span>}
-                    </Link>
-                  </td>
-                  <td className="mono muted" title={t.id}>{t.id.slice(0, 8)}</td>
-                  <td className="muted" title={formatDateTime(t.timestamp)}>
-                    {formatRelative(t.timestamp)}
-                  </td>
-                  <td>
-                    <span className="badge blue">{t.observations.length}</span>
-                  </td>
-                  <td>
-                    {t.scores.length > 0 ? (
-                      <span className="badge amber">{t.scores.length}</span>
-                    ) : (
-                      <span className="mute2">—</span>
-                    )}
-                  </td>
-                  <td>
-                    <span className="badge">{t.environment}</span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      <div className="section-title">快速接入</div>
-      <div className="card">
-        <div className="muted mb-1">
-          向 ingestion 端点批量推送事件，Basic Auth 用 public key : secret key：
+      <details className="card mt-3">
+        <summary style={{ cursor: "pointer", fontWeight: 600 }}>
+          快速接入（OTLP）
+        </summary>
+        <div className="muted mt-2">
+          把任意 OTel SDK 的 traces 端点指向本服务即可：
         </div>
         <pre className="code">
-{`curl -X POST http://localhost:${port}/api/public/ingestion \\
-  -u "pk-machora-dev-000000000000000000000:sk-machora-dev-000000000000000000000" \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "batch": [
-      {
-        "type": "trace-create",
-        "body": {
-          "id": "trace-1",
-          "name": "my-trace",
-          "timestamp": "${new Date().toISOString()}"
-        }
-      },
-      {
-        "type": "observation-create",
-        "body": {
-          "id": "obs-1",
-          "traceId": "trace-1",
-          "type": "generation",
-          "name": "chat-completion",
-          "startTime": "${new Date().toISOString()}",
-          "model": "gpt-4o-mini",
-          "input": {"role": "user", "content": "hello"},
-          "output": {"role": "assistant", "content": "hi there"}
-        }
-      },
-      {
-        "type": "score-create",
-        "body": {
-          "id": "score-1",
-          "traceId": "trace-1",
-          "name": "quality",
-          "value": 0.92,
-          "dataType": "NUMERIC",
-          "source": "HUMAN"
-        }
-      }
-    ]
-  }'`}
+{`export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://localhost:${port}/api/public/otel/v1/traces
+export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+
+# 带上 agent 语义属性即可聚合到 Agent 维度：
+#   gen_ai.agent.name / gen_ai.agent.version
+#   machora.agent.name / machora.agent.version`}
         </pre>
         <div className="muted mt-2">
+          <Link href="/docs" prefetch={false}>完整接入文档 →</Link> ·{" "}
           <Link href="/api/public/health" prefetch={false}>健康检查</Link> ·{" "}
           <Link href="/traces" prefetch={false}>查看全部 Traces →</Link>
         </div>
-      </div>
+      </details>
     </>
   );
 }

@@ -99,6 +99,8 @@ export function StatCard({
   size = "lg",
   accent = false,
   alert = false,
+  chart,
+  title,
 }: {
   label: ReactNode;
   value: ReactNode;
@@ -108,6 +110,10 @@ export function StatCard({
   size?: "lg" | "md" | "sm";
   accent?: boolean;
   alert?: boolean;
+  /** 卡片底部微型图表（如 7 天迷你折线） */
+  chart?: ReactNode;
+  /** 原生 title 提示（用于补充指标口径说明） */
+  title?: string;
 }) {
   const cardCls = ["card", accent ? "stat-accent" : "", alert ? "card-error" : ""]
     .filter(Boolean)
@@ -120,7 +126,7 @@ export function StatCard({
     .filter(Boolean)
     .join(" ");
   return (
-    <div className={cardCls}>
+    <div className={cardCls} title={title}>
       <div className="label">
         {icon && (
           <span className="stat-icon" aria-hidden>
@@ -131,6 +137,7 @@ export function StatCard({
       </div>
       <div className={valueCls}>{value}</div>
       {hint != null && <div className="hint">{hint}</div>}
+      {chart != null && <div className="stat-chart">{chart}</div>}
     </div>
   );
 }
