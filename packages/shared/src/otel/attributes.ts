@@ -42,7 +42,7 @@ export const ATTR = {
   GEN_AI_AGENT_NAME: "gen_ai.agent.name",
   GEN_AI_AGENT_VERSION: "gen_ai.agent.version",
   GEN_AI_WORKFLOW_NAME: "gen_ai.workflow.name",
-  // LoongSuite GenAI SemConv 增强（阿里云 loongsuite-otel-util-genai，见 design.md §6.8）
+  // LoongSuite GenAI SemConv 增强（阿里云 loongsuite-otel-util-genai）
   // gen_ai.skill.* 挂在 execute_tool span 上标识业务技能；其余 skill.id/description/version 留 metadata
   GEN_AI_SKILL_NAME: "gen_ai.skill.name",
   // LoongSuite 用 gen_ai.span.kind（LLM/STEP/TOOL/AGENT/ENTRY 等）标记 span 类型；

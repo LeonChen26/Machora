@@ -11,7 +11,7 @@
 | 概念 | 定义 | 落库位置 |
 |---|---|---|
 | **Trace** | 一次完整链路执行（用户视角的一次请求 / 一轮对话） | `Trace` |
-| **Observation** | 一个 trace 内的一步，`type` ∈ ENTRY / AGENT / STEP / LLM / TOOL / EMBEDDING / CHAIN / RETRIEVER / RERANKER / EVENT / SPAN | `Observation`（自引用 `parentObservationId` 构成调用树） |
+| **Observation** | 一个 trace 内的一步，`type` ∈ span.kind 的 10 个合法值（ENTRY / AGENT / STEP / LLM / TOOL / EMBEDDING / CHAIN / RETRIEVER / RERANKER / EVENT）；span.kind 缺失 / UNKNOWN 时兜底为 `SPAN` | `Observation`（自引用 `parentObservationId` 构成调用树） |
 | **Generation** | `type` ∈ {`LLM`, `EMBEDDING`} 的 observation，即一次模型调用 | 同上 |
 | **Session** | 会话，一串 trace（`trace.sessionId`） | `Trace.sessionId` |
 | **对象** | 跨 trace 聚合的实体：Agent / Model | 见下「归属优先级」 |
@@ -61,7 +61,8 @@ trace 级字段为权威，span 级字段只做兜底。
 |---|---|---|---|
 | Overview / Agents / Models | 7 天 | 7 / 14 / 30 | 日历天（`since = 今天 00:00 − (days−1) 天`） |
 | Analytics | 7 天 | 7 / 14 / 30 | 日历天 |
-| Sessions | 全部 | 全部 / 7 / 30 | 日历天 |
+| Sessions | 7 天 | 全部 / 7 / 30 | 日历天 |
+| Scores | 7 天 | 全部 / 7 / 30 | 日历天 |
 | Traces | 最近 7 天 | `from` / `to` + 快捷区间 | 滚动（`from = now − 7d`） |
 
 ---
@@ -124,11 +125,11 @@ trace 级字段为权威，span 级字段只做兜底。
 | 项 | 现状 | 影响 / 建议 |
 |---|---|---|
 | Overview 轨迹信号采样 | 只扫描窗口内最近 `TRACE_SIGNAL_SCAN_LIMIT`(=100) 个 trace | Overview 的轨迹信号是采样值，不是全量；Traces 列表信号列不受此限 |
-| 聚合未下推 SQL | Overview / Agents / Models 目录仍把窗口内数据全量读入内存再聚合 | 自托管数据量下可用；量级上来需改 SQL 聚合或增量预聚合（不要在无实测瓶颈时动手） |
+| 聚合未下推 SQL | Overview / Agents / Models 目录仍把窗口内数据全量读入内存再聚合；Sessions / Scores 以默认 7 天窗口 + 行数安全阀兜底（Sessions 上限 5000 行，超限按最新截断并在页头提示） | 自托管数据量下可用；量级上来需改 SQL 聚合或增量预聚合（不要在无实测瓶颈时动手） |
 | 时间窗对齐不统一 | Agents/Models/Analytics 用日历天，Traces 用滚动 7 天（§4） | 跨页对比时会有 <=1 天错位；建议统一为一种并对齐文案 |
 | Generations 与 Models 调用明细重叠 | 都能「按模型看调用」 | 前者跨模型检索 + CSV 导出，后者带对象上下文；保留二者，但需在入口文案上区分 |
 | Agents / Models 口径差异 | 错误率、P95、成本刻意不同 | 目前只在 UI `title` 层面对齐，未做统一抽象 |
-| 鉴权 | 端点均无需鉴权，无多租户隔离（见 README） | 仅供单机 / 内网自托管 |
+| 鉴权 | 端点均无需鉴权，无多租户隔离 | 仅供单机 / 内网自托管 |
 
 ---
 

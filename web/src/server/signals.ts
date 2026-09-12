@@ -195,11 +195,11 @@ export interface TraceSignalSummary {
   /** 实际扫描的 trace 数 */
   scanned: number;
   /** 出现「仅重复」的 trace 数 */
-  repeatTasks: number;
+  repeatTraces: number;
   /** 出现「疑似无效循环」的 trace 数 */
-  ineffectiveTasks: number;
+  ineffectiveTraces: number;
   /** 长任务（STEP 思考节点 ≥ 8）的 trace 数（信号名固定为「长任务」） */
-  longTasks: number;
+  longTraces: number;
   /** 「重复调用」类 trace 内的最大连续次数 */
   maxRepeatStreak: number;
   /** 「疑似无效循环」类 trace 内的最大连续次数 */
@@ -208,9 +208,9 @@ export interface TraceSignalSummary {
 
 const EMPTY_TRACE_SIGNALS: TraceSignalSummary = {
   scanned: 0,
-  repeatTasks: 0,
-  ineffectiveTasks: 0,
-  longTasks: 0,
+  repeatTraces: 0,
+  ineffectiveTraces: 0,
+  longTraces: 0,
   maxRepeatStreak: 0,
   maxIneffectiveStreak: 0,
 };
@@ -323,22 +323,22 @@ export async function getTraceSignals(
 
   const byTrace = await loadObservationsByTrace(recent.map((t) => t.id));
 
-  let repeatTasks = 0;
-  let ineffectiveTasks = 0;
-  let longTasks = 0;
+  let repeatTraces = 0;
+  let ineffectiveTraces = 0;
+  let longTraces = 0;
   let maxRepeatStreak = 0;
   let maxIneffectiveStreak = 0;
 
   for (const list of byTrace.values()) {
     const info = traceSignalOf(list);
-    if (info.longTask) longTasks++;
+    if (info.longTask) longTraces++;
     if (info.ineffectiveStreak > 0) {
-      ineffectiveTasks++;
+      ineffectiveTraces++;
       if (info.ineffectiveStreak > maxIneffectiveStreak) {
         maxIneffectiveStreak = info.ineffectiveStreak;
       }
     } else if (info.repeatStreak > 0) {
-      repeatTasks++;
+      repeatTraces++;
       if (info.repeatStreak > maxRepeatStreak) {
         maxRepeatStreak = info.repeatStreak;
       }
@@ -347,9 +347,9 @@ export async function getTraceSignals(
 
   return {
     scanned: byTrace.size,
-    repeatTasks,
-    ineffectiveTasks,
-    longTasks,
+    repeatTraces,
+    ineffectiveTraces,
+    longTraces,
     maxRepeatStreak,
     maxIneffectiveStreak,
   };
@@ -414,11 +414,11 @@ export function composeWatchlist(input: WatchlistInput): Signal[] {
 
   const tr = input.traces;
   if (tr) {
-    // 扫描被截断时如实标注范围，避免把「最近 N 个任务」的数字误读为全量
+    // 扫描被截断时如实标注范围，避免把「最近 N 个 trace」的数字误读为全量
     const capped =
       input.traceTotal != null && tr.scanned > 0 && input.traceTotal > tr.scanned;
-    const scopeNote = capped ? `（仅统计最近 ${tr.scanned} 个任务）` : "";
-    if (tr.ineffectiveTasks > 0) {
+    const scopeNote = capped ? `（仅统计最近 ${tr.scanned} 个 trace）` : "";
+    if (tr.ineffectiveTraces > 0) {
       out.push({
         id: "trace:ineffective",
         kind: "loop",
@@ -427,10 +427,10 @@ export function composeWatchlist(input: WatchlistInput): Signal[] {
         scopeName: null,
         title: "疑似无效循环",
         short: "无效循环",
-        detail: `${tr.ineffectiveTasks} 个任务出现疑似无效循环（最高连续 ${tr.maxIneffectiveStreak} 次）${scopeNote}`,
+        detail: `${tr.ineffectiveTraces} 个 trace 出现疑似无效循环（最高连续 ${tr.maxIneffectiveStreak} 次）${scopeNote}`,
         href: "/traces",
       });
-    } else if (tr.repeatTasks > 0) {
+    } else if (tr.repeatTraces > 0) {
       out.push({
         id: "trace:repeat",
         kind: "loop",
@@ -439,11 +439,11 @@ export function composeWatchlist(input: WatchlistInput): Signal[] {
         scopeName: null,
         title: "重复工具调用",
         short: "重复调用",
-        detail: `${tr.repeatTasks} 个任务出现重复工具调用（最高连续 ${tr.maxRepeatStreak} 次）${scopeNote}`,
+        detail: `${tr.repeatTraces} 个 trace 出现重复工具调用（最高连续 ${tr.maxRepeatStreak} 次）${scopeNote}`,
         href: "/traces",
       });
     }
-    if (tr.longTasks > 0) {
+    if (tr.longTraces > 0) {
       out.push({
         id: "trace:long",
         kind: "long_task",
@@ -452,7 +452,7 @@ export function composeWatchlist(input: WatchlistInput): Signal[] {
         scopeName: null,
         title: "长任务",
         short: "长任务",
-        detail: `${tr.longTasks} 个任务的思考步骤 ≥ 8${scopeNote}`,
+        detail: `${tr.longTraces} 个 trace 的思考步骤 ≥ 8${scopeNote}`,
         href: "/traces",
       });
     }

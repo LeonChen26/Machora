@@ -97,9 +97,10 @@ curl -X POST ${baseUrl}/api/public/evaluations \\
   -H "Content-Type: application/json" \\
   -d '{"traceId":"<traceId>","evaluatorType":"error"}'`}</pre>
                 <div className="muted">
-                  内置评估器：<span className="mono">error</span> / <span className="mono">latency</span> /{" "}
+                  内置评估器：规则类 <span className="mono">error</span> / <span className="mono">latency</span> /{" "}
                   <span className="mono">cost</span> / <span className="mono">token</span> / <span className="mono">tag</span>
-                  （阈值经 config 传入，如 {"{ thresholdMs, thresholdUsd, thresholdTokens, tag }"}）；
+                  （阈值经 config 传入，如 {"{ thresholdMs, thresholdUsd, thresholdTokens, tag }"}）；另有{" "}
+                  <span className="mono">llmJudge</span>（LLM-as-judge，需配置模型）。
                   评估结果异步写回 <span className="mono">source=EVALUATION</span> 的 Score。
                 </div>
               </div>
@@ -151,7 +152,7 @@ curl -X POST ${baseUrl}/api/public/evaluations \\
                     <tr>
                       <td><span className="badge blue">POST</span></td>
                       <td className="mono">/api/public/scores</td>
-                      <td className="muted">提交 annotation 评分（source 强制 ANNOTATION）</td>
+                      <td className="muted">提交人工评分（source 默认 ANNOTATION，可显式覆盖为 API / EVALUATION）</td>
                     </tr>
                     <tr>
                       <td><span className="badge blue">POST</span></td>
@@ -162,6 +163,21 @@ curl -X POST ${baseUrl}/api/public/evaluations \\
                       <td><span className="badge green">GET</span></td>
                       <td className="mono">/api/public/evaluations</td>
                       <td className="muted">查询评估任务（traceId/status 过滤）</td>
+                    </tr>
+                    <tr>
+                      <td><span className="badge green">GET</span></td>
+                      <td className="mono">/api/public/traces/{"{id}"}</td>
+                      <td className="muted">按 id 查询单条 Trace（含 observations / scores）</td>
+                    </tr>
+                    <tr>
+                      <td><span className="badge green">GET</span></td>
+                      <td className="mono">/api/public/observations/{"{id}"}</td>
+                      <td className="muted">按 id 查询单条 Observation</td>
+                    </tr>
+                    <tr>
+                      <td><span className="badge green">GET</span></td>
+                      <td className="mono">/api/public/evaluations/{"{id}"}</td>
+                      <td className="muted">按 id 查询单个评估任务</td>
                     </tr>
                   </tbody>
                 </table>
@@ -254,7 +270,8 @@ graph = probe.wrap(graph)
 probe.invoke(graph, {"messages": [...]})`}</pre>
                 <div className="muted">
                   环境变量：<span className="mono">MACHORA_OTEL_ENDPOINT</span> /{" "}
-                  <span className="mono">MACHORA_OTEL_SERVICE_NAME</span>。
+                  <span className="mono">MACHORA_OTEL_SERVICE_NAME</span> /{" "}
+                  <span className="mono">MACHORA_OTEL_HEADERS</span>（JSON 对象）。
                 </div>
               </div>
 
@@ -406,11 +423,15 @@ export HERMES_OTEL_MACHORA_ENDPOINT=${baseUrl}/api/public/otel/v1/traces`}</pre>
                       </tr>
                       <tr>
                         <td className="mono">machora.tool.name / tool.call.id</td>
-                        <td className="mono">observation.name（工具节点名）· toolCallId</td>
+                        <td className="muted">observation.name（工具节点名）；tool.call.id 存入 observation.metadata（无独立列）</td>
                       </tr>
                       <tr>
                         <td className="mono">machora.agent.name / workflow.name / skill.name</td>
                         <td className="mono">agentName · workflowName · skillName</td>
+                      </tr>
+                      <tr>
+                        <td className="mono">machora.operation / agent.version</td>
+                        <td className="muted">operation 仅用于 type 兜底推断（存入 metadata，无独立列）；agentVersion → trace.agentVersion</td>
                       </tr>
                       <tr>
                         <td className="mono">machora.user.id / session.id</td>
@@ -465,7 +486,7 @@ export HERMES_OTEL_MACHORA_ENDPOINT=${baseUrl}/api/public/otel/v1/traces`}</pre>
                     <span className="badge reranker">RERANKER</span>
                   </li>
                   <li>
-                    <span className="mono">gen_ai.tool.name</span> / <span className="mono">gen_ai.tool.call.id</span>{" "}
+                    <span className="mono">gen_ai.tool.name</span> / <span className="mono">tool.name</span>{" "}
                     存在 → <span className="badge tool">TOOL</span>
                   </li>
                   <li>兜底（无任何语义）→ <span className="badge span">SPAN</span></li>
@@ -529,7 +550,7 @@ export HERMES_OTEL_MACHORA_ENDPOINT=${baseUrl}/api/public/otel/v1/traces`}</pre>
                       <td className="mono">trace.tags</td>
                     </tr>
                     <tr>
-                      <td className="mono">error.type（且无显式 level / 非 OK status）</td>
+                      <td className="mono">error.type（且无显式 level）</td>
                       <td className="mono">observation.level = ERROR</td>
                     </tr>
                   </tbody>
@@ -649,8 +670,10 @@ export HERMES_OTEL_MACHORA_ENDPOINT=${baseUrl}/api/public/otel/v1/traces`}</pre>
             <div id="semantics-trajectory" className="docs-section">
               <div className="section-title">3.6 轨迹视图（推理轨迹）角色分类</div>
               <div className="muted mb-1">
-                trace 详情页「轨迹」tab 把 observation 按行为角色重组为主链视图；分类实现见{" "}
-                <span className="mono">packages/shared/src/otel/trajectory.ts</span>。
+                trace 详情页「轨迹」tab 把 observation 按行为角色重组为主链视图；角色分类见{" "}
+                <span className="mono">packages/shared/src/otel/trajectory.ts</span>，主链组装与循环/长任务判定见{" "}
+                <span className="mono">web/src/server/trajectory.ts</span>，由{" "}
+                <span className="mono">web/src/server/signals.ts</span> 消费。
                 <b>新数据 type 已与 span.kind 一致直接落库，按 type 直接映射</b>；仅 SPAN
                  （无角色通用节点）回退到 metadata.gen_ai.span.kind / operation / 专用列反推。
                 <span className="mono">event / other</span> 不占行，聚合为父节点的计数徽标；

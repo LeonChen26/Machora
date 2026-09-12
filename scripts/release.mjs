@@ -413,4 +413,4 @@ if (withDeps) {
 } else {
   console.log("  解压 zip → pnpm install --frozen-lockfile → start.cmd");
 }
-console.log("  （发布形态仅完整应用发布包；npm/pip 发布已放弃，见 design.md §9）");
+console.log("  （发布形态仅完整应用发布包；npm/pip 发布已放弃）");

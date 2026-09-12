@@ -1,7 +1,7 @@
 # LangChain / LangGraph 示例 Agent —— Machora 可观测演示
 
 一个 ReAct 风格 agent（LangGraph 图：`agent` 节点 + `ToolNode` + 条件边），演示如何把真实
-Agent 调用树灌入 [Machora](../../design.md) 可观测平台。
+Agent 调用树灌入 [Machora](../../README.md) 可观测平台。
 
 ## 效果
 
@@ -15,7 +15,7 @@ agent（根 span）
 
 ## 接入原理
 
-不写任何埋点代码，只靠环境变量。走 **OTLP 通道**（design.md §6.2 通道 B）：
+不写任何埋点代码，只靠环境变量。走 **OTLP 通道**：
 
 - LangChain 1.x 内置 OpenTelemetry 支持（经
   [langsmith](https://docs.smith.langchain.com/) 的 `tracing_mode="otel"`），会把一次 run 自动
@@ -80,6 +80,6 @@ python agent.py
 ## 备注
 
 - `langchain-opentelemetry` 独立包已从 PyPI 移除（2026），官方方案为 langsmith 内置 OTel；
-  本示例即采用该方案，与 design.md §6.3 的 LangChain 接入示例一致。
+  本示例即采用该方案，与本仓库其他 OTLP 示例的接入方式一致。
 - 环境变量需在**进程启动前**设置；span 由 langsmith 后台批量导出，脚本结束前请留出
   少许时间或保持进程运行以完成 flush。

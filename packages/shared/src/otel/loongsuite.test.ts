@@ -1,4 +1,4 @@
-// LoongSuite GenAI SemConv 语义补齐测试（阿里云 loongsuite-otel-util-genai，见 design.md §6.8）：
+// LoongSuite GenAI SemConv 语义补齐测试（阿里云 loongsuite-otel-util-genai）：
 // AGENT_OPERATIONS 扩展（entry / react_step / rerank / invoke_skill → SPAN）、
 // gen_ai.skill.* 提取（skillName 专用列 + id/description/version 留 metadata）、
 // trace 级提升（agentName/skillName/userId/sessionId 经 Baggage 传播）

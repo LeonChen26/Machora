@@ -55,4 +55,5 @@ entry(ENTRY) → WeatherAssistant(AGENT) → step(STEP) → get_weather(TOOL, sk
 
 - 仓库：<https://github.com/alibaba/loongsuite-python>
 - GenAI Util 扩展规范：`util/opentelemetry-util-genai/README-loongsuite.rst`
-- Machora 语义映射：`design.md` §6.3 / §6.8
+- Machora 语义映射：`packages/shared/src/otel/semantics/machora.ts`（语义键）、
+  `packages/shared/src/otel/semantics/adapters.ts`（提取与落库）

@@ -31,7 +31,7 @@ handler = MachoraOtelCallbackHandler()   # 地址走 MACHORA_OTEL_* 环境变量
 CallbackManager.configure(handlers=[handler])
 ```
 
-一次顶层链 run = 一条 trace；LLM/chat 调用 = LLM；工具/子链 = SPAN；错误 → ERROR。
+一次顶层链 run = 一条 trace；LLM/chat 调用 = LLM；工具 = TOOL；子链 = CHAIN（agent 链 = AGENT）；错误 → ERROR。
 
 ### LangGraph 图级探针
 
@@ -59,7 +59,7 @@ span 经 `POST /api/public/otel/v1/traces` 上报，`machora.span.kind` 直接�
 | `MachoraOtelCallbackHandler` | LangChain 自动埋点回调 |
 | `MachoraOtelGraphProbe` | LangGraph 图级探针（`wrap` / `invoke`） |
 | `create_probe_tracer` | 构造 fail-open 的 OTel tracer 基座 |
-| `KIND_*` / `SPAN_KIND` / `TRACE_NAME` 等 | `machora.*` 语义键常量 |
+| `KIND_*`（ENTRY / AGENT / STEP / CHAIN / LLM / TOOL / EMBEDDING / RETRIEVER）/ `SPAN_KIND` / `TRACE_NAME` 等 | `machora.*` 语义键常量 |
 
 也可以不经探针、直接用原生 `opentelemetry-sdk` 接入（参见 `examples/langgraph_demo.py`、
 `examples/call_chain_demo.py`）：

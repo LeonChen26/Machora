@@ -4,7 +4,7 @@
 转换为 **machora.\*** 原生语义 span（`machora.span.kind` / `machora.model.name` /
 `machora.token.*` / `machora.tool.*`），通过 OTLP HTTP 上报到 Machora 的 trace 端点，
 使 OpenClaw 的 Agent 运行在 Machora 轨迹视图中按角色分类展示
-（ENTRY/AGENT/STEP/LLM/TOOL），并正确关联 session。
+（ENTRY/AGENT/LLM/TOOL），并正确关联 session。
 
 本探针由 Machroa 仓库维护，不依赖 hermes-agent 或任何其他探针实现。
 
@@ -73,6 +73,7 @@ openclaw plugins list | grep machora-openinference
 ```bash
 export MACHORA_OTEL_ENDPOINT=http://localhost:3100/api/public/otel/v1/traces
 export MACHORA_OTEL_SERVICE_NAME=openclaw
+export MACHORA_OTEL_HEADERS='{"X-Custom":"value"}'   # 可选，JSON 对象
 ```
 
 ## 工作原理
@@ -94,7 +95,7 @@ export MACHORA_OTEL_SERVICE_NAME=openclaw
   `privateData.modelContent` / `privateData.toolContent`，按 JSON 字符串写入，Machora
   前端会解析为消息数组并渲染 parts 结构。
 - **错误级别**：completed/error 事件的失败分支额外写 `machora.level=ERROR`。
-- **独立 SDK**：探针使用独立的 `NodeSDK` 实例与专属 `BatchSpanProcessor`，不与
+- **独立 SDK**：探针使用独立的 `BasicTracerProvider` 实例与专属 `BatchSpanProcessor`，不与
   `diagnostics-otel` 插件共享全局 exporter，互不干扰。
 - **事件丢失兜底**：若 `*_started` 事件因异步队列丢弃而未到达，`*_completed/error`
   事件会用 `ts - durationMs` 推导起始时间补建 span。

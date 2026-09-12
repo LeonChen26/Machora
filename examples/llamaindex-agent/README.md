@@ -1,8 +1,8 @@
 # LlamaIndex 示例 Agent —— Machora 可观测演示（OpenInference）
 
 一个 LlamaIndex Agent / RAG 示例，演示如何把真实 Agent 调用树灌入
-[Machora](../../design.md) 可观测平台。走 **OpenInference 语义**（`openinference.span.kind`），
-与 design.md §6.3 参考基线第 2 条对齐。
+[Machora](../../README.md) 可观测平台。走 **OpenInference 语义**（`openinference.span.kind`），
+与 OpenInference 语义基线对齐。
 
 ## 效果
 
@@ -32,13 +32,13 @@ Machora 的 [OTel 处理器](../../packages/shared/src/otel/processor.ts) 会把
 
 ## 接入原理
 
-只做一次 SDK 初始化（不写业务埋点），走 **OTLP 通道**（design.md §6.2 通道 B）：
+只做一次 SDK 初始化（不写业务埋点），走 **OTLP 通道**：
 
 ```python
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-from openinference.instrumentation.llamaindex import LlamaIndexInstrumentor
+from openinference.instrumentation.llama_index import LlamaIndexInstrumentor
 
 provider = TracerProvider()
 provider.add_span_processor(SimpleSpanProcessor(OTLPSpanExporter(endpoint=..., headers=...)))
@@ -88,14 +88,14 @@ python agent.py
 
 打开 `http://localhost:3100/traces`，按时间排序可见 `llamaindex-demo` 的 trace；进入详情页
 可看到调用树缩进视图与 LLM 的模型/token/成本信息；Analytics 页「按 Agent 汇总」
-会显示 `openinference.span.attributes.agent.name` 提取的 agent 名。
+会显示按 `agent.name` 属性提取的 agent 名。
 
 ## 文件说明
 
 | 文件 | 说明 |
 |---|---|
 | `agent.py` | OTel 初始化 + 工具定义 + Agent（真实）/ RAG（离线）双模式 |
-| `requirements.txt` | 依赖（llama-index-core + openinference-instrumentation-llamaindex + OTLP exporter） |
+| `requirements.txt` | 依赖（llama-index-core + openinference-instrumentation-llama-index + OTLP exporter） |
 
 ## 备注
 

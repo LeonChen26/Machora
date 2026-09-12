@@ -8,12 +8,12 @@
 
 ## 核心能力
 
-- **Traces / Observations / Scores**：observation.type 与 span.kind 一致的多值角色（ENTRY/AGENT/STEP/LLM/TOOL/EMBEDDING/CHAIN/RETRIEVER/RERANKER/EVENT/SPAN），支持父子调用树（`parentObservationId` 嵌套层级）与详情选中详览
-- **Trace 详情 5 Tab**：Langfuse 式分区——调用树（左树右详情）、时间线（gantt）、推理轨迹（五色语义 DAG：ENTRY/AGENT/STEP/LLM/TOOL）、对话（从 LLM input/output.messages 提取气泡视图）、评分（ScoreForm + 评分表）；trace 级详情（kv + IO + metadata）并入 tree/timeline 右侧面板
+- **Traces / Observations / Scores**：observation.type 取 span.kind 的 10 个合法值（ENTRY/AGENT/STEP/LLM/TOOL/EMBEDDING/CHAIN/RETRIEVER/RERANKER/EVENT），span.kind 缺失/UNKNOWN 时兜底为 `SPAN`；支持父子调用树（`parentObservationId` 嵌套层级）与详情选中详览
+- **Trace 详情 5 Tab**：Langfuse 式分区——调用树（左树右详情）、时间线（gantt）、轨迹（面板标题「推理轨迹」，五色语义 DAG：ENTRY/AGENT/STEP/LLM/TOOL）、对话（从 LLM input/output.messages 提取气泡视图）、评分（ScoreForm + 评分表）；trace 级详情（kv + IO + metadata）并入 tree/timeline 右侧面板
 - **Generations 视图**（Analytics 分组下）：独立 LLM 调用列表，支持按模型/级别/时间窗筛选与排序（时间/耗时/Token/成本）
 - **CSV 导出**：`GET /api/export/traces`、`GET /api/export/generations`，按当前筛选条件导出
 - **Scores API**：UI 标注 `POST /api/scores`；公开查询/写入 `GET/POST /api/public/scores`，支持人工/自动评分写入与查询
-- **评估中心**（`/evaluations`）：可插拔评估器（5 规则：error/latency/cost/token/tag + **LLM-as-judge** 对 trace/轨迹打分并输出理由 reasoning）；在线（`autoRun`，ingestion 后自动触发 ONLINE 任务）/实验（手动/批量）双模式；**Prompt 级数据集**（DatasetItem 用例 + 多配置对比评测报告）；按天评分**趋势**折线图；低分样本回流（score&lt;阈值）；评估任务**人工评审**（改分 + 备注写回 ANNOTATION score）
+- **评估中心**（`/evaluations`）：可插拔评估器（5 规则：error/latency/cost/token/tag + **LLM-as-judge** 对 trace/轨迹打分并输出理由 reasoning）；在线（`autoRun`，OTLP 上报落库后经内部 ingestion 队列自动触发 ONLINE 任务）/实验（手动/批量）双模式；**Prompt 级数据集**（DatasetItem 用例 + 多配置对比评测报告）；按天评分**趋势**折线图；低分样本回流（score&lt;阈值）；评估任务**人工评审**（改分 + 备注写回 ANNOTATION score）
 - **Sessions 页**：按 sessionId 聚合 trace（Trace 数 / 成功率 / 平均 Trace 耗时 / Token / 成本 / 跨度汇总 + 时间线串联），支持 sessionId 搜索与分页；详情页提供**会话对话视图**——跨 trace 平铺 LLM input/output.messages 为聊天气泡（role 分色 + model 徽标 + 工具调用 + 跳转对应 trace）
 - **Agents / Models 双实体视图**：`/agents`、`/models` 目录页（KPI 卡 + 环比 + 趋势 sparkline + 异常标记），详情页含指标卡、可切每日趋势、版本/工具/模型分布（Agent）、按 Agent 分布与调用明细（Model）、关联会话与评分汇总；对象间可互跳
 - **统一异常信号**：阈值集中在 `web/src/server/signals.ts`，覆盖指标信号（成本↑ / 错误率↑ / P95↑）与轨迹信号（重复调用 / 疑似无效循环 / 长任务），在 Overview「待关注」、目录「标记」列、Analytics 异常卡、Traces「信号」列与 Trace 详情信号条统一呈现；指标口径约定见 [OBSERVABILITY.md](OBSERVABILITY.md)
@@ -73,12 +73,12 @@ pnpm workspace monorepo，依赖方向：`standalone → web + worker + shared`�
 | 包 | 说明 |
 |---|---|
 | `packages/shared` | 领域模型（Zod）+ Drizzle schema（schema.sql 幂等建表）+ SQL 方言隔离层 + OTel 解码/解析 + 队列（单一真源） |
-| `web` | Next.js App Router UI（force-dynamic SSR）+ tRPC + 公共 REST（otel / health / public 查询） |
+| `web` | Next.js App Router UI（force-dynamic SSR）+ 公共 REST（otel / health / public 查询） |
 | `worker` | 队列处理器（standalone 进程内注册，共享 queueBus，无 Redis） |
 | `standalone` | 单进程入口：SQLite + schema.sql 建表 + Next.js in-process |
 | `sdk/python` | Python SDK（OTel 探针：`opentelemetry-*`；LangChain 回调需可选 `langchain-core`） |
 
-技术栈：TypeScript · Next.js · tRPC · Drizzle ORM · SQLite（better-sqlite3，嵌入式）· Zod · OpenTelemetry（protobufjs）
+技术栈：TypeScript · Next.js · Drizzle ORM · SQLite（better-sqlite3，嵌入式）· Zod · OpenTelemetry（protobufjs）
 
 ## 开发命令（仓库根）
 
@@ -87,6 +87,6 @@ pnpm dev          # 全量开发模式
 pnpm build        # 全量构建
 pnpm test         # 全量测试
 pnpm typecheck    # 全量类型检查
-pnpm lint         # 全量 lint
+pnpm lint         # 全量 lint（当前为占位：各包 lint 为空实现）
 pnpm release      # 打包发布 zip（scripts/release.mjs）
 ```

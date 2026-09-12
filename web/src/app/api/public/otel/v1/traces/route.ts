@@ -9,8 +9,9 @@ import {
 
 // OTLP HTTP traces 注入端点
 // 支持 JSON / protobuf，以及 gzip / deflate / br 压缩
-// LangChain / LangGraph / LlamaIndex 等框架通过
-// OTEL_EXPORTER_OTLP_TRACES_ENDPOINT 指向本端点
+// LangChain / LangGraph / LlamaIndex 等框架通过 OTLP traces 端点变量
+// （OTEL_EXPORTER_OTLP_ENDPOINT 或 OTEL_EXPORTER_OTLP_TRACES_ENDPOINT，
+//   取决于框架/导出器实现）指向本端点
 // 这是唯一的写入通道：落库成功后触发在线自动评估（QUEUES.ingestion）
 export async function POST(req: Request) {
   let body;
