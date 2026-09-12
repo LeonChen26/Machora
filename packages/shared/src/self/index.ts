@@ -1,8 +1,8 @@
 // Machora 自观测模块（轻量自产自销）
 //
 // 进程内计数器记录服务自身运行指标（ingestion 吞吐/延迟、队列处理、
-// 评估任务、外部 metrics 写入量等），定时落库为 MetricSample
-// （归属专用 system 项目），由"系统指标"页展示。零新增依赖。
+// 评估任务、外部 metrics 写入量等），定时落库为 MetricSample，
+// 由"系统指标"页展示。零新增依赖。
 //
 // 指标命名约定：machora.<模块>.<指标>，维度放 attributes。
 // 落库形态：每个采集窗口（默认 60s）一条 SUM 采样，value=窗口内 sum，
@@ -10,12 +10,11 @@
 
 import { lt } from "drizzle-orm";
 import { db } from "../db.ts";
-import { metricSample, project } from "../drizzle/schema.ts";
+import { metricSample } from "../drizzle/schema.ts";
 import { freemem, loadavg, totalmem } from "node:os";
 import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 
-export const SYSTEM_PROJECT_ID = "machora-system";
 export const SELF_METRICS_INTERVAL_MS = 60_000;
 const RETENTION_MS = 7 * 24 * 60 * 60 * 1000; // 指标保留 7 天
 
@@ -141,22 +140,12 @@ export function stopSelfMetrics(): void {
   }
 }
 
-/** system 专用项目（自观测指标归属，UI 按此过滤） */
-export async function ensureSystemProject(): Promise<void> {
-  await db
-    .insert(project)
-    .values({ id: SYSTEM_PROJECT_ID, name: "Machora System" })
-    .onConflictDoNothing({ target: project.id });
-}
-
 /** 把窗口内计数落库为 MetricSample（SUM，value=sum）并清理过期数据 */
 export async function flushSelfMetrics(): Promise<void> {
   const entries = selfMetrics.drain();
   if (entries.length > 0) {
-    await ensureSystemProject();
     const now = new Date();
     const data = entries.map((e) => ({
-      projectId: SYSTEM_PROJECT_ID,
       name: e.name,
       unit: null,
       kind: e.kind,

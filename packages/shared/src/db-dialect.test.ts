@@ -36,23 +36,22 @@ beforeAll(async () => {
   dbMod.getSqliteHandle().exec(readFileSync(sqlPath, "utf8"));
 
   const now = new Date("2026-05-01T08:00:00.000Z");
-  await db.insert(s.project).values({ id: "p1", name: "P1" });
   await db.insert(s.trace).values([
     {
-      id: "t1", projectId: "p1", name: "MyAgent Run", timestamp: now,
+      id: "t1", name: "MyAgent Run", timestamp: now,
       userId: "Alice", tags: ["prod", "agent"],
       input: { messages: [{ role: "user", content: "你好，世界" }] },
     },
-    { id: "t2", projectId: "p1", name: "other run", timestamp: now, tags: ["prod"] },
-    { id: "t3", projectId: "p1", name: "third", timestamp: now, tags: [] },
+    { id: "t2", name: "other run", timestamp: now, tags: ["prod"] },
+    { id: "t3", name: "third", timestamp: now, tags: [] },
     // t4：name 含字面量 '%'，用于验证 LIKE 通配符转义
-    { id: "t4", projectId: "p1", name: "progress 50% done", timestamp: now, tags: [] },
+    { id: "t4", name: "progress 50% done", timestamp: now, tags: [] },
   ]);
   await db.insert(s.observation).values([
-    { id: "o1", traceId: "t1", projectId: "p1", type: "LLM", startTime: now, endTime: new Date(now.getTime() + 1200), model: "GPT-4o", totalCost: 0.0125, output: { text: "hi" } },
-    { id: "o2", traceId: "t1", projectId: "p1", type: "TOOL", startTime: now },
+    { id: "o1", traceId: "t1", type: "LLM", startTime: now, endTime: new Date(now.getTime() + 1200), model: "GPT-4o", totalCost: 0.0125, output: { text: "hi" } },
+    { id: "o2", traceId: "t1", type: "TOOL", startTime: now },
   ]);
-  await db.insert(s.score).values({ id: "sc1", traceId: "t1", projectId: "p1", name: "quality", value: 0.9, dataType: "NUMERIC", source: "API" });
+  await db.insert(s.score).values({ id: "sc1", traceId: "t1", name: "quality", value: 0.9, dataType: "NUMERIC", source: "API" });
 });
 
 afterAll(() => {
@@ -136,9 +135,9 @@ describe("hasTags（替代 @> ARRAY）", () => {
     expect(rows).toEqual([]);
   });
 
-  it("可与其他条件组合（projectId + tag）", async () => {
+  it("可与其他条件组合（userId + tag）", async () => {
     const rows = await db.select({ id: s.trace.id }).from(s.trace)
-      .where(and(eq(s.trace.projectId, "p1"), dialect.hasTags(s.trace.tags, ["agent"])));
+      .where(and(eq(s.trace.userId, "Alice"), dialect.hasTags(s.trace.tags, ["agent"])));
     expect(rows.map((r) => r.id)).toEqual(["t1"]);
   });
 
@@ -152,7 +151,7 @@ describe("hasTags（替代 @> ARRAY）", () => {
     // 模拟手工改库 / 早期版本遗留的脏数据：tags 不是合法 JSON 数组。
     // 修复前 json_each 会抛 "malformed JSON" 使整个查询失败（列表页 500）；
     // 修复后应正常返回且不含该行。测后立即清理，避免污染其他用例。
-    await db.run(sql`INSERT INTO trace (id, projectId, name, timestamp, tags) VALUES ('dirty1', 'p1', 'dirty', 0, 'not-json')`);
+    await db.run(sql`INSERT INTO trace (id, name, timestamp, tags) VALUES ('dirty1', 'dirty', 0, 'not-json')`);
     try {
       const rows = await db.select({ id: s.trace.id }).from(s.trace)
         .where(dialect.hasTags(s.trace.tags, ["prod"]));
@@ -203,7 +202,7 @@ describe("列类型往返", () => {
 describe("RQB 关系查询", () => {
   it("一对多 + 列裁剪", async () => {
     const rows = await db.query.trace.findMany({
-      where: eq(s.trace.projectId, "p1"),
+      where: eq(s.trace.userId, "Alice"),
       with: { observations: { columns: { totalCost: true, startTime: true } } },
     });
     const t1 = rows.find((r) => r.id === "t1")!;
@@ -248,9 +247,9 @@ describe("精确匹配保持大小写敏感（与 Postgres 一致）", () => {
 });
 
 describe("外键级联（PRAGMA foreign_keys=ON）", () => {
-  it("删除 Project 级联清除 Trace / Observation / Score", async () => {
-    await db.delete(s.project).where(eq(s.project.id, "p1"));
-    expect(await db.select().from(s.trace)).toHaveLength(0);
+  it("删除 Trace 级联清除 Observation / Score", async () => {
+    await db.delete(s.trace).where(eq(s.trace.id, "t1"));
+    expect(await db.select().from(s.trace)).toHaveLength(3);
     expect(await db.select().from(s.observation)).toHaveLength(0);
     expect(await db.select().from(s.score)).toHaveLength(0);
   });

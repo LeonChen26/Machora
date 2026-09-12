@@ -41,7 +41,7 @@ const payload = (spans: Record<string, unknown>[]): OtlpExportTraceServiceReques
 
 describe("OpenInference 语义", () => {
   it("span.kind 直接落库为 type：LLM/EMBEDDING/CHAIN/AGENT/TOOL/RETRIEVER", () => {
-    const { observations } = parseOtelPayload("project-1", payload([
+    const { observations } = parseOtelPayload(payload([
       span("s-llm", "llm-call", [["openinference.span.kind", str("LLM")]]),
       span("s-emb", "embed", [["openinference.span.kind", str("EMBEDDING")]]),
       span("s-chain", "chain", [["openinference.span.kind", str("CHAIN")]]),
@@ -60,7 +60,7 @@ describe("OpenInference 语义", () => {
   });
 
   it("input.value / output.value 按 mime_type=json 解码为对象", () => {
-    const { observations } = parseOtelPayload("project-1", payload([
+    const { observations } = parseOtelPayload(payload([
       span("s-llm", "llm", [
         ["openinference.span.kind", str("LLM")],
         ["input.mime_type", str("application/json")],
@@ -74,7 +74,7 @@ describe("OpenInference 语义", () => {
   });
 
   it("llm.token_count / llm.model_name / llm.cost.total 提取", () => {
-    const { observations } = parseOtelPayload("project-1", payload([
+    const { observations } = parseOtelPayload(payload([
       span("s-llm", "llm", [
         ["openinference.span.kind", str("LLM")],
         ["llm.model_name", str("gpt-4o")],
@@ -93,7 +93,7 @@ describe("OpenInference 语义", () => {
   });
 
   it("trace 级：openinference user.id / session.id / tag.tags / agent.name 提取", () => {
-    const { traces } = parseOtelPayload("project-1", payload([
+    const { traces } = parseOtelPayload(payload([
       span("s-agent", "agent", [
         ["openinference.span.kind", str("AGENT")],
         ["user.id", str("user-9")],
@@ -112,7 +112,7 @@ describe("OpenInference 语义", () => {
   });
 
   it("openinference.* / llm.* / input.* 键不残留 metadata，自定义键保留", () => {
-    const { observations } = parseOtelPayload("project-1", payload([
+    const { observations } = parseOtelPayload(payload([
       span("s-llm", "llm", [
         ["openinference.span.kind", str("LLM")],
         ["input.value", str("x")],

@@ -222,12 +222,11 @@ describe("decodeOtlpProtobuf", () => {
 describe("protobuf → parseOtelPayload 集成", () => {
   it("解码结果与 JSON 通道一致地映射为 trace / observation", () => {
     const decoded = decodeOtlpProtobuf(buildFixture());
-    const { traces, observations } = parseOtelPayload("project-1", decoded);
+    const { traces, observations } = parseOtelPayload(decoded);
 
     expect(traces).toHaveLength(1);
     expect(traces[0]).toMatchObject({
       id: "0102030405060708090a0b0c0d0e0f10",
-      projectId: "project-1",
       name: "root",
       environment: "default",
       timestamp: new Date("1970-01-01T00:16:40.000Z"),
@@ -238,7 +237,6 @@ describe("protobuf → parseOtelPayload 集成", () => {
     expect(o).toMatchObject({
       id: "1112131415161718",
       traceId: "0102030405060708090a0b0c0d0e0f10",
-      projectId: "project-1",
       type: "LLM", // 含模型信息 → LLM
       name: "root",
       model: "gpt-4o",
@@ -306,7 +304,7 @@ function buildEventSpanFixture(): Uint8Array {
 describe("span events → EVENT observation", () => {
   it("每个 event 生成一个挂在父 span 下的 EVENT observation", () => {
     const decoded = decodeOtlpProtobuf(buildEventSpanFixture());
-    const { traces, observations } = parseOtelPayload("project-1", decoded);
+    const { traces, observations } = parseOtelPayload(decoded);
 
     expect(traces).toHaveLength(1);
     expect(observations).toHaveLength(3); // 1 SPAN + 2 EVENT
@@ -321,7 +319,6 @@ describe("span events → EVENT observation", () => {
     expect(choice).toMatchObject({
       id: "1112131415161718:e0",
       traceId: "0102030405060708090a0b0c0d0e0f10",
-      projectId: "project-1",
       type: "EVENT",
       name: "gen_ai.choice",
       parentObservationId: "1112131415161718",

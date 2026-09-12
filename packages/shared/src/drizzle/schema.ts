@@ -1,6 +1,6 @@
 // Drizzle ORM 表定义（方案 C：移除 Prisma 后的替换层）
 //
-// 与 packages/shared/sql/schema.sql 保持一致（8 张表，宽事件模型）：
+// 与 packages/shared/sql/schema.sql 保持一致（7 张表，宽事件模型，单租户）：
 // - 列名/表名与 schema.sql 完全相同（列键即列名，保证现有代码字段访问不变）
 // - 表结构由 schema.sql 幂等建立，drizzle 定义仅作类型层 + relations 引用
 // - 时间列用 integer({ mode: "timestamp_ms" })（epoch 毫秒，读写仍为 JS Date）
@@ -27,46 +27,6 @@ const primaryId = () =>
     .$defaultFn(() => crypto.randomUUID());
 
 // ---------------------------------------------------------------------------
-// 元数据
-// ---------------------------------------------------------------------------
-
-export const project = sqliteTable("Project", {
-  id: primaryId(),
-  name: text("name").notNull(),
-  createdAt: ts("createdAt").notNull().default(sql`(unixepoch() * 1000)`),
-});
-
-export const apiKey = sqliteTable(
-  "ApiKey",
-  {
-    id: primaryId(),
-    projectId: text("projectId")
-      .notNull()
-      .references(() => project.id, { onDelete: "cascade", onUpdate: "cascade" }),
-    publicKey: text("publicKey").notNull(),
-    hashedSecret: text("hashedSecret").notNull(),
-    name: text("name"),
-    createdAt: ts("createdAt").notNull().default(sql`(unixepoch() * 1000)`),
-  },
-  (t) => [
-    uniqueIndex("ApiKey_publicKey_key").on(t.publicKey),
-    index("ApiKey_projectId_idx").on(t.projectId),
-  ],
-);
-
-export const user = sqliteTable(
-  "User",
-  {
-    id: primaryId(),
-    email: text("email").notNull(),
-    passwordHash: text("passwordHash").notNull(),
-    name: text("name"),
-    createdAt: ts("createdAt").notNull().default(sql`(unixepoch() * 1000)`),
-  },
-  (t) => [uniqueIndex("User_email_key").on(t.email)],
-);
-
-// ---------------------------------------------------------------------------
 // 核心观测数据（宽事件模型）
 // ---------------------------------------------------------------------------
 
@@ -74,9 +34,6 @@ export const trace = sqliteTable(
   "Trace",
   {
     id: text("id").primaryKey(), // OTel traceId（hex）
-    projectId: text("projectId")
-      .notNull()
-      .references(() => project.id, { onDelete: "cascade", onUpdate: "cascade" }),
     name: text("name"),
     timestamp: ts("timestamp").notNull(),
     environment: text("environment").notNull().default("default"),
@@ -85,6 +42,8 @@ export const trace = sqliteTable(
     agentName: text("agentName"),
     workflowName: text("workflowName"),
     skillName: text("skillName"),
+    status: text("status"), // SUCCESS | ERROR | null（上游未上报 span status）
+    agentVersion: text("agentVersion"),
     input: text("input", { mode: "json" }),
     output: text("output", { mode: "json" }),
     metadata: text("metadata", { mode: "json" }),
@@ -95,7 +54,7 @@ export const trace = sqliteTable(
     createdAt: ts("createdAt").notNull().default(sql`(unixepoch() * 1000)`),
   },
   (t) => [
-    index("Trace_projectId_timestamp_idx").on(t.projectId, t.timestamp),
+    index("Trace_timestamp_idx").on(t.timestamp),
     index("Trace_userId_idx").on(t.userId),
     index("Trace_sessionId_idx").on(t.sessionId),
   ],
@@ -108,7 +67,6 @@ export const observation = sqliteTable(
     traceId: text("traceId")
       .notNull()
       .references(() => trace.id, { onDelete: "cascade", onUpdate: "cascade" }),
-    projectId: text("projectId").notNull(),
     type: text("type").notNull(), // span.kind 多值（ENTRY/AGENT/STEP/LLM/TOOL/EMBEDDING/CHAIN/RETRIEVER/RERANKER/EVENT/SPAN）
     name: text("name"),
     parentObservationId: text("parentObservationId"),
@@ -129,7 +87,7 @@ export const observation = sqliteTable(
     totalCost: real("totalCost"),
   },
   (t) => [
-    index("Observation_projectId_startTime_idx").on(t.projectId, t.startTime),
+    index("Observation_startTime_idx").on(t.startTime),
     index("Observation_traceId_idx").on(t.traceId),
     index("Observation_parentObservationId_idx").on(t.parentObservationId),
   ],
@@ -144,7 +102,6 @@ export const score = sqliteTable(
       onUpdate: "cascade",
     }),
     observationId: text("observationId"),
-    projectId: text("projectId").notNull(),
     name: text("name").notNull(),
     value: real("value").notNull(),
     dataType: text("dataType").notNull(), // NUMERIC | CATEGORICAL | BOOLEAN
@@ -153,7 +110,7 @@ export const score = sqliteTable(
     timestamp: ts("timestamp").notNull().default(sql`(unixepoch() * 1000)`),
   },
   (t) => [
-    index("Score_projectId_timestamp_idx").on(t.projectId, t.timestamp),
+    index("Score_timestamp_idx").on(t.timestamp),
     index("Score_traceId_idx").on(t.traceId),
   ],
 );
@@ -166,9 +123,6 @@ export const datasetItem = sqliteTable(
   "DatasetItem",
   {
     id: primaryId(),
-    projectId: text("projectId")
-      .notNull()
-      .references(() => project.id, { onDelete: "cascade", onUpdate: "cascade" }),
     name: text("name").notNull(), // 数据集名
     input: text("input", { mode: "json" }),
     output: text("output", { mode: "json" }),
@@ -176,9 +130,7 @@ export const datasetItem = sqliteTable(
     metadata: text("metadata", { mode: "json" }),
     createdAt: ts("createdAt").notNull().default(sql`(unixepoch() * 1000)`),
   },
-  (t) => [
-    index("DatasetItem_projectId_name_idx").on(t.projectId, t.name),
-  ],
+  (t) => [index("DatasetItem_name_idx").on(t.name)],
 );
 
 // ---------------------------------------------------------------------------
@@ -189,7 +141,6 @@ export const evaluation = sqliteTable(
   "Evaluation",
   {
     id: text("id").primaryKey(),
-    projectId: text("projectId").notNull(),
     // trace 评估：traceId 指向 Trace；数据集评测：datasetItemId 指向数据集用例（traceId 为空）
     traceId: text("traceId").references(() => trace.id, {
       onDelete: "cascade",
@@ -210,7 +161,7 @@ export const evaluation = sqliteTable(
     updatedAt: ts("updatedAt").notNull(),
   },
   (t) => [
-    index("Evaluation_projectId_createdAt_idx").on(t.projectId, t.createdAt),
+    index("Evaluation_createdAt_idx").on(t.createdAt),
     index("Evaluation_traceId_idx").on(t.traceId),
     index("Evaluation_datasetItemId_idx").on(t.datasetItemId),
     index("Evaluation_status_idx").on(t.status),
@@ -222,9 +173,6 @@ export const evaluationConfig = sqliteTable(
   "EvaluationConfig",
   {
     id: primaryId(),
-    projectId: text("projectId")
-      .notNull()
-      .references(() => project.id, { onDelete: "cascade", onUpdate: "cascade" }),
     name: text("name").notNull(), // 配置名（如 helpfulness）
     evaluatorType: text("evaluatorType").notNull(), // llm | error | latency ...
     config: text("config", { mode: "json" }), // 评估器参数（model/apiKey/systemPrompt 或阈值）
@@ -233,10 +181,7 @@ export const evaluationConfig = sqliteTable(
     createdAt: ts("createdAt").notNull().default(sql`(unixepoch() * 1000)`),
     updatedAt: ts("updatedAt").notNull(),
   },
-  (t) => [
-    index("EvaluationConfig_projectId_idx").on(t.projectId),
-    uniqueIndex("EvaluationConfig_projectId_name_key").on(t.projectId, t.name),
-  ],
+  (t) => [uniqueIndex("EvaluationConfig_name_key").on(t.name)],
 );
 
 // ---------------------------------------------------------------------------
@@ -247,9 +192,6 @@ export const metricSample = sqliteTable(
   "MetricSample",
   {
     id: primaryId(),
-    projectId: text("projectId")
-      .notNull()
-      .references(() => project.id, { onDelete: "cascade", onUpdate: "cascade" }),
     name: text("name").notNull(),
     unit: text("unit"),
     kind: text("kind").notNull(), // GAUGE | SUM | HISTOGRAM
@@ -266,11 +208,6 @@ export const metricSample = sqliteTable(
     createdAt: ts("createdAt").notNull().default(sql`(unixepoch() * 1000)`),
   },
   (t) => [
-    index("MetricSample_projectId_name_timestamp_idx").on(
-      t.projectId,
-      t.name,
-      t.timestamp,
-    ),
     index("MetricSample_name_timestamp_idx").on(t.name, t.timestamp),
   ],
 );
@@ -279,18 +216,7 @@ export const metricSample = sqliteTable(
 // relations（供 drizzle 的 with/relational queries 使用）
 // ---------------------------------------------------------------------------
 
-export const projectRelations = relations(project, ({ many }) => ({
-  apiKeys: many(apiKey),
-  traces: many(trace),
-  metricSamples: many(metricSample),
-}));
-
-export const apiKeyRelations = relations(apiKey, ({ one }) => ({
-  project: one(project, { fields: [apiKey.projectId], references: [project.id] }),
-}));
-
-export const traceRelations = relations(trace, ({ one, many }) => ({
-  project: one(project, { fields: [trace.projectId], references: [project.id] }),
+export const traceRelations = relations(trace, ({ many }) => ({
   observations: many(observation),
   scores: many(score),
   evaluations: many(evaluation),
@@ -309,19 +235,5 @@ export const evaluationRelations = relations(evaluation, ({ one }) => ({
   datasetItem: one(datasetItem, {
     fields: [evaluation.datasetItemId],
     references: [datasetItem.id],
-  }),
-}));
-
-export const datasetItemRelations = relations(datasetItem, ({ one }) => ({
-  project: one(project, {
-    fields: [datasetItem.projectId],
-    references: [project.id],
-  }),
-}));
-
-export const metricSampleRelations = relations(metricSample, ({ one }) => ({
-  project: one(project, {
-    fields: [metricSample.projectId],
-    references: [project.id],
   }),
 }));

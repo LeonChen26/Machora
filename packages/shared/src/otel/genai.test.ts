@@ -39,7 +39,7 @@ const payload = (spans: Record<string, unknown>[]): OtlpExportTraceServiceReques
 
 describe("OTel GenAI 语义补齐", () => {
   it("gen_ai.agent.name / workflow.name 提取到 observation 专用列，且不残留 metadata", () => {
-    const { observations } = parseOtelPayload("project-1", payload([
+    const { observations } = parseOtelPayload(payload([
       span("s-agent", "agent-run", {
         "gen_ai.operation.name": "invoke_agent",
         "gen_ai.agent.name": "my-agent",
@@ -60,7 +60,7 @@ describe("OTel GenAI 语义补齐", () => {
   });
 
   it("trace 级提升 agentName / workflowName（取根 span 或整组首个非空）", () => {
-    const { traces } = parseOtelPayload("project-1", payload([
+    const { traces } = parseOtelPayload(payload([
       span("s-root", "root", {}, { parent: undefined as never, trace: "t2" }),
       span("s-agent", "agent-run", {
         "gen_ai.operation.name": "invoke_agent",
@@ -80,7 +80,7 @@ describe("OTel GenAI 语义补齐", () => {
       ["search_memory", "mem-search"],
       ["create_memory", "mem-create"],
     ];
-    const { observations } = parseOtelPayload("project-1", payload(
+    const { observations } = parseOtelPayload(payload(
       cases.map(([op, name]) =>
         span(name, name, { "gen_ai.operation.name": op, "gen_ai.agent.name": op }),
       ),
@@ -95,21 +95,21 @@ describe("OTel GenAI 语义补齐", () => {
   });
 
   it("chat → LLM", () => {
-    const { observations } = parseOtelPayload("project-1", payload([
+    const { observations } = parseOtelPayload(payload([
       span("s-llm", "chat", { "gen_ai.operation.name": "chat", "gen_ai.request.model": "gpt-4o" }),
     ]));
     expect(observations[0].type).toBe("LLM");
   });
 
   it("error.type 存在（无显式 level / status unset）→ level=ERROR", () => {
-    const { observations } = parseOtelPayload("project-1", payload([
+    const { observations } = parseOtelPayload(payload([
       span("s-err", "tool", { "error.type": "RuntimeError" }),
     ]));
     expect(observations[0].level).toBe("ERROR");
   });
 
   it("显式 langfuse.observation.level 优先于 error.type；status=2 仍 ERROR", () => {
-    const { observations } = parseOtelPayload("project-1", payload([
+    const { observations } = parseOtelPayload(payload([
       span("s-ok", "a", { "langfuse.observation.level": "DEFAULT", "error.type": "X" }),
       span("s-st", "b", {}, { status: 2 }),
     ]));

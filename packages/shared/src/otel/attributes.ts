@@ -40,6 +40,7 @@ export const ATTR = {
   GEN_AI_USAGE_INPUT_TOKENS: "gen_ai.usage.input_tokens",
   GEN_AI_USAGE_OUTPUT_TOKENS: "gen_ai.usage.output_tokens",
   GEN_AI_AGENT_NAME: "gen_ai.agent.name",
+  GEN_AI_AGENT_VERSION: "gen_ai.agent.version",
   GEN_AI_WORKFLOW_NAME: "gen_ai.workflow.name",
   // LoongSuite GenAI SemConv 增强（阿里云 loongsuite-otel-util-genai，见 design.md §6.8）
   // gen_ai.skill.* 挂在 execute_tool span 上标识业务技能；其余 skill.id/description/version 留 metadata

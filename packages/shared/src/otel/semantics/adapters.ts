@@ -14,6 +14,7 @@ const empty = (): SemanticSpan => ({
   toolName: null,
   toolCallId: null,
   agentName: null,
+  agentVersion: null,
   workflowName: null,
   skillName: null,
   userId: null,
@@ -50,6 +51,8 @@ const machoraAdapter: SemanticsAdapter = {
     if (toolCallId) part.toolCallId = toolCallId;
     const agentName = asString(attrs[MACHORA_ATTR.AGENT_NAME]);
     if (agentName) part.agentName = agentName;
+    const agentVersion = asString(attrs[MACHORA_ATTR.AGENT_VERSION]);
+    if (agentVersion) part.agentVersion = agentVersion;
     const workflowName = asString(attrs[MACHORA_ATTR.WORKFLOW_NAME]);
     if (workflowName) part.workflowName = workflowName;
     const skillName = asString(attrs[MACHORA_ATTR.SKILL_NAME]);
@@ -202,6 +205,8 @@ const genAiAdapter: SemanticsAdapter = {
     if (toolCallId) part.toolCallId = toolCallId;
     const agentName = asString(attrs[ATTR.GEN_AI_AGENT_NAME]);
     if (agentName) part.agentName = agentName;
+    const agentVersion = asString(attrs[ATTR.GEN_AI_AGENT_VERSION]);
+    if (agentVersion) part.agentVersion = agentVersion;
     const workflowName = asString(attrs[ATTR.GEN_AI_WORKFLOW_NAME]);
     if (workflowName) part.workflowName = workflowName;
     if (attrs[ATTR.GEN_AI_INPUT_MESSAGES] !== undefined)

@@ -9,39 +9,11 @@
 --    且运行时需 PRAGMA foreign_keys = ON 才生效（见 packages/shared/src/db.ts）
 -- 4. 参与模糊搜索的列标注：使 LIKE 大小写不敏感（替代 PG 的 ILIKE），
 --    且能命中索引。对应查询层 textSearch()（packages/shared/src/db-dialect.ts）
--- 5. 增量补列不写在本文件，改由 start.ts 的 ensureColumn() 基于 PRAGMA table_info 执行
---    （SQLite 不支持 ADD COLUMN IF NOT EXISTS）
-
--- CreateTable
-CREATE TABLE IF NOT EXISTS "Project" (
-    "id" TEXT NOT NULL PRIMARY KEY,
-    "name" TEXT NOT NULL,
-    "createdAt" INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
-);
-
--- CreateTable
-CREATE TABLE IF NOT EXISTS "ApiKey" (
-    "id" TEXT NOT NULL PRIMARY KEY,
-    "projectId" TEXT NOT NULL REFERENCES "Project"("id") ON DELETE CASCADE ON UPDATE CASCADE,
-    "publicKey" TEXT NOT NULL,
-    "hashedSecret" TEXT NOT NULL,
-    "name" TEXT,
-    "createdAt" INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
-);
-
--- CreateTable
-CREATE TABLE IF NOT EXISTS "User" (
-    "id" TEXT NOT NULL PRIMARY KEY,
-    "email" TEXT NOT NULL,
-    "passwordHash" TEXT NOT NULL,
-    "name" TEXT,
-    "createdAt" INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
-);
+-- 5. 本文件是表结构唯一真源：结构变更直接改本文件，库按全新结构重建（不做增量迁移）
 
 -- CreateTable
 CREATE TABLE IF NOT EXISTS "Trace" (
     "id" TEXT NOT NULL PRIMARY KEY,
-    "projectId" TEXT NOT NULL REFERENCES "Project"("id") ON DELETE CASCADE ON UPDATE CASCADE,
     "name" TEXT,
     "timestamp" INTEGER NOT NULL,
     "environment" TEXT NOT NULL DEFAULT 'default',
@@ -50,6 +22,8 @@ CREATE TABLE IF NOT EXISTS "Trace" (
     "agentName" TEXT,
     "workflowName" TEXT,
     "skillName" TEXT,
+    "status" TEXT,
+    "agentVersion" TEXT,
     "input" TEXT,
     "output" TEXT,
     "metadata" TEXT,
@@ -61,7 +35,6 @@ CREATE TABLE IF NOT EXISTS "Trace" (
 CREATE TABLE IF NOT EXISTS "Observation" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "traceId" TEXT NOT NULL REFERENCES "Trace"("id") ON DELETE CASCADE ON UPDATE CASCADE,
-    "projectId" TEXT NOT NULL,
     "type" TEXT NOT NULL,
     "name" TEXT,
     "parentObservationId" TEXT,
@@ -87,7 +60,6 @@ CREATE TABLE IF NOT EXISTS "Score" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "traceId" TEXT REFERENCES "Trace"("id") ON DELETE CASCADE ON UPDATE CASCADE,
     "observationId" TEXT,
-    "projectId" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "value" REAL NOT NULL,
     "dataType" TEXT NOT NULL,
@@ -102,7 +74,6 @@ CREATE TABLE IF NOT EXISTS "Score" (
 -- 但为可读性仍把 DatasetItem 放在 Evaluation 之前创建。
 CREATE TABLE IF NOT EXISTS "DatasetItem" (
     "id" TEXT NOT NULL PRIMARY KEY,
-    "projectId" TEXT NOT NULL REFERENCES "Project"("id") ON DELETE CASCADE ON UPDATE CASCADE,
     "name" TEXT NOT NULL,
     "input" TEXT,
     "output" TEXT,
@@ -116,7 +87,6 @@ CREATE TABLE IF NOT EXISTS "DatasetItem" (
 -- 后补，SQLite 不支持该语句，故直接建为可空）
 CREATE TABLE IF NOT EXISTS "Evaluation" (
     "id" TEXT NOT NULL PRIMARY KEY,
-    "projectId" TEXT NOT NULL,
     "traceId" TEXT REFERENCES "Trace"("id") ON DELETE CASCADE ON UPDATE CASCADE,
     "datasetItemId" TEXT REFERENCES "DatasetItem"("id") ON DELETE CASCADE ON UPDATE CASCADE,
     "name" TEXT NOT NULL,
@@ -133,7 +103,6 @@ CREATE TABLE IF NOT EXISTS "Evaluation" (
 -- CreateTable
 CREATE TABLE IF NOT EXISTS "EvaluationConfig" (
     "id" TEXT NOT NULL PRIMARY KEY,
-    "projectId" TEXT NOT NULL REFERENCES "Project"("id") ON DELETE CASCADE ON UPDATE CASCADE,
     "name" TEXT NOT NULL,
     "evaluatorType" TEXT NOT NULL,
     "config" TEXT,
@@ -146,7 +115,6 @@ CREATE TABLE IF NOT EXISTS "EvaluationConfig" (
 -- CreateTable
 CREATE TABLE IF NOT EXISTS "MetricSample" (
     "id" TEXT NOT NULL PRIMARY KEY,
-    "projectId" TEXT NOT NULL REFERENCES "Project"("id") ON DELETE CASCADE ON UPDATE CASCADE,
     "name" TEXT NOT NULL,
     "unit" TEXT,
     "kind" TEXT NOT NULL,
@@ -162,23 +130,18 @@ CREATE TABLE IF NOT EXISTS "MetricSample" (
 );
 
 -- CreateIndex
-CREATE UNIQUE INDEX IF NOT EXISTS "ApiKey_publicKey_key" ON "ApiKey"("publicKey");
-CREATE INDEX IF NOT EXISTS "ApiKey_projectId_idx" ON "ApiKey"("projectId");
-CREATE UNIQUE INDEX IF NOT EXISTS "User_email_key" ON "User"("email");
-CREATE INDEX IF NOT EXISTS "Trace_projectId_timestamp_idx" ON "Trace"("projectId", "timestamp");
+CREATE INDEX IF NOT EXISTS "Trace_timestamp_idx" ON "Trace"("timestamp");
 CREATE INDEX IF NOT EXISTS "Trace_userId_idx" ON "Trace"("userId");
 CREATE INDEX IF NOT EXISTS "Trace_sessionId_idx" ON "Trace"("sessionId");
-CREATE INDEX IF NOT EXISTS "Observation_projectId_startTime_idx" ON "Observation"("projectId", "startTime");
+CREATE INDEX IF NOT EXISTS "Observation_startTime_idx" ON "Observation"("startTime");
 CREATE INDEX IF NOT EXISTS "Observation_traceId_idx" ON "Observation"("traceId");
 CREATE INDEX IF NOT EXISTS "Observation_parentObservationId_idx" ON "Observation"("parentObservationId");
-CREATE INDEX IF NOT EXISTS "Score_projectId_timestamp_idx" ON "Score"("projectId", "timestamp");
+CREATE INDEX IF NOT EXISTS "Score_timestamp_idx" ON "Score"("timestamp");
 CREATE INDEX IF NOT EXISTS "Score_traceId_idx" ON "Score"("traceId");
-CREATE INDEX IF NOT EXISTS "Evaluation_projectId_createdAt_idx" ON "Evaluation"("projectId", "createdAt");
+CREATE INDEX IF NOT EXISTS "Evaluation_createdAt_idx" ON "Evaluation"("createdAt");
 CREATE INDEX IF NOT EXISTS "Evaluation_traceId_idx" ON "Evaluation"("traceId");
 CREATE INDEX IF NOT EXISTS "Evaluation_status_idx" ON "Evaluation"("status");
 CREATE INDEX IF NOT EXISTS "Evaluation_datasetItemId_idx" ON "Evaluation"("datasetItemId");
-CREATE INDEX IF NOT EXISTS "DatasetItem_projectId_name_idx" ON "DatasetItem"("projectId", "name");
-CREATE INDEX IF NOT EXISTS "EvaluationConfig_projectId_idx" ON "EvaluationConfig"("projectId");
-CREATE UNIQUE INDEX IF NOT EXISTS "EvaluationConfig_projectId_name_key" ON "EvaluationConfig"("projectId", "name");
-CREATE INDEX IF NOT EXISTS "MetricSample_projectId_name_timestamp_idx" ON "MetricSample"("projectId", "name", "timestamp");
+CREATE INDEX IF NOT EXISTS "DatasetItem_name_idx" ON "DatasetItem"("name");
+CREATE UNIQUE INDEX IF NOT EXISTS "EvaluationConfig_name_key" ON "EvaluationConfig"("name");
 CREATE INDEX IF NOT EXISTS "MetricSample_name_timestamp_idx" ON "MetricSample"("name", "timestamp");

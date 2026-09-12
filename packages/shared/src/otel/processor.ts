@@ -22,19 +22,24 @@ import { observation, trace } from "../drizzle/schema.ts";
 // 类型兼容导出（历史 import 路径）
 export type { MachoraObservationType } from "./semantics/types.ts";
 
+// OTel Span StatusCode（与 protobuf 内嵌枚举同值）：0=UNSET / 1=OK / 2=ERROR
+const OTEL_STATUS_OK = 1;
+const OTEL_STATUS_ERROR = 2;
+
 // ---------------------------------------------------------------------------
 // 中间结构
 // ---------------------------------------------------------------------------
 
 export interface TraceRecord {
   id: string;
-  projectId: string;
   name: string | null;
   timestamp: Date;
   environment: string;
   userId: string | null;
   sessionId: string | null;
   agentName: string | null;
+  agentVersion: string | null;
+  status: string | null;
   workflowName: string | null;
   skillName: string | null;
   input: unknown;
@@ -46,7 +51,6 @@ export interface TraceRecord {
 export interface ObservationRecord {
   id: string;
   traceId: string;
-  projectId: string;
   type: AnalyzedSpan["type"];
   name: string | null;
   parentObservationId: string | null;
@@ -143,7 +147,6 @@ function asStringArray(v: unknown): string[] {
 }
 
 export function parseOtelPayload(
-  projectId: string,
   body: OtlpExportTraceServiceRequest | Record<string, unknown>,
 ): { traces: TraceRecord[]; observations: ObservationRecord[] } {
   const resourceSpans = (body as OtlpExportTraceServiceRequest).resourceSpans ?? [];
@@ -229,6 +232,7 @@ export function parseOtelPayload(
     const agentName = firstDefinedSemantic("agentName");
     const workflowName = firstDefinedSemantic("workflowName");
     const skillName = firstDefinedSemantic("skillName");
+    const agentVersion = firstDefinedSemantic("agentVersion");
     const tags = firstDefinedSemantic("tags") ?? [];
     const traceInput = firstDefinedByAttr(spans, ATTR.TRACE_INPUT);
     const traceOutput = firstDefinedByAttr(spans, ATTR.TRACE_OUTPUT);
@@ -239,9 +243,16 @@ export function parseOtelPayload(
       (root.resourceAttrs["deployment.environment"] as string | undefined) ??
       "default";
 
+    // trace 级任务结果：取根 span 的显式 status（0=UNSET → null，表示上游未上报）
+    const status =
+      root.statusCode === OTEL_STATUS_ERROR
+        ? "ERROR"
+        : root.statusCode === OTEL_STATUS_OK
+          ? "SUCCESS"
+          : null;
+
     const trace: TraceRecord = {
       id: traceId,
-      projectId,
       name:
         typeof traceName === "string" && traceName.trim() !== ""
           ? traceName
@@ -255,6 +266,9 @@ export function parseOtelPayload(
       workflowName:
         typeof workflowName === "string" && workflowName !== "" ? workflowName : null,
       skillName: typeof skillName === "string" && skillName !== "" ? skillName : null,
+      agentVersion:
+        typeof agentVersion === "string" && agentVersion !== "" ? agentVersion : null,
+      status,
       input: traceInput ?? null,
       output: traceOutput ?? null,
       metadata: traceMetadata ?? semanticMetadata ?? null,
@@ -270,7 +284,6 @@ export function parseOtelPayload(
       observations.push({
         id: s.spanId,
         traceId,
-        projectId,
         type: a.type,
         name: obsName,
         // 无条件保留原始 parentSpanId：父子 span 分批到达时父可能未落库，
@@ -299,7 +312,6 @@ export function parseOtelPayload(
         observations.push({
           id: `${s.spanId}:e${i}`,
           traceId,
-          projectId,
           type: "EVENT",
           name: ev.name || null,
           parentObservationId: s.spanId,
@@ -349,7 +361,6 @@ export interface OtelProcessResult {
 }
 
 export async function persistOtelRecords(
-  projectId: string,
   traces: TraceRecord[],
   observations: ObservationRecord[],
 ): Promise<OtelProcessResult> {
@@ -372,7 +383,6 @@ export async function persistOtelRecords(
         tx.insert(trace)
           .values({
             id: t.id,
-            projectId,
             name: t.name,
             timestamp: t.timestamp,
             environment: t.environment,
@@ -381,6 +391,8 @@ export async function persistOtelRecords(
             agentName: t.agentName,
             workflowName: t.workflowName,
             skillName: t.skillName,
+            agentVersion: t.agentVersion,
+            status: t.status,
             input: jsonOrNull(t.input),
             output: jsonOrNull(t.output),
             metadata: jsonOrNull(t.metadata),
@@ -399,6 +411,9 @@ export async function persistOtelRecords(
               agentName: t.agentName ?? undefined,
               workflowName: t.workflowName ?? undefined,
               skillName: t.skillName ?? undefined,
+              // 同上：null 不覆盖，避免后续批次把已落库的版本 / 任务结果洗掉
+              agentVersion: t.agentVersion ?? undefined,
+              status: t.status ?? undefined,
               input: jsonOrNull(t.input),
               output: jsonOrNull(t.output),
               metadata: jsonOrNull(t.metadata),
@@ -420,7 +435,6 @@ export async function persistOtelRecords(
           .values({
             id: o.id,
             traceId: o.traceId,
-            projectId,
             type: o.type,
             name: o.name,
             parentObservationId: o.parentObservationId,
@@ -477,12 +491,10 @@ export async function persistOtelRecords(
 
 /** 端到端入口：解析 + 落库 */
 export async function processOtelTraces(
-  projectId: string,
   body: unknown,
 ): Promise<OtelProcessResult> {
   const { traces, observations } = parseOtelPayload(
-    projectId,
     body as OtlpExportTraceServiceRequest,
   );
-  return persistOtelRecords(projectId, traces, observations);
+  return persistOtelRecords(traces, observations);
 }

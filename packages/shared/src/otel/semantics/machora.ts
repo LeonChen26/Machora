@@ -15,6 +15,7 @@ export const MACHORA_ATTR = {
   USER_ID: "machora.user.id",
   SESSION_ID: "machora.session.id",
   AGENT_NAME: "machora.agent.name",
+  AGENT_VERSION: "machora.agent.version",
   WORKFLOW_NAME: "machora.workflow.name",
   SKILL_NAME: "machora.skill.name",
   TAGS: "machora.tags",

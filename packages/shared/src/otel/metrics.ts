@@ -11,7 +11,6 @@ import { decodeAttributes } from "./types.ts";
 export type MetricSampleKind = "GAUGE" | "SUM" | "HISTOGRAM";
 
 export interface MetricSampleInput {
-  projectId: string;
   name: string;
   unit: string | null;
   kind: MetricSampleKind;
@@ -57,14 +56,12 @@ function mapDataPoint(
   dp: OtlpMetricDataPoint,
   metric: OtlpMetric,
   kind: MetricSampleKind,
-  projectId: string,
 ): MetricSampleInput {
   const attributes = decodeAttributes(dp.attributes);
   const timestamp = nanoToDate(dp.timeUnixNano) ?? new Date();
 
   if (kind === "HISTOGRAM") {
     return {
-      projectId,
       name: metric.name ?? "unnamed",
       unit: metric.unit ?? null,
       kind,
@@ -83,7 +80,6 @@ function mapDataPoint(
   const raw = dp.asDouble ?? dp.asInt;
   const value = asNumber(raw);
   return {
-    projectId,
     name: metric.name ?? "unnamed",
     unit: metric.unit ?? null,
     kind,
@@ -104,7 +100,6 @@ function mapDataPoint(
  */
 export function parseOtelMetricsPayload(
   req: OtlpExportMetricsServiceRequest,
-  projectId: string,
 ): MetricSampleInput[] {
   const out: MetricSampleInput[] = [];
   for (const rm of req.resourceMetrics ?? []) {
@@ -112,24 +107,24 @@ export function parseOtelMetricsPayload(
       for (const metric of sm.metrics ?? []) {
         if (metric.gauge?.dataPoints?.length) {
           for (const dp of metric.gauge.dataPoints) {
-            out.push(mapDataPoint(dp, metric, "GAUGE", projectId));
+            out.push(mapDataPoint(dp, metric, "GAUGE"));
           }
         }
         if (metric.sum?.dataPoints?.length) {
           for (const dp of metric.sum.dataPoints) {
-            out.push(mapDataPoint(dp, metric, "SUM", projectId));
+            out.push(mapDataPoint(dp, metric, "SUM"));
           }
         }
         if (metric.histogram?.dataPoints?.length) {
           for (const dp of metric.histogram.dataPoints) {
-            out.push(mapDataPoint(dp, metric, "HISTOGRAM", projectId));
+            out.push(mapDataPoint(dp, metric, "HISTOGRAM"));
           }
         }
         if (metric.summary?.dataPoints?.length) {
           // OTLP Summary 只有 count/sum/quantile_values（无 min/max），
           // 此处复用 HISTOGRAM 存 count/sum，min/max 字段恒为 null
           for (const dp of metric.summary.dataPoints) {
-            out.push(mapDataPoint(dp, metric, "HISTOGRAM", projectId));
+            out.push(mapDataPoint(dp, metric, "HISTOGRAM"));
           }
         }
       }

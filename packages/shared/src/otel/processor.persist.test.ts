@@ -32,7 +32,6 @@ beforeAll(async () => {
   getSqliteHandle().exec(
     readFileSync(resolve(import.meta.dirname, "..", "..", "sql", "schema.sql"), "utf8"),
   );
-  await db.insert(s.project).values({ id: "p1", name: "P1" });
 });
 
 afterAll(() => {
@@ -60,24 +59,24 @@ const mkTrace = (over: Record<string, unknown> = {}) => ({
   metadata: null,
   tags: [] as string[],
   ...over,
-}) as Parameters<typeof processor.persistOtelRecords>[1][number];
+}) as Parameters<typeof processor.persistOtelRecords>[0][number];
 
 describe("persistOtelRecords: tags 覆盖语义", () => {
   it("空 tags 不覆盖已落库的非空标签", async () => {
     // 首批带标签
-    await processor.persistOtelRecords("p1", [mkTrace({ id: "tt1", tags: ["prod", "v1"] })], []);
+    await processor.persistOtelRecords([mkTrace({ id: "tt1", tags: ["prod", "v1"] })], []);
     const first = await db.select().from(s.trace).where(eq(s.trace.id, "tt1"));
     expect(first[0].tags).toEqual(["prod", "v1"]);
 
     // 后续批次没带标签（解析层兜底为 []）
-    await processor.persistOtelRecords("p1", [mkTrace({ id: "tt1", tags: [] })], []);
+    await processor.persistOtelRecords([mkTrace({ id: "tt1", tags: [] })], []);
     const after = await db.select().from(s.trace).where(eq(s.trace.id, "tt1"));
     expect(after[0].tags).toEqual(["prod", "v1"]); // 未被洗成 []
   });
 
   it("非空 tags 正常覆盖（可追加/更新标签）", async () => {
-    await processor.persistOtelRecords("p1", [mkTrace({ id: "tt2", tags: ["a"] })], []);
-    await processor.persistOtelRecords("p1", [mkTrace({ id: "tt2", tags: ["a", "b"] })], []);
+    await processor.persistOtelRecords([mkTrace({ id: "tt2", tags: ["a"] })], []);
+    await processor.persistOtelRecords([mkTrace({ id: "tt2", tags: ["a", "b"] })], []);
     const rows = await db.select().from(s.trace).where(eq(s.trace.id, "tt2"));
     expect(rows[0].tags).toEqual(["a", "b"]);
   });
@@ -88,7 +87,6 @@ describe("persistOtelRecords: 事务内单条失败不中断整批", () => {
     const obs = (id: string, traceId: string) => ({
       id,
       traceId,
-      projectId: "p1",
       type: "LLM",
       name: null,
       parentObservationId: null,
@@ -109,9 +107,8 @@ describe("persistOtelRecords: 事务内单条失败不中断整批", () => {
       totalCost: null,
     });
 
-    await processor.persistOtelRecords("p1", [mkTrace({ id: "host" })], []);
+    await processor.persistOtelRecords([mkTrace({ id: "host" })], []);
     const res = await processor.persistOtelRecords(
-      "p1",
       [],
       [
         obs("ok1", "host") as never,

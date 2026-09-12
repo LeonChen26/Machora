@@ -4,7 +4,6 @@ import { z } from "zod";
 // 单一真源：web 生产、worker 消费都引用这里的 schema
 
 export const IngestionQueuePayloadSchema = z.object({
-  projectId: z.string(),
   traceId: z.string(),
   // v1 仅打日志，后续做 session 聚合 / token 统计
 });
@@ -12,7 +11,6 @@ export const IngestionQueuePayloadSchema = z.object({
 export type IngestionQueuePayload = z.infer<typeof IngestionQueuePayloadSchema>;
 
 export const EvaluationQueuePayloadSchema = z.object({
-  projectId: z.string(),
   evaluationId: z.string(),
 });
 

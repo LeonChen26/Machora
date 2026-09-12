@@ -13,11 +13,9 @@
   "dependencies": {
     "@machora/shared": "workspace:*",
     "@machora/worker": "workspace:*",
-    "bcryptjs": "^2.4.3",
     "drizzle-orm": "^0.45.2"
   },
   "devDependencies": {
-    "@types/bcryptjs": "2.4.6",
     "@types/node": "^26.1.2",
     "cross-env": "^10.1.0",
     "tsx": "^4.19.0",

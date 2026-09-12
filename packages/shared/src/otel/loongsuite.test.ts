@@ -39,7 +39,7 @@ const payload = (spans: Record<string, unknown>[]): OtlpExportTraceServiceReques
 
 describe("LoongSuite 语义", () => {
   it("operation entry / react_step / rerank → span.kind 落库；invoke_skill / create_skill → SPAN（chat 对照 LLM）", () => {
-    const { observations } = parseOtelPayload("project-1", payload([
+    const { observations } = parseOtelPayload(payload([
       span("s-entry", "entry", [["gen_ai.operation.name", str("entry")]]),
       span("s-step", "step-1", [["gen_ai.operation.name", str("react_step")]]),
       span("s-rerank", "rerank", [["gen_ai.operation.name", str("rerank")]]),
@@ -58,7 +58,7 @@ describe("LoongSuite 语义", () => {
   });
 
   it("execute_tool + gen_ai.skill.*：skillName 提取，skill.id/description/version 留 metadata", () => {
-    const { observations } = parseOtelPayload("project-1", payload([
+    const { observations } = parseOtelPayload(payload([
       span("s-tool", "read_file", [
         ["gen_ai.operation.name", str("execute_tool")],
         ["gen_ai.tool.name", str("read_file")],
@@ -79,7 +79,7 @@ describe("LoongSuite 语义", () => {
   });
 
   it("trace 级提升：根 invoke_agent + 子 execute_tool(skill) → trace.agentName / skillName", () => {
-    const { traces } = parseOtelPayload("project-1", payload([
+    const { traces } = parseOtelPayload(payload([
       span("s-agent", "DemoAgent", [
         ["gen_ai.operation.name", str("invoke_agent")],
         ["gen_ai.agent.name", str("DemoAgent")],
@@ -98,7 +98,7 @@ describe("LoongSuite 语义", () => {
   });
 
   it("Baggage 传播：子 span 的 session.id / user.id / gen_ai.agent.name → trace 级提取", () => {
-    const { traces } = parseOtelPayload("project-1", payload([
+    const { traces } = parseOtelPayload(payload([
       span("s-entry", "entry", [
         ["gen_ai.operation.name", str("entry")],
         ["session.id", str("sess-ls")],
@@ -116,7 +116,7 @@ describe("LoongSuite 语义", () => {
   });
 
   it("gen_ai.span.kind 直接落库为 type：LLM/EMBEDDING/STEP/TOOL/AGENT/ENTRY", () => {
-    const { observations } = parseOtelPayload("project-1", payload([
+    const { observations } = parseOtelPayload(payload([
       span("s-llm", "chat", [["gen_ai.span.kind", str("LLM")]]),
       span("s-emb", "embed", [["gen_ai.span.kind", str("EMBEDDING")]]),
       span("s-step", "step", [["gen_ai.span.kind", str("STEP")]]),
@@ -135,7 +135,7 @@ describe("LoongSuite 语义", () => {
   });
 
   it("entry span 的 gen_ai.user.id / gen_ai.session.id → trace 级 userId / sessionId", () => {
-    const { traces } = parseOtelPayload("project-1", payload([
+    const { traces } = parseOtelPayload(payload([
       span("s-entry", "entry", [
         ["gen_ai.span.kind", str("ENTRY")],
         ["gen_ai.user.id", str("user-ls")],
@@ -148,7 +148,7 @@ describe("LoongSuite 语义", () => {
   });
 
   it("gen_ai.skill.name / gen_ai.agent.name / gen_ai.usage.* 不残留 metadata", () => {
-    const { observations } = parseOtelPayload("project-1", payload([
+    const { observations } = parseOtelPayload(payload([
       span("s-llm", "llm", [
         ["gen_ai.operation.name", str("chat")],
         ["gen_ai.agent.name", str("DemoAgent")],

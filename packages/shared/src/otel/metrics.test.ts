@@ -83,7 +83,7 @@ function jsonRequest(): OtlpExportMetricsServiceRequest {
 }
 
 describe("parseOtelMetricsPayload（JSON 通道）", () => {
-  const samples = parseOtelMetricsPayload(jsonRequest(), "project-1");
+  const samples = parseOtelMetricsPayload(jsonRequest());
 
   it("映射 gauge / sum / histogram / summary 四种类型", () => {
     expect(samples).toHaveLength(4);
@@ -99,7 +99,6 @@ describe("parseOtelMetricsPayload（JSON 通道）", () => {
   it("SUM：value 取 asDouble，attributes 解码为扁平对象", () => {
     const s = samples[0]!;
     expect(s).toMatchObject({
-      projectId: "project-1",
       unit: "s",
       value: 12.5,
       count: null,
@@ -143,7 +142,7 @@ describe("parseOtelMetricsPayload（JSON 通道）", () => {
   });
 
   it("空请求返回空数组", () => {
-    expect(parseOtelMetricsPayload({}, "project-1")).toEqual([]);
+    expect(parseOtelMetricsPayload({})).toEqual([]);
   });
 });
 
@@ -289,7 +288,7 @@ describe("decodeOtlpMetricsProtobuf（protobuf 通道）", () => {
 
   it("解码 → 解析产物与 JSON 通道一致", () => {
     const decoded = decodeOtlpMetricsProtobuf(buildMetricsFixture());
-    const samples: MetricSampleInput[] = parseOtelMetricsPayload(decoded, "project-1");
+    const samples: MetricSampleInput[] = parseOtelMetricsPayload(decoded);
 
     expect(samples).toHaveLength(3);
     expect(samples.map((s) => s.kind)).toEqual(["SUM", "HISTOGRAM", "GAUGE"]);

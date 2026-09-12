@@ -22,8 +22,8 @@ import {
 
 export function registerQueueProcessors(): void {
   queueBus.consume<IngestionQueuePayload>(QUEUES.ingestion, async (payload) => {
-    // 在线自动评估：ingestion 完成后，对该项目启用的评估配置自动创建任务（AgentLoop 在线评估模式）
-    await triggerOnlineEvaluations(payload.projectId, payload.traceId);
+    // 在线自动评估：ingestion 完成后，对启用的评估配置自动创建任务（AgentLoop 在线评估模式）
+    await triggerOnlineEvaluations(payload.traceId);
   });
 
   queueBus.consume<EvaluationQueuePayload>(QUEUES.evaluation, async (payload) => {
@@ -34,18 +34,14 @@ export function registerQueueProcessors(): void {
 }
 
 /**
- * 在线自动评估：查询项目内 enabled 的评估配置，为当前 trace 逐条创建评估任务并入队。
+ * 在线自动评估：查询 enabled 的评估配置，为当前 trace 逐条创建评估任务并入队。
  * 防重复：同 trace 同 name 已存在未终结（PENDING/RUNNING）任务时跳过。
  */
-async function triggerOnlineEvaluations(
-  projectId: string,
-  traceId: string,
-): Promise<void> {
+async function triggerOnlineEvaluations(traceId: string): Promise<void> {
   // 在线自动评估仅对 autoRun=true 的配置生效（AgentLoop 在线评估模式）；
   // enabled 仅控制手动触发。避免 LLM judge 对每条 trace 自动产生成本。
   const configs = await db.query.evaluationConfig.findMany({
     where: and(
-      eq(evaluationConfig.projectId, projectId),
       eq(evaluationConfig.enabled, true),
       eq(evaluationConfig.autoRun, true),
     ),
@@ -70,7 +66,6 @@ async function triggerOnlineEvaluations(
       .insert(evaluationTable)
       .values({
         id: crypto.randomUUID(),
-        projectId,
         traceId,
         name: cfg.name,
         evaluatorType: cfg.evaluatorType,
@@ -81,7 +76,6 @@ async function triggerOnlineEvaluations(
       })
       .returning({ id: evaluationTable.id });
     await queueBus.enqueue(QUEUES.evaluation, {
-      projectId,
       evaluationId: task.id,
     });
     selfMetrics.inc("machora.evaluation.online_triggered", 1, {
@@ -89,7 +83,7 @@ async function triggerOnlineEvaluations(
     });
   }
   console.log(
-    `[ingestion] project=${projectId} trace=${traceId} online-evals=${configs.length}`,
+    `[ingestion] trace=${traceId} online-evals=${configs.length}`,
   );
 }
 
@@ -102,7 +96,7 @@ async function runEvaluation(payload: EvaluationQueuePayload): Promise<void> {
   const evaluation = await db.query.evaluation.findFirst({
     where: eq(evaluationTable.id, payload.evaluationId),
   });
-  if (!evaluation || evaluation.projectId !== payload.projectId) return;
+  if (!evaluation) return;
   if (evaluation.status === "COMPLETED" || evaluation.status === "ERROR") {
     console.log(`[evaluation] skip (${evaluation.status}) id=${evaluation.id}`);
     return;
@@ -187,7 +181,6 @@ async function runEvaluation(payload: EvaluationQueuePayload): Promise<void> {
     if (!evaluation.datasetItemId) {
       await db.insert(scoreTable).values({
         traceId: evaluation.traceId,
-        projectId: evaluation.projectId,
         name: evaluation.name,
         value: result.value,
         dataType: result.dataType,

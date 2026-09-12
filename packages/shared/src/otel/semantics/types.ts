@@ -24,6 +24,7 @@ export interface SemanticSpan {
   toolName: string | null;
   toolCallId: string | null;
   agentName: string | null;
+  agentVersion: string | null;
   workflowName: string | null;
   skillName: string | null;
   userId: string | null;

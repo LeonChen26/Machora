@@ -30,7 +30,7 @@ const mergedBin = (): Uint8Array =>
   new Uint8Array([...loadBin("openclaw-1.bin"), ...loadBin("openclaw-2.bin")]);
 
 const parseFixture = () =>
-  parseOtelPayload("project-1", loadJson("openclaw-full.json"));
+  parseOtelPayload(loadJson("openclaw-full.json"));
 
 describe("OpenClaw 真实 trace fixture（2026-08-01 捕获，deepseek-v4-flash）", () => {
   it("protobuf 通道解码结果与 JSON fixture 一致（每批 + 拼接合并）", () => {
@@ -47,10 +47,9 @@ describe("OpenClaw 真实 trace fixture（2026-08-01 捕获，deepseek-v4-flash�
 
   it("protobuf 通道与 JSON 通道经 parseOtelPayload 解析结果一致", () => {
     const viaJson = parseOtelPayload(
-      "project-1",
       loadJson("openclaw-full.json"),
     );
-    const viaProto = parseOtelPayload("project-1", decodeOtlpProtobuf(mergedBin()));
+    const viaProto = parseOtelPayload(decodeOtlpProtobuf(mergedBin()));
     expect(viaProto).toEqual(viaJson);
   });
 
@@ -62,7 +61,6 @@ describe("OpenClaw 真实 trace fixture（2026-08-01 捕获，deepseek-v4-flash�
     const main = traces.find((t) => t.id === "b460363f68582dc19193ee9b881f20e3")!;
     expect(main).toMatchObject({
       id: "b460363f68582dc19193ee9b881f20e3",
-      projectId: "project-1",
       name: "openclaw.harness.run",
       environment: "default",
       userId: null,

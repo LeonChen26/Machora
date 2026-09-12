@@ -5,21 +5,6 @@ export const envSchema = z.object({
   PORT: z.coerce.number().default(3000),
   DATA_DIR: z.string().default("./.machora-data"),
   NODE_ENV: z.string().default("development"),
-
-  // 接入认证开关：默认有认证；仅本地调试设为 "true" 跳过 Basic Auth（回退默认项目）
-  MACHORA_AUTH_DISABLED: z.enum(["true", "false"]).default("false"),
-
-  // Seed
-  MACHORA_INIT_PROJECT_NAME: z.string().default("Machora Project"),
-  MACHORA_INIT_PROJECT_PUBLIC_KEY: z.string(),
-  MACHORA_INIT_PROJECT_SECRET_KEY: z.string(),
-  MACHORA_INIT_USER_EMAIL: z.string().default("admin@machora.local"),
-  // 不设默认值：standalone 从 .env 读取；未配置时 seed 随机生成并打印
-  MACHORA_INIT_USER_PASSWORD: z.string().optional(),
-  MACHORA_INIT_USER_NAME: z.string().default("Admin"),
-
-  NEXTAUTH_URL: z.string().default("http://localhost:3100"),
-  NEXTAUTH_SECRET: z.string(),
 });
 
 export type Env = z.infer<typeof envSchema>;

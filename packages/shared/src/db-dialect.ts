@@ -48,9 +48,9 @@ export function textSearch(col: AnyColumn, q: string): SQL {
  * 但手工改库 / 早期版本遗留的脏数据不应让列表页 500，故对每个条件加有效性判断，
  * 非法值直接判定为"不含该标签"。
  *
- * 性能说明：调用方（buildTraceWhere / public traces API）始终同时带上
- * projectId + timestamp 条件，这两列有复合索引 Trace_projectId_timestamp_idx，
- * json_each 只在已收窄的结果集上执行，不会退化为全表扫描。
+ * 性能说明：调用方（buildTraceWhere / public traces API）通常同时带上
+ * timestamp 条件（有 Trace_timestamp_idx 索引），json_each 只在已收窄的结果集上执行，
+ * 不至于退化为全表扫描。
  */
 export function hasTags(col: AnyColumn, tags: string[]): SQL {
   const conds = tags.map(
