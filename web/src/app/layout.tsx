@@ -65,7 +65,6 @@ export default async function RootLayout({
             <NavItem href="/scores" label="Scores" icon="scores" />
             <NavItem href="/evaluations" label="Evaluations" icon="evaluations" />
             <div className="nav-section">平台</div>
-            <NavItem href="/metrics" label="Metrics" icon="metrics" />
             <NavItem href="/system" label="System" icon="system" />
             <NavItem href="/docs" label="Docs" icon="docs" />
             <div className="sidebar-footer">

@@ -1,7 +1,7 @@
 import { BarChart } from "./BarChart";
 
 // 指标展示公共部分：时间窗定义、数值格式化、按指标名聚合、卡片网格。
-// /metrics（项目上报指标）与 /system（自运维指标）共用，避免两套逻辑漂移。
+// /system（自运维指标 + 平台上报指标）使用，避免两套逻辑漂移。
 
 export const RANGES = [
   { key: "1h", label: "1 小时", ms: 60 * 60 * 1000, bucketMs: 5 * 60 * 1000, timeKey: "hm" },

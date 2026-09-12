@@ -30,9 +30,6 @@ const ICONS: Record<string, ReactNode> = {
   agents: (
     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="8" width="16" height="11" rx="3"/><path d="M12 8V4.5"/><circle cx="12" cy="3.2" r="1.1" fill="currentColor" stroke="none"/><circle cx="9.2" cy="13" r="1" fill="currentColor" stroke="none"/><circle cx="14.8" cy="13" r="1" fill="currentColor" stroke="none"/><path d="M9.5 16.2h5"/></svg>
   ),
-  metrics: (
-    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="20" x2="20" y2="20"/><polyline points="6,16 10,10 14,13 20,5"/></svg>
-  ),
   docs: (
     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M5 4a2 2 0 012-2h10a2 2 0 012 2v16a2 2 0 01-2 2H7a2 2 0 01-2-2z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
   ),
