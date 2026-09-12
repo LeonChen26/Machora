@@ -1,33 +1,26 @@
-import { processOtelTraces, decodeOtlpProtobuf, selfMetrics } from "@machora/shared";
+import {
+  processOtelTraces,
+  decodeOtelTraceRequest,
+  OtelDecodeError,
+  selfMetrics,
+} from "@machora/shared";
 
-// OTLP HTTP 注入端点（Phase 0：JSON；Phase 2：protobuf）
+// OTLP HTTP traces 注入端点
+// 支持 JSON / protobuf，以及 gzip / deflate / br 压缩
 // LangChain / LangGraph / LlamaIndex 等框架通过
 // OTEL_EXPORTER_OTLP_TRACES_ENDPOINT 指向本端点
 export async function POST(req: Request) {
-  const contentType = (req.headers.get("content-type") ?? "").toLowerCase();
-  let body: unknown;
-
-  if (contentType.includes("protobuf")) {
-    // OTLP HTTP protobuf（application/x-protobuf，多数 SDK 的默认导出格式）
-    const buf = await req.arrayBuffer();
-    try {
-      body = decodeOtlpProtobuf(new Uint8Array(buf));
-    } catch (e) {
-      const err = e instanceof Error ? e : new Error(String(e));
-      selfMetrics.inc("machora.traces.requests", 1, { status: "bad-protobuf" });
-      return Response.json(
-        { error: `Invalid protobuf payload: ${err.message}` },
-        { status: 400 },
-      );
+  let body;
+  try {
+    body = await decodeOtelTraceRequest(req);
+  } catch (e) {
+    const err = e instanceof Error ? e : new Error(String(e));
+    if (e instanceof OtelDecodeError) {
+      selfMetrics.inc("machora.traces.requests", 1, { status: e.status });
+      return Response.json({ error: err.message }, { status: 400 });
     }
-  } else {
-    try {
-      body = await req.json();
-    } catch (e) {
-      const err = e instanceof Error ? e : new Error(String(e));
-      selfMetrics.inc("machora.traces.requests", 1, { status: "bad-json" });
-      return Response.json({ error: `Invalid JSON body: ${err.message}` }, { status: 400 });
-    }
+    selfMetrics.inc("machora.traces.requests", 1, { status: "bad-protobuf" });
+    return Response.json({ error: `Invalid protobuf payload: ${err.message}` }, { status: 400 });
   }
 
   const result = await processOtelTraces(body);

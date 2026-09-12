@@ -1,42 +1,33 @@
 import {
   parseOtelMetricsPayload,
-  decodeOtlpMetricsProtobuf,
+  decodeOtelMetricsRequest,
+  OtelDecodeError,
   db,
   metricSample,
   selfMetrics,
 } from "@machora/shared";
 
-// OTLP HTTP metrics 注入端点（JSON + protobuf 双通道）
+// OTLP HTTP metrics 注入端点
+// 支持 JSON / protobuf，以及 gzip / deflate / br 压缩
 // 任意 OTLP metrics exporter（Prometheus RemoteWrite→OTLP、SDK metrics 等）
 // 经 OTEL_EXPORTER_OTLP_METRICS_ENDPOINT 指向本端点
 export async function POST(req: Request) {
   const start = Date.now();
-  const contentType = (req.headers.get("content-type") ?? "").toLowerCase();
-  let body: unknown;
 
-  if (contentType.includes("protobuf")) {
-    const buf = await req.arrayBuffer();
-    try {
-      body = decodeOtlpMetricsProtobuf(new Uint8Array(buf));
-    } catch (e) {
-      const err = e instanceof Error ? e : new Error(String(e));
-      selfMetrics.inc("machora.metrics.requests", 1, { status: "bad-protobuf" });
-      return Response.json(
-        { error: `Invalid protobuf payload: ${err.message}` },
-        { status: 400 },
-      );
+  let body;
+  try {
+    body = await decodeOtelMetricsRequest(req);
+  } catch (e) {
+    const err = e instanceof Error ? e : new Error(String(e));
+    if (e instanceof OtelDecodeError) {
+      selfMetrics.inc("machora.metrics.requests", 1, { status: e.status });
+      return Response.json({ error: err.message }, { status: 400 });
     }
-  } else {
-    try {
-      body = await req.json();
-    } catch (e) {
-      const err = e instanceof Error ? e : new Error(String(e));
-      selfMetrics.inc("machora.metrics.requests", 1, { status: "bad-json" });
-      return Response.json({ error: `Invalid JSON body: ${err.message}` }, { status: 400 });
-    }
+    selfMetrics.inc("machora.metrics.requests", 1, { status: "bad-protobuf" });
+    return Response.json({ error: `Invalid protobuf payload: ${err.message}` }, { status: 400 });
   }
 
-  const samples = parseOtelMetricsPayload(body as any);
+  const samples = parseOtelMetricsPayload(body);
   let written = 0;
   if (samples.length > 0) {
     await db.insert(metricSample).values(
