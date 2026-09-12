@@ -9,7 +9,7 @@ flush —— 保证 trace 先于 observation 落库。
     from langchain_core.callbacks import CallbackManager
     from machora.langchain import MachoraCallbackHandler
 
-    handler = MachoraCallbackHandler()   # 凭据走 MACHORA_* 环境变量
+    handler = MachoraCallbackHandler()   # 地址走 MACHORA_HOST 环境变量
     CallbackManager.configure(handlers=[handler])
 """
 

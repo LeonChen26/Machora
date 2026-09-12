@@ -33,7 +33,7 @@ hermes plugins enable observability/otel_machora
 | Env var | 默认 | 含义 |
 | --- | --- | --- |
 | `HERMES_OTEL_MACHORA_ENDPOINT` | `http://localhost:3100/api/public/otel/v1/traces` | OTLP/HTTP traces URL |
-| `HERMES_OTEL_MACHORA_HEADERS` | *(none)* | 逗号分隔 `K=V` 请求头，如 `Authorization=Basic <base64(pk:sk)>` |
+| `HERMES_OTEL_MACHORA_HEADERS` | *(none)* | 逗号分隔 `K=V` 请求头，如 `X-Custom=value` |
 | `HERMES_OTEL_MACHORA_SERVICE_NAME` | `hermes` | Resource `service.name` |
 | `HERMES_OTEL_MACHORA_MAX_CHARS` | `12000` | input/output 单值最大字符数 |
 | `HERMES_OTEL_MACHORA_DEBUG` | *(off)* | `true` 输出详细日志 |
@@ -46,5 +46,4 @@ Hook 全部 fail-open：SDK 或端点不可用时插件保持惰性，不影响 
 
 ```bash
 export HERMES_OTEL_MACHORA_ENDPOINT=http://localhost:3100/api/public/otel/v1/traces
-export HERMES_OTEL_MACHORA_HEADERS=Authorization=Basic <base64(pk:sk)>
 ```

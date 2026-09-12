@@ -35,7 +35,7 @@ hermes plugins enable observability/otel_openinference
 | Env var | Default | Meaning |
 | --- | --- | --- |
 | `HERMES_OTEL_OPENINFERENCE_ENDPOINT` | `http://localhost:3100/api/public/otel/v1/traces` | Full OTLP/HTTP traces URL |
-| `HERMES_OTEL_OPENINFERENCE_HEADERS` | *(none)* | Comma-separated `K=V` headers, e.g. `Authorization=Basic <base64(pk:sk)>` for Machora |
+| `HERMES_OTEL_OPENINFERENCE_HEADERS` | *(none)* | Comma-separated `K=V` headers, e.g. `X-Custom=value` |
 | `HERMES_OTEL_OPENINFERENCE_SERVICE_NAME` | `hermes` | Resource `service.name` |
 | `HERMES_OTEL_OPENINFERENCE_MAX_CHARS` | `12000` | Max chars per input/output value |
 | `HERMES_OTEL_OPENINFERENCE_DEBUG` | *(off)* | `true` for verbose logging |
@@ -49,5 +49,4 @@ Example pointing at a local Machora:
 
 ```bash
 export HERMES_OTEL_OPENINFERENCE_ENDPOINT=http://localhost:3100/api/public/otel/v1/traces
-export HERMES_OTEL_OPENINFERENCE_HEADERS=Authorization=Basic <base64(pk:sk)>
 ```

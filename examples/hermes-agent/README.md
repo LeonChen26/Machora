@@ -13,7 +13,6 @@ pip install 'hermes-agent[otlp]'
 hermes plugins enable observability/otel_openinference
 
 export HERMES_OTEL_OPENINFERENCE_ENDPOINT=http://localhost:3100/api/public/otel/v1/traces
-export HERMES_OTEL_OPENINFERENCE_HEADERS=Authorization=Basic <base64(pk:sk)>
 ```
 
 LLM 调用的 `input.value` / `output.value` 存储为 `[{role, content}, ...]` 消息数组，

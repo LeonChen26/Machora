@@ -8,7 +8,6 @@ LangChain / LangGraph 示例 Agent —— Machora 可观测平台演示
     LANGSMITH_TRACING=true                     # 开启 LangSmith tracing 管线
     LANGSMITH_TRACING_MODE=otel                # 导出走 OTel 而非 LangSmith 云
     OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:3100/api/public/otel/v1/traces
-    OTEL_EXPORTER_OTLP_HEADERS=Authorization=Basic <base64(pk:sk)>
     OTEL_SERVICE_NAME=my-agent
     # 注意：langsmith 要求 endpoint 含完整 /v1/traces 后缀，漏掉会 404
 

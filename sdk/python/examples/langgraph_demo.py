@@ -8,19 +8,11 @@ LangGraph 1.x 默认把节点/模型子 run 合并进顶层，第三方回调拿
     python examples/langgraph_demo.py
 """
 
-import base64
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-PUBLIC_KEY = os.environ.get("MACHORA_PUBLIC_KEY")
-SECRET_KEY = os.environ.get("MACHORA_SECRET_KEY")
-if not PUBLIC_KEY or not SECRET_KEY:
-    raise SystemExit(
-        "缺少凭据：请设置环境变量 MACHORA_PUBLIC_KEY 与 MACHORA_SECRET_KEY"
-        "（默认凭据见项目 .env.example / standalone 启动日志，不要硬编码到代码中）。"
-    )
 HOST = os.environ.get("MACHORA_HOST", "http://localhost:3100")
 
 # 标准 OTLP 配置（等价于设置 OTEL_EXPORTER_OTLP_TRACES_* 环境变量）
@@ -32,7 +24,6 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
-_basic = base64.b64encode(f"{PUBLIC_KEY}:{SECRET_KEY}".encode()).decode()
 provider = TracerProvider(
     resource=Resource(attributes={"service.name": "langgraph-demo"})
 )
@@ -40,7 +31,6 @@ provider.add_span_processor(
     BatchSpanProcessor(
         OTLPSpanExporter(
             endpoint=f"{HOST}/api/public/otel/v1/traces",
-            headers={"Authorization": f"Basic {_basic}"},
         )
     )
 )

@@ -16,11 +16,7 @@ pip install machora-sdk
 ```python
 from machora import MachoraClient
 
-client = MachoraClient(
-    public_key="pk-...",
-    secret_key="sk-...",
-    host="http://localhost:3100",
-)
+client = MachoraClient(host="http://localhost:3100")
 
 # 上下文管理器：退出时自动 flush
 with client.trace(name="my-agent", user_id="u-1") as t:
@@ -73,7 +69,7 @@ LangChain 探针（`MachoraOtelCallbackHandler`）：
 from langchain_core.callbacks import CallbackManager
 from machora.otel import MachoraOtelCallbackHandler
 
-handler = MachoraOtelCallbackHandler()   # 凭据走 MACHORA_OTEL_* 环境变量
+handler = MachoraOtelCallbackHandler()   # 地址走 MACHORA_OTEL_* 环境变量
 CallbackManager.configure(handlers=[handler])
 ```
 
@@ -88,7 +84,7 @@ result = probe.invoke(graph, {"messages": [...]})
 ```
 
 环境变量：`MACHORA_OTEL_ENDPOINT`（默认 `http://localhost:3100/api/public/otel/v1/traces`）、
-`MACHORA_OTEL_HEADERS`（JSON 对象，如 `{"Authorization": "Basic <base64(pk:sk)>"}`）、
+`MACHORA_OTEL_HEADERS`（JSON 对象，如 `{"X-Custom": "value"}`）、
 `MACHORA_OTEL_SERVICE_NAME`。OTel SDK 缺失或端点不可用时探针静默禁用（fail-open）。
 
 ## 事件契约
@@ -107,4 +103,4 @@ pytest
 ## 链接
 
 - 项目仓库：Machora（含 standalone 服务端、OTel 端点、Web UI）
-- 兼容：`MACHORA_*` / `LANGFUSE_*` 环境变量（host/public_key/secret_key）
+- 兼容：`MACHORA_HOST` / `LANGFUSE_HOST` 环境变量

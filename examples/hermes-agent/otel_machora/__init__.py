@@ -28,7 +28,7 @@ Env vars (set via ``hermes tools`` or ~/.hermes/.env):
   HERMES_OTEL_MACHORA_ENDPOINT - full OTLP/HTTP traces URL
       (default: http://localhost:3100/api/public/otel/v1/traces)
   HERMES_OTEL_MACHORA_HEADERS - comma-separated "K=V" headers, e.g.
-      Authorization=Basic <base64(pk:sk)> for Machora
+      X-Custom=value
   HERMES_OTEL_MACHORA_SERVICE_NAME - resource service.name (default: hermes)
   HERMES_OTEL_MACHORA_MAX_CHARS - max chars per input/output value
       (default: 12000)

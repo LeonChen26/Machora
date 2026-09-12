@@ -18,8 +18,6 @@ except ImportError:
 class FakeClient(MachoraClient):
     def __init__(self):
         super().__init__(
-            public_key="pk-test",
-            secret_key="sk-test",
             host="http://test.local",
         )
         self.captured: list[dict] = []

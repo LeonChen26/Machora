@@ -11,8 +11,6 @@
 set -euo pipefail
 
 MACHORA_URL="${MACHORA_URL:-http://localhost:3100}"
-MACHORA_PUBLIC_KEY="${MACHORA_PUBLIC_KEY:-pk-machora-dev-000000000000000000000}"
-MACHORA_SECRET_KEY="${MACHORA_SECRET_KEY:-sk-machora-dev-000000000000000000000}"
 
 # 0) 探活
 if ! curl -sf "$MACHORA_URL/api/public/health" >/dev/null; then
@@ -20,14 +18,11 @@ if ! curl -sf "$MACHORA_URL/api/public/health" >/dev/null; then
   exit 1
 fi
 
-AUTH_B64="$(printf '%s:%s' "$MACHORA_PUBLIC_KEY" "$MACHORA_SECRET_KEY" | base64 | tr -d '\n')"
-
 # 1) OTel 导出配置（OpenClaw 自动携带）
 #    OpenClaw 的 diagnostics-otel 仅支持 http/protobuf（设置其他协议会跳过导出），
 #    machora 端已支持 OTLP protobuf 解码（application/x-protobuf）。
 export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT="$MACHORA_URL/api/public/otel"
 export OTEL_EXPORTER_OTLP_TRACES_PROTOCOL="http/protobuf"
-export OTEL_EXPORTER_OTLP_TRACES_HEADERS="Authorization=Basic $AUTH_B64"
 export OTEL_SERVICE_NAME="${OTEL_SERVICE_NAME:-openclaw}"
 
 echo "[machora] OpenClaw OTel 已指向 $MACHORA_URL/api/public/otel/v1/traces"

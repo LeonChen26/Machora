@@ -56,8 +56,7 @@ openclaw plugins list | grep machora-openinference
     "entries": {
       "machora-openinference": {
         "config": {
-          "endpoint": "http://localhost:3100/api/public/otel/v1/traces",
-          "headers": { "Authorization": "Basic <base64>" }
+          "endpoint": "http://localhost:3100/api/public/otel/v1/traces"
         }
       }
     }
@@ -73,7 +72,6 @@ openclaw plugins list | grep machora-openinference
 
 ```bash
 export MACHORA_OTEL_ENDPOINT=http://localhost:3100/api/public/otel/v1/traces
-export MACHORA_OTEL_HEADERS='{"Authorization":"Basic <base64>"}'
 export MACHORA_OTEL_SERVICE_NAME=openclaw
 ```
 

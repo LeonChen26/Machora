@@ -79,8 +79,6 @@ step(`1/${totalSteps} 全量构建（pnpm build）`);
 // 构建阶段模块顶层副作用触发 DB 连接，这里给占位 env。运行时真实值由 start.ts 设置。
 const prev = {};
 for (const [k, v] of Object.entries({
-  NEXTAUTH_URL: "http://localhost",
-  NEXTAUTH_SECRET: "build-stub-secret-only",
   SKIP_ENV_VALIDATION: "1",
 })) {
   prev[k] = process.env[k];
@@ -223,8 +221,7 @@ writeFileSync(
     "  PORT    Web 端口，默认 3100",
     "  DATA_DIR 数据目录，默认 standalone/.machora-data",
     "",
-    "管理员凭据：应用根目录存在 .env 时自动加载（可参考 .env.example 复制改名）。",
-    "  MACHORA_INIT_USER_PASSWORD 管理员初始密码，建议设置；未设置时首次启动随机生成并打印在日志",
+    "环境变量：应用根目录存在 .env 时自动加载（可参考 .env.example 复制改名）。",
     "",
     withDeps ? "" : "开发模式（热重载）：\n  pnpm dev\n",
     "数据说明：SQLite 数据库文件位于 standalone/.machora-data/machora.db，删除即清空。",
@@ -374,7 +371,7 @@ console.log(`  平台  : ${process.platform} ${process.arch}（完整包仅同�
 console.log("");
 console.log("关键特性（SQLite 版）：");
 console.log("  ✓ 运行时零 ORM CLI / engines（drizzle-orm + better-sqlite3，嵌入式无外部服务）");
-console.log("  ✓ schema.sql 幂等建表，启动直接 exec；存量库自动补列/重建并容错跳过缺列索引");
+console.log("  ✓ schema.sql 幂等建表，启动直接 exec（无存量库迁移逻辑）");
 console.log("");
 console.log("发布指引：");
 if (withDeps) {

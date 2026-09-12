@@ -4,7 +4,7 @@ OTel SDK 未安装或初始化失败时返回 None（惰性），不影响应用
 端点/凭据走环境变量：
 
     MACHORA_OTEL_ENDPOINT        OTLP/HTTP traces URL（默认 http://localhost:3100/api/public/otel/v1/traces）
-    MACHORA_OTEL_HEADERS         HTTP 头（JSON 对象字符串，如 {"Authorization": "Basic ..."}）
+    MACHORA_OTEL_HEADERS         HTTP 头（JSON 对象字符串，如 {"X-Custom": "value"}）
     MACHORA_OTEL_SERVICE_NAME    resource service.name
 """
 

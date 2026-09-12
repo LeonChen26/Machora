@@ -14,8 +14,6 @@ class FakeClient(MachoraClient):
 
     def __init__(self):
         super().__init__(
-            public_key="pk-test",
-            secret_key="sk-test",
             host="http://test.local",
         )
         self.captured: list[dict] = []
@@ -37,16 +35,14 @@ class FakeClient(MachoraClient):
 
 
 class TestClient(unittest.TestCase):
-    def test_basic_auth_header(self):
+    def test_no_auth_header(self):
         c = FakeClient()
         c.create_trace(name="t")
         c.flush()
         req = c.captured[0]
         self.assertEqual(req["url"], "http://test.local/api/public/ingestion")
-        import base64
-
-        expected = base64.b64encode(b"pk-test:sk-test").decode()
-        self.assertEqual(req["headers"]["authorization"], f"Basic {expected}")
+        self.assertNotIn("authorization", req["headers"])
+        self.assertEqual(req["headers"]["content-type"], "application/json")
 
     def test_flush_sorts_trace_first(self):
         c = FakeClient()
@@ -105,13 +101,13 @@ class TestClient(unittest.TestCase):
         c = FakeClient()
 
         def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(401, json={"error": "Invalid API key"})
+            return httpx.Response(500, json={"error": "internal"})
 
         c._http = httpx.Client(transport=httpx.MockTransport(handler))
         c.create_trace(name="t")
         with self.assertRaises(MachoraError) as ctx:
             c.flush()
-        self.assertIn("401", str(ctx.exception))
+        self.assertIn("500", str(ctx.exception))
 
     def test_span_end_idempotent(self):
         c = FakeClient()

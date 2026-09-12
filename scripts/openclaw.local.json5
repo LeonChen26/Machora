@@ -12,10 +12,7 @@
       "serviceName": "openclaw",
       "traces": true,
       "metrics": false,
-      "logs": false,
-      "headers": {
-        "Authorization": "Basic cGstbWFjaG9yYS1kZXYtMDAwMDAwMDAwMDAwMDAwMDAwMDAwOnNrLW1hY2hvcmEtZGV2LTAwMDAwMDAwMDAwMDAwMDAwMDAwMA=="
-      }
+      "logs": false
     }
   },
   "plugins": {

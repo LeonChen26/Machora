@@ -39,14 +39,7 @@ pip install -r requirements.txt
 
 ```bash
 cd ../..    # 仓库根
-pnpm standalone:start        # 默认 http://localhost:3100，seed 凭据见下
-```
-
-Machora 默认 seed 的 API Key（见 `standalone/src/start.ts`）：
-
-```
-public key: pk-machora-dev-000000000000000000000
-secret key: sk-machora-dev-000000000000000000000
+pnpm standalone:start        # 默认 http://localhost:3100
 ```
 
 ### 3. 配置环境变量并运行
@@ -56,12 +49,7 @@ secret key: sk-machora-dev-000000000000000000000
 $env:LANGSMITH_TRACING = "true"
 $env:LANGSMITH_TRACING_MODE = "otel"
 $env:OTEL_EXPORTER_OTLP_ENDPOINT = "http://localhost:3100/api/public/otel/v1/traces"
-$env:OTEL_EXPORTER_OTLP_HEADERS = "Authorization=Basic <base64(pk:sk)>"
 $env:OTEL_SERVICE_NAME = "langchain-demo"
-
-# base64(pk:sk) = base64("pk-machora-dev-000000000000000000000:sk-machora-dev-000000000000000000000")
-# 可用 python 生成：
-#   python -c "import base64; print(base64.b64encode(b'pk...:sk...').decode())"
 
 python agent.py
 ```

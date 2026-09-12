@@ -30,10 +30,8 @@ python -m venv .venv
 .venv/Scripts/activate            # Windows
 pip install -r requirements.txt
 
-# 2. 指向 Machora（Basic Auth 需自行 base64(pk:sk)）
-#    PowerShell: [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("pk:sk"))
+# 2. 指向 Machora
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:3100/api/public/otel/v1/traces
-export OTEL_EXPORTER_OTLP_HEADERS=Authorization=Basic <b64(pk:sk)>
 export OTEL_SERVICE_NAME=loongsuite-demo
 
 # 3a. 离线模式（无需 API key，调用树与真实模式一致）

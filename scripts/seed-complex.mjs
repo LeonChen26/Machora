@@ -4,11 +4,6 @@
 // 依赖 ingestion 的 parentObservationId 支持（嵌套调用树）
 
 const BASE = process.argv[2] ?? "http://localhost:3100";
-// 凭据优先读环境变量（生产/自定义部署时覆盖），缺失时回退本地 dev 种子值
-const PUBLIC_KEY =
-  process.env.MACHORA_INIT_PROJECT_PUBLIC_KEY ?? "pk-machora-dev-000000000000000000000";
-const SECRET_KEY =
-  process.env.MACHORA_INIT_PROJECT_SECRET_KEY ?? "sk-machora-dev-000000000000000000000";
 
 const batch = [];
 const push = (e) => batch.push(e);
@@ -248,7 +243,6 @@ console.log(`注入 ${batch.length} 条事件到 ${BASE}/api/public/ingestion ..
 const res = await fetch(`${BASE}/api/public/ingestion`, {
   method: "POST",
   headers: {
-    authorization: "Basic " + Buffer.from(`${PUBLIC_KEY}:${SECRET_KEY}`).toString("base64"),
     "content-type": "application/json",
   },
   body: JSON.stringify({ batch }),

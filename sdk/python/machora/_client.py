@@ -6,7 +6,6 @@ score-create）后批量 POST /api/public/ingestion。
 
 from __future__ import annotations
 
-import base64
 import logging
 import os
 import threading
@@ -53,30 +52,15 @@ class MachoraError(RuntimeError):
 class MachoraClient:
     """Machora ingestion 客户端。
 
-    认证：Basic Auth（publicKey:secretKey）。未显式传参时从环境变量读取
-    MACHORA_PUBLIC_KEY / MACHORA_SECRET_KEY / MACHORA_HOST
-    （兼容 LANGFUSE_* / LANGFUSE_HOST 变量）。
+    仅需平台地址；未显式传参时从环境变量读取 MACHORA_HOST
+    （兼容 LANGFUSE_HOST）。
     """
 
     def __init__(
         self,
-        public_key: Optional[str] = None,
-        secret_key: Optional[str] = None,
         host: Optional[str] = None,
         timeout: float = 30.0,
     ):
-        self.public_key = (
-            public_key
-            or os.environ.get("MACHORA_PUBLIC_KEY")
-            or os.environ.get("LANGFUSE_PUBLIC_KEY")
-            or ""
-        )
-        self.secret_key = (
-            secret_key
-            or os.environ.get("MACHORA_SECRET_KEY")
-            or os.environ.get("LANGFUSE_SECRET_KEY")
-            or ""
-        )
         self.host = (host or os.environ.get("MACHORA_HOST") or DEFAULT_HOST).rstrip("/")
         self._timeout = timeout
         self._http = httpx.Client(timeout=timeout)
@@ -273,15 +257,11 @@ class MachoraClient:
         return self._post("/api/public/ingestion", payload)
 
     def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
-        auth = base64.b64encode(
-            f"{self.public_key}:{self.secret_key}".encode()
-        ).decode()
         try:
             resp = self._http.post(
                 f"{self.host}{path}",
                 json=payload,
                 headers={
-                    "Authorization": f"Basic {auth}",
                     "Content-Type": "application/json",
                 },
             )

@@ -5,11 +5,7 @@
 
     from machora import MachoraClient
 
-    client = MachoraClient(
-        public_key="pk-...",
-        secret_key="sk-...",
-        host="http://localhost:3100",
-    )
+    client = MachoraClient(host="http://localhost:3100")
 
     # 上下文管理器：退出时自动 flush
     with client.trace(name="my-agent", user_id="u-1") as t:
@@ -31,7 +27,7 @@
     client.create_observation(tid, type="SPAN", name="step-1", end_time=None)
     client.flush()
 
-    # 未传凭据时从环境变量读取（MACHORA_* / LANGFUSE_*）
+    # 未传 host 时从环境变量读取（MACHORA_HOST / LANGFUSE_HOST）
     client = MachoraClient()
 
 LangChain 自动埋点

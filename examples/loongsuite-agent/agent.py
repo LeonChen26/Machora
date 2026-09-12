@@ -11,7 +11,6 @@ LoongSuite 示例 Agent —— Machora 可观测平台演示（LoongSuite GenAI 
 
 接入方式（Machora 端零代码改动，示例只是埋点方）：
     OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:3100/api/public/otel/v1/traces
-    OTEL_EXPORTER_OTLP_HEADERS=Authorization=Basic <base64(pk:sk)>
     OTEL_SERVICE_NAME=loongsuite-demo
 
 模型选择：
@@ -27,7 +26,6 @@ LoongSuite 示例 Agent —— Machora 可观测平台演示（LoongSuite GenAI 
 
 from __future__ import annotations
 
-import base64
 import json
 import os
 import time
@@ -44,15 +42,6 @@ from opentelemetry.util.genai.extended_types import (
     ReactStepInvocation,
 )
 from opentelemetry.util.genai.types import InputMessage, OutputMessage, Text
-
-# 凭据从环境变量读取（缺失时提示设置，不提供硬编码默认值）
-PUBLIC_KEY = os.environ.get("MACHORA_PK")
-SECRET_KEY = os.environ.get("MACHORA_SK")
-if not PUBLIC_KEY or not SECRET_KEY:
-    raise SystemExit(
-        "缺少凭据：请设置环境变量 MACHORA_PK 与 MACHORA_SK"
-        "（默认凭据见项目 .env.example / standalone 启动日志，不要硬编码到代码中）。"
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -75,14 +64,11 @@ def setup_otel():
         "OTEL_EXPORTER_OTLP_ENDPOINT",
         "http://localhost:3100/api/public/otel/v1/traces",
     )
-    # Machora 用 Basic Auth（pk:sk），headers 需自行 base64
-    cred = base64.b64encode(f"{PUBLIC_KEY}:{SECRET_KEY}".encode()).decode()
-    headers = {"Authorization": f"Basic {cred}"}
 
     provider = TracerProvider()
     provider.add_span_processor(
         SimpleSpanProcessor(
-            OTLPSpanExporter(endpoint=endpoint, headers=headers)
+            OTLPSpanExporter(endpoint=endpoint)
         )
     )
     otel_trace.set_tracer_provider(provider)

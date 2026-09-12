@@ -62,14 +62,7 @@ pip install -r requirements.txt
 
 ```bash
 cd ../..    # 仓库根
-pnpm standalone:start        # 默认 http://localhost:3100，seed 凭据见下
-```
-
-Machora 默认 seed 的 API Key（见 `standalone/src/start.ts`）：
-
-```
-public key: pk-machora-dev-000000000000000000000
-secret key: sk-machora-dev-000000000000000000000
+pnpm standalone:start        # 默认 http://localhost:3100
 ```
 
 ### 3. 配置环境变量并运行
@@ -77,14 +70,10 @@ secret key: sk-machora-dev-000000000000000000000
 ```bash
 # PowerShell 示例
 $env:OTEL_EXPORTER_OTLP_ENDPOINT = "http://localhost:3100/api/public/otel/v1/traces"
-$env:OTEL_EXPORTER_OTLP_HEADERS = "Authorization=Basic <base64(pk:sk)>"
 $env:OTEL_SERVICE_NAME = "llamaindex-demo"
 python agent.py
 ```
 
-> `OTEL_EXPORTER_OTLP_HEADERS` 需要 base64 编码的 `pk:sk`：
-> `python -c "import base64; print(base64.b64encode(b'pk...:sk...').decode())"`
->
 > 注意：endpoint 必须是**完整路径含 `/api/public/otel/v1/traces`**（Machora 的 OTel 端点），
 > `opentelemetry-exporter-otlp-proto-http` 会原样使用该 URL。
 

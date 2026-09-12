@@ -15,7 +15,7 @@
       },
       "headers": {
         "type": "object",
-        "description": "Extra HTTP headers sent to the OTLP endpoint (e.g. Authorization)"
+        "description": "Extra HTTP headers sent to the OTLP endpoint (e.g. X-Custom)"
       },
       "serviceName": {
         "type": "string",
