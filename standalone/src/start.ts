@@ -8,7 +8,7 @@
  */
 
 import { resolve } from "node:path";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { createServer, type Server } from "node:http";
 // 仅类型导入：编译期擦除，不会在 setupEnvironment() 之前触发 shared 的模块副作用
@@ -107,6 +107,55 @@ function applySchemaSql(db: SqliteDb): void {
   // better-sqlite3 的 exec() 原生支持多语句；schema.sql 全为幂等 DDL，整文件直接执行
   db.exec(readFileSync(sqlPath, "utf8"));
   console.log("[Schema] 完成");
+}
+
+// ---------------------------------------------------------------------------
+// 存量库校验
+//
+// schema.sql 全为 CREATE TABLE IF NOT EXISTS：对「已存在但结构较旧」的库不会补列，
+// 会静默启动成功，直到某条查询在运行时 500。这里在 exec 之前显式探测，fail-fast
+// 并给出可执行指引（删除重建 / 导出重导）。
+// ---------------------------------------------------------------------------
+
+/** 当前版本 Trace 表必须具备的列（后续新增列可追加到此集合） */
+const REQUIRED_TRACE_COLUMNS = ["agentVersion", "status", "tags"] as const;
+
+function assertNoLegacySchema(db: SqliteDb): void {
+  // 旧 PGlite 数据目录存在、但尚无 SQLite 文件：格式不通，不能静默建空库
+  const dataDir = resolve(process.cwd(), DATA_DIR);
+  const pgliteDir = resolve(dataDir, "pglite");
+  if (existsSync(pgliteDir) && !existsSync(resolve(dataDir, "machora.db"))) {
+    throw new Error(
+      `[Schema] 检测到旧 PGlite 数据目录（${pgliteDir}）但尚无 machora.db。\n` +
+        "  PGlite 与 SQLite 文件格式不通，无法原地升级；请先备份并导出数据" +
+        "（/api/export/traces、/api/export/generations），删除 DATA_DIR 后重导入。",
+    );
+  }
+
+  const table = db
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'Trace'")
+    .get();
+  if (!table) return; // 全新库：交给 schema.sql 建表
+
+  const cols = new Set(
+    (db.prepare("PRAGMA table_info(Trace)").all() as { name: string }[]).map(
+      (c) => c.name,
+    ),
+  );
+  // 旧 SQLite 结构时间列名为 createdAt（现为 timestamp）；改名无法安全自动迁移
+  if (cols.has("createdAt") && !cols.has("timestamp")) {
+    throw new Error(
+      "[Schema] 检测到旧版 SQLite 结构（Trace.createdAt 已改名为 timestamp），无法自动迁移。\n" +
+        "  请先备份 DATA_DIR，再删除重建或用 /api/export/* 导出后重导。",
+    );
+  }
+  const missing = REQUIRED_TRACE_COLUMNS.filter((c) => !cols.has(c));
+  if (missing.length > 0) {
+    throw new Error(
+      `[Schema] 存量库缺少必需列：${missing.join(", ")}（schema.sql 只做幂等建表，不补列）。\n` +
+        "  请先备份 DATA_DIR，再删除重建或用 /api/export/* 导出后重导。",
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -224,6 +273,8 @@ async function main() {
   const sqlite = shared.getSqliteHandle();
   console.log(`[SQLite] 已就绪: ${shared.getDbPath()}`);
 
+  // 先校验存量库（旧 PGlite / 旧 SQLite 结构），再执行幂等建表
+  assertNoLegacySchema(sqlite);
   applySchemaSql(sqlite);
 
   // 自观测：启动周期落库（60s），队列/请求指标由此采集；

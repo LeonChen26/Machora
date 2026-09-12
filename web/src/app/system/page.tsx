@@ -33,10 +33,9 @@ function fmtBytes(n: number): string {
   return `${n} B`;
 }
 
-// OpenAPI 流量口径：接入 = 上报端点（ingestion / OTLP traces / metrics），
+// OpenAPI 流量口径：接入 = 上报端点（OTLP traces / metrics），
 // 查询 = public 查询端点。console 管理接口不埋点，天然不计入。
 const INGESTION_METRICS = new Set([
-  "machora.ingestion.requests",
   "machora.traces.requests",
   "machora.metrics.requests",
 ]);
@@ -76,12 +75,12 @@ export default async function SystemPage({
     .orderBy(desc(metricSample.timestamp))
     .limit(MAX_SAMPLES);
 
-  // 状态卡：运行时长 / 最近落库 / 采样数 / 错误计数（status=error|unauthorized）
+  // 状态卡：运行时长 / 最近落库 / 采样数 / 错误计数（status=error；鉴权已移除，不再有 unauthorized）
   const startedAt = getSelfStartedAt();
   const latest = samples[0]?.timestamp ?? null;
   const errorCount = samples.filter((s) => {
     const a = (s.attributes ?? {}) as Record<string, unknown>;
-    return a.status === "error" || a.status === "unauthorized";
+    return a.status === "error";
   }).length;
 
   const stats = [
@@ -103,7 +102,7 @@ export default async function SystemPage({
     {
       label: "错误计数",
       value: fmtNum(errorCount),
-      hint: "status=error/unauthorized 采样数",
+      hint: "status=error 采样数",
     },
   ];
 
@@ -258,8 +257,8 @@ export default async function SystemPage({
               <div>
                 <div className="card-title">OpenAPI 流量</div>
                 <div className="hint">
-                  接入 = /ingestion、/otel/v1/traces、/otel/v1/metrics 上报；查询 =
-                  public 查询接口。console 管理接口不计入。
+                  接入 = /otel/v1/traces、/otel/v1/metrics 上报；查询 = public 查询接口。
+                  console 管理接口不计入。
                 </div>
               </div>
             </div>

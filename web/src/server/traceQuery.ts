@@ -6,6 +6,25 @@ import { db, observation, trace, textSearch, hasTags } from "@machora/shared";
 const str = (v: string | string[] | undefined) =>
   Array.isArray(v) ? v[0] : v;
 
+/** 解析单个日期参数：非法输入回退默认值（避免 Invalid Date → 绑定 NaN → 查询恒空且无提示） */
+function parseDate(raw: string | undefined, fallback: Date): Date {
+  if (!raw) return fallback;
+  const t = Date.parse(raw);
+  return Number.isNaN(t) ? fallback : new Date(t);
+}
+
+/** 时间窗天数：空 / 非法 → fallback；0 = 不限；上限 365 防超大窗口 */
+export function parseDays(
+  raw: string | string[] | undefined,
+  fallback = 7,
+): number {
+  const s = str(raw);
+  if (s === undefined || s.trim() === "") return fallback;
+  const n = Number.parseInt(s, 10);
+  if (!Number.isFinite(n) || n < 0) return fallback;
+  return Math.min(n, 365);
+}
+
 export interface TraceFilters {
   from: Date;
   to: Date;
@@ -23,14 +42,17 @@ export function parseTraceFilters(
   sp: Record<string, string | string[] | undefined>,
 ): TraceFilters {
   // 默认时间窗：最近 7 天
-  const to = new Date();
-  const from = new Date(to.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const now = new Date();
   const fromStr = str(sp.from);
   const toStr = str(sp.to);
   const tagRaw = str(sp.tag)?.trim();
+  const to = parseDate(toStr, now);
+  let from = parseDate(fromStr, new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000));
+  // 起止倒置时收敛为同一时刻，避免 gte/lte 互斥导致列表恒空
+  if (from.getTime() > to.getTime()) from = to;
   return {
-    from: fromStr ? new Date(fromStr) : from,
-    to: toStr ? new Date(toStr) : to,
+    from,
+    to,
     q: str(sp.q)?.trim(),
     userId: str(sp.user)?.trim(),
     sessionId: str(sp.session)?.trim(),
@@ -153,8 +175,7 @@ export interface GenerationFilters {
 export function parseGenerationFilters(
   sp: Record<string, string | string[] | undefined>,
 ): GenerationFilters {
-  const daysRaw = str(sp.days);
-  const days = daysRaw ? Number.parseInt(daysRaw, 10) : 7;
+  const days = parseDays(sp.days, 7);
   return {
     since: days > 0 ? new Date(Date.now() - days * 24 * 60 * 60 * 1000) : null,
     level: str(sp.level)?.trim(),

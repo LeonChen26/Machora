@@ -1,15 +1,22 @@
-import { and, count, desc, eq, lt, type SQL } from "drizzle-orm";
+import { and, count, desc, eq, type SQL } from "drizzle-orm";
 import { db, observation, score, trace, ScoreCreateSchema, selfMetrics } from "@machora/shared";
 import {
   SCORE_COLUMNS,
   SCORE_SELECT_FIELDS,
   buildSelect,
   countOpenApiQuery,
+  cursorCond,
   listEnvelope,
+  nextCursorOf,
+  omitCursorFields,
   parseCommonQuery,
   pickColumns,
   timeWindow,
+  withCursorFields,
 } from "../../../../server/publicQuery";
+
+/** 游标必需列：即使未在 select 中请求也要取回，返回前裁掉 */
+const CURSOR_FIELDS = ["id", "timestamp"] as const;
 
 // 查询参数（GET）：from&to&traceId&observationId&name&limit&cursor&select
 export async function GET(req: Request) {
@@ -31,7 +38,8 @@ export async function GET(req: Request) {
   if (traceId) conds.push(eq(score.traceId, traceId));
   if (observationId) conds.push(eq(score.observationId, observationId));
   if (name) conds.push(eq(score.name, name));
-  if (cursor) conds.push(lt(score.id, cursor));
+  const cursorWhere = cursorCond(score.timestamp, score.id, cursor);
+  if (cursorWhere) conds.push(cursorWhere);
 
   let fields: string[] | undefined;
   try {
@@ -40,26 +48,31 @@ export async function GET(req: Request) {
     countOpenApiQuery("bad-request");
     return Response.json({ error: e.message }, { status: 400 });
   }
-  const cols = pickColumns(SCORE_COLUMNS, fields);
+  const cols = pickColumns(SCORE_COLUMNS, withCursorFields(fields, CURSOR_FIELDS));
 
   const [items, totalCount] = await Promise.all([
     db
       .select(cols)
       .from(score)
       .where(and(...conds))
-      .orderBy(desc(score.timestamp))
+      .orderBy(desc(score.timestamp), desc(score.id))
       .limit(limit + 1),
     db.select({ c: count() }).from(score).where(and(...conds)),
   ]);
 
-  const nextCursor = items.length > limit ? items[items.length - 1].id : null;
+  const nextCursor = nextCursorOf(items, limit, "timestamp", "id");
   countOpenApiQuery("ok");
   return Response.json(
-    listEnvelope(items.slice(0, limit), {
-      limit,
-      nextCursor,
-      totalCount: totalCount[0].c,
-    }),
+    listEnvelope(
+      items
+        .slice(0, limit)
+        .map((r) => omitCursorFields(r, fields, CURSOR_FIELDS)),
+      {
+        limit,
+        nextCursor,
+        totalCount: totalCount[0].c,
+      },
+    ),
   );
 }
 

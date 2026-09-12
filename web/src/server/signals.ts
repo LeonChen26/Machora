@@ -17,6 +17,7 @@ import { asc, desc, gte, inArray } from "drizzle-orm";
 import { db, observation, trace } from "@machora/shared";
 import { formatCost, formatDuration } from "../lib/format";
 import { buildObsTree, buildTrajectoryRows, type Obs } from "./trajectory";
+import { chunk } from "./chunk";
 
 /** 集中定义的阈值，页面不得再自行复制 */
 export const SIGNAL_THRESHOLDS = {
@@ -252,11 +253,31 @@ async function loadObservationsByTrace(
   const byTrace = new Map<string, Obs[]>();
   if (traceIds.length === 0) return byTrace;
 
-  const rows = await db
-    .select()
-    .from(observation)
-    .where(inArray(observation.traceId, traceIds))
-    .orderBy(asc(observation.startTime));
+  const rows: Obs[] = [];
+  // 只取轨迹判定所需列（不拉 input 等大 JSON）；traceIds 分批 IN，规避绑定参数上限
+  for (const part of chunk(traceIds)) {
+    const partRows: Obs[] = await db
+      .select({
+        id: observation.id,
+        traceId: observation.traceId,
+        parentObservationId: observation.parentObservationId,
+        name: observation.name,
+        type: observation.type,
+        level: observation.level,
+        model: observation.model,
+        agentName: observation.agentName,
+        workflowName: observation.workflowName,
+        skillName: observation.skillName,
+        startTime: observation.startTime,
+        endTime: observation.endTime,
+        output: observation.output,
+        metadata: observation.metadata,
+      })
+      .from(observation)
+      .where(inArray(observation.traceId, part))
+      .orderBy(asc(observation.startTime));
+    for (const r of partRows) rows.push(r);
+  }
 
   for (const r of rows) {
     const list = byTrace.get(r.traceId);

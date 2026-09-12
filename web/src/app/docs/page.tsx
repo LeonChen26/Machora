@@ -81,7 +81,8 @@ POST ${baseUrl}/api/public/otel/v1/metrics   # metrics（JSON / Protobuf）`}</p
                 <div className="muted">
                   查询 API 对齐 Langfuse 公开 API：列表返回{" "}
                   <span className="mono">{"{ data, meta: { limit, nextCursor, hasMore, totalCount } }"}</span>{" "}
-                  信封；支持时间窗（from/to）、游标分页（limit/cursor）与字段选择（select=name,tags）。示例：
+                  信封；支持时间窗（from/to）、游标分页（limit/cursor，nextCursor
+                  为不透明字符串，原样回传即可）与字段选择（select=name,tags）。示例：
                 </div>
                 <pre className="code">{`# 查询近 7 天 Trace（只取部分字段）
 curl "${baseUrl}/api/public/traces?from=${new Date(Date.now() - 7 * 864e5).toISOString()}&select=id,name,tags"

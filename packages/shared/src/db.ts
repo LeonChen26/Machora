@@ -31,8 +31,8 @@ function createDb(): MachoraDb {
   // WAL：读写并发（读不阻塞写），对应原 PGlite relaxedDurability 的取舍
   sqlite.pragma("journal_mode = WAL");
   sqlite.pragma("synchronous = NORMAL");
-  // 必须显式开启：否则 schema 中 8 个 ON DELETE CASCADE 会静默失效，
-  // 删除 Project 后会残留孤儿 Trace/Observation/Score
+  // 必须显式开启：否则 schema 中的 ON DELETE CASCADE 会静默失效，
+  // 删除 Trace / DatasetItem 后会残留孤儿 Observation / Score / Evaluation
   sqlite.pragma("foreign_keys = ON");
   // 并发写入排队等待而非立即抛 SQLITE_BUSY（批量写入场景）
   sqlite.pragma("busy_timeout = 5000");

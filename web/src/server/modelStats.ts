@@ -34,14 +34,16 @@ import {
   formatSignalShorts,
   type MetricSnapshot,
 } from "./signals";
+import { AGENT_UNKNOWN, resolveAgentName } from "./attribution";
+import { chunk } from "./chunk";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** Models 页时间窗选项（天） */
 export const MODEL_DAY_OPTIONS = [7, 14, 30] as const;
 
-/** 归属维度无法确定时的归类名（trace / observation 的 agentName 均为空） */
-export const MODEL_UNKNOWN = "unknown";
+/** 归属维度无法确定时的归类名（与 Agents 页共用同一常量，保证两页 unknown 桶一致） */
+export const MODEL_UNKNOWN = AGENT_UNKNOWN;
 
 /** 详情页调用明细分页大小 */
 export const MODEL_CALL_PAGE_SIZE = 25;
@@ -260,7 +262,7 @@ function windowBounds(days: number): { since: Date; prevSince: Date } {
 }
 
 function agentOf(r: AggRow): string {
-  return r.traceAgent ?? r.obsAgent ?? MODEL_UNKNOWN;
+  return resolveAgentName(r.traceAgent, r.obsAgent);
 }
 
 function registerTrace(t: MTrace, acc: ModelAcc) {
@@ -532,12 +534,18 @@ export async function getModelDetail(
 
   if (traceIds.length === 0) return null;
 
-  const rows = (await selectRows().where(
-    and(
-      inArray(observation.traceId, traceIds),
-      gte(observation.startTime, prevSince),
-    ),
-  )) as AggRow[];
+  const rows: AggRow[] = [];
+  // traceIds 规模不受控，按块 IN 查询后合并，规避 SQLite 绑定参数上限
+  for (const part of chunk(traceIds)) {
+    const partRows = (await selectRows().where(
+      and(
+        inArray(observation.traceId, part),
+        gte(observation.startTime, prevSince),
+      ),
+    )) as AggRow[];
+    // 用循环而非 push(...partRows)：单块结果仍可能很大，展开会压栈溢出
+    for (const r of partRows) rows.push(r);
+  }
 
   const { cur, prev } = aggregate(rows, since, days);
   const acc = cur.get(name);
@@ -615,18 +623,21 @@ export async function getModelDetail(
 
   // 评分汇总（挂在该模型当前窗口 trace 上）
   const modelTraceIds = Array.from(acc?.traces.keys() ?? []);
-  const scoreRows = modelTraceIds.length
-    ? await db
-        .select({
-          name: score.name,
-          value: score.value,
-          dataType: score.dataType,
-        })
-        .from(score)
-        .where(
-          and(inArray(score.traceId, modelTraceIds), gte(score.timestamp, since)),
-        )
-    : [];
+  const scoreRows: { name: string; value: number; dataType: string }[] = [];
+  for (const part of chunk(modelTraceIds)) {
+    const partRows = await db
+      .select({
+        name: score.name,
+        value: score.value,
+        dataType: score.dataType,
+      })
+      .from(score)
+      .where(
+        and(inArray(score.traceId, part), gte(score.timestamp, since)),
+      );
+    // 用循环而非 push(...partRows)：单块结果仍可能很大，展开会压栈溢出
+    for (const r of partRows) scoreRows.push(r);
+  }
   const scoreMap = new Map<
     string,
     { dataType: string; count: number; sum: number }

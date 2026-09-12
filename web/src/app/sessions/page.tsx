@@ -2,7 +2,7 @@ import { Link } from "../../components/NativeLink";
 import { EmptyIcon } from "../../components/EmptyIcon";
 import { Pager } from "../../components/Pager";
 import { StatCard } from "../../components/StatCard";
-import { and, gte, isNotNull } from "drizzle-orm";
+import { and, desc, gte, isNotNull } from "drizzle-orm";
 import { db, textSearch, trace } from "@machora/shared";
 import {
   formatDateTime,
@@ -17,6 +17,8 @@ export const dynamic = "force-dynamic";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DAY_OPTIONS = [0, 7, 30]; // 0 = 全部
 const PAGE_SIZE = 25;
+// 单次最多加载的 trace 行数（安全阀：选「全部」时避免无界扫描；超限按最新截断并提示）
+const MAX_TRACE_ROWS = 5000;
 
 export default async function SessionsPage({
   searchParams,
@@ -27,13 +29,14 @@ export default async function SessionsPage({
   const str = (v: string | string[] | undefined) =>
     Array.isArray(v) ? v[0] : v;
   const rawDays = Number.parseInt(str(sp.days) ?? "", 10);
-  const days = DAY_OPTIONS.includes(rawDays) ? rawDays : 0;
+  // 默认 7 天（不再是「全部」）：无参访问不再触发全表扫描，用户可显式选「全部」
+  const days = DAY_OPTIONS.includes(rawDays) ? rawDays : 7;
   const since = days > 0 ? new Date(Date.now() - days * DAY_MS) : undefined;
   const q = str(sp.q)?.trim();
   const rawPage = Number.parseInt(str(sp.page) ?? "", 10);
   const page = rawPage >= 1 ? rawPage : 1;
 
-  const traces = await db.query.trace.findMany({
+  const traceRows = await db.query.trace.findMany({
     where: and(
       isNotNull(trace.sessionId),
       ...(since ? [gte(trace.timestamp, since)] : []),
@@ -46,6 +49,9 @@ export default async function SessionsPage({
       timestamp: true,
       environment: true,
     },
+    orderBy: desc(trace.timestamp),
+    // 多取一条以区分「正好等于上限」与「被截断」
+    limit: MAX_TRACE_ROWS + 1,
     with: {
       observations: {
         columns: {
@@ -58,6 +64,8 @@ export default async function SessionsPage({
       },
     },
   });
+  const truncated = traceRows.length > MAX_TRACE_ROWS;
+  const traces = truncated ? traceRows.slice(0, MAX_TRACE_ROWS) : traceRows;
 
   // 按 sessionId 聚合
   const bySession = new Map<
@@ -242,6 +250,12 @@ export default async function SessionsPage({
           title="至少含 1 个 ERROR trace 的会话数"
         />
       </div>
+
+      {truncated ? (
+        <p className="muted mb-3" role="status">
+          数据量较大，当前仅按最新统计最近 {MAX_TRACE_ROWS} 条 trace；如需完整结果请缩小时间窗。
+        </p>
+      ) : null}
 
       {/* 搜索（GET 提交，纯服务端） */}
       <form className="card filter-bar mb-3">

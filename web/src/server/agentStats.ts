@@ -27,14 +27,16 @@ import {
   formatSignalShorts,
   type MetricSnapshot,
 } from "./signals";
+import { AGENT_UNKNOWN, resolveAgentName } from "./attribution";
+import { chunk } from "./chunk";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** Agent 页时间窗选项（天） */
 export const AGENT_DAY_OPTIONS = [7, 14, 30] as const;
 
-/** 归属维度无法确定时的归类名（trace / observation 的 agentName 均为空） */
-export const AGENT_UNKNOWN = "unknown";
+// 归属常量与规则收敛在 ./attribution（与 Overview / Topology / modelStats 共用同一优先级）
+export { AGENT_UNKNOWN };
 
 /** 详情页调用明细分页大小 */
 export const AGENT_TRACE_PAGE_SIZE = 25;
@@ -324,7 +326,7 @@ function aggregate(
   const prev = new Map<string, AgentAcc>();
 
   for (const r of rows) {
-    const agent = r.traceAgent ?? r.obsAgent ?? AGENT_UNKNOWN;
+    const agent = resolveAgentName(r.traceAgent, r.obsAgent);
     const isCur = r.obsStart.getTime() >= since.getTime();
     const bucket = isCur ? cur : prev;
     let acc = bucket.get(agent);
@@ -422,8 +424,41 @@ function aggregate(
   return { cur, prev };
 }
 
+/**
+ * 把同一 trace 在多个 Agent 桶中的分片合并回一条。
+ *
+ * trace.agentName 为空、而各 observation 携带不同 agentName 时，同一条 trace 会
+ * 按行落入多个 Agent 桶（这正是「调用归属到观测 agent」的预期）。逐桶求和会让
+ * totals 的 trace 数 / 成功率重复计数，故合计前先按 traceId 合并分片。
+ */
+function mergeTrace(target: TraceAgg, src: TraceAgg): void {
+  target.calls += src.calls;
+  target.steps += src.steps;
+  target.errors += src.errors;
+  target.warnings += src.warnings;
+  target.tokens += src.tokens;
+  target.cost += src.cost;
+  if (src.minStart < target.minStart) target.minStart = src.minStart;
+  if (src.maxEnd > target.maxEnd) target.maxEnd = src.maxEnd;
+  if (!target.name && src.name) target.name = src.name;
+  if (!target.status && src.status) target.status = src.status;
+  if (!target.version && src.version) target.version = src.version;
+  if (!target.sessionId && src.sessionId) target.sessionId = src.sessionId;
+}
+
 function metricsOf(accs: Iterable<AgentAcc>): AgentMetrics {
-  let traces = 0;
+  const list = Array.from(accs);
+
+  // trace 数 / 成功率按 traceId 去重；steps/calls/cost 等按行累加（行在桶间是划分，不会重复）
+  const merged = new Map<string, TraceAgg>();
+  for (const acc of list) {
+    for (const t of acc.traces.values()) {
+      const existing = merged.get(t.id);
+      if (existing) mergeTrace(existing, t);
+      else merged.set(t.id, { ...t });
+    }
+  }
+
   let errored = 0;
   let calls = 0;
   let steps = 0;
@@ -431,33 +466,31 @@ function metricsOf(accs: Iterable<AgentAcc>): AgentMetrics {
   let warnings = 0;
   let tokens = 0;
   let cost = 0;
-  const latencies: number[] = [];
-
-  for (const acc of accs) {
-    for (const t of acc.traces.values()) {
-      traces++;
-      if (isErroredTrace(t)) errored++;
-      calls += t.calls;
-      steps += t.steps;
-      errors += t.errors;
-      warnings += t.warnings;
-      tokens += t.tokens;
-      cost += t.cost;
-    }
-    latencies.push(...acc.latencies);
+  for (const t of merged.values()) {
+    if (isErroredTrace(t)) errored++;
+    calls += t.calls;
+    steps += t.steps;
+    errors += t.errors;
+    warnings += t.warnings;
+    tokens += t.tokens;
+    cost += t.cost;
   }
 
-  const sorted = latencies.sort((a, b) => a - b);
-  const avg = sorted.length
-    ? sorted.reduce((s, x) => s + x, 0) / sorted.length
+  // 避免 push(...arr) 在大样本下展开压栈（RangeError: Maximum call stack size exceeded）
+  const latencies: number[] = [];
+  for (const acc of list) for (const d of acc.latencies) latencies.push(d);
+  latencies.sort((a, b) => a - b);
+
+  const avg = latencies.length
+    ? latencies.reduce((s, x) => s + x, 0) / latencies.length
     : null;
-  const p95 = sorted.length
-    ? sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))]
+  const p95 = latencies.length
+    ? latencies[Math.min(latencies.length - 1, Math.floor(latencies.length * 0.95))]
     : null;
 
   return {
-    traces,
-    successRate: traces ? 1 - errored / traces : null,
+    traces: merged.size,
+    successRate: merged.size ? 1 - errored / merged.size : null,
     calls,
     steps,
     errors,
@@ -692,16 +725,20 @@ export async function getAgentDetail(
 
   // 评分汇总（挂在该 Agent 当前窗口 trace 上）
   const traceIds = traceList.map((t) => t.id);
-  const scoreRows = traceIds.length
-    ? await db
-        .select({
-          name: score.name,
-          value: score.value,
-          dataType: score.dataType,
-        })
-        .from(score)
-        .where(and(inArray(score.traceId, traceIds), gte(score.timestamp, since)))
-    : [];
+  // 分块查询：traceIds 规模不受控，一次性 IN 展开会触达 SQLite 绑定参数上限
+  const scoreRows: { name: string; value: number; dataType: string }[] = [];
+  for (const part of chunk(traceIds)) {
+    const partRows = await db
+      .select({
+        name: score.name,
+        value: score.value,
+        dataType: score.dataType,
+      })
+      .from(score)
+      .where(and(inArray(score.traceId, part), gte(score.timestamp, since)));
+    // 用循环而非 push(...partRows)：单块结果仍可能很大，展开会压栈溢出
+    for (const r of partRows) scoreRows.push(r);
+  }
   const scoreMap = new Map<string, { dataType: string; count: number; sum: number }>();
   for (const s of scoreRows) {
     let e = scoreMap.get(s.name);

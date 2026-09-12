@@ -73,6 +73,31 @@ function rmForce(p) {
   }
 }
 
+// 轻量包保留 pnpm-workspace.yaml（allowBuilds 控制 better-sqlite3 原生构建），
+// 但其中 supportedArchitectures 会把依赖按「构建机平台」过滤：在 Linux/ECS 目标机
+// 安装时会取不到正确的平台二进制（@next/swc-*、esbuild 等），运行时才报缺模块。
+// 故打包时移除该段（仅影响轻量包；完整包不使用 staging 的 workspace 元数据）。
+function stripSupportedArchitectures() {
+  const p = resolve(staging, "pnpm-workspace.yaml");
+  if (!existsSync(p)) return;
+  const lines = readFileSync(p, "utf8").split(/\r?\n/);
+  const out = [];
+  let skipping = false;
+  for (const line of lines) {
+    if (/^supportedArchitectures\s*:/.test(line)) {
+      skipping = true;
+      continue;
+    }
+    if (skipping) {
+      if (line.trim() !== "" && /^\S/.test(line)) skipping = false;
+      else continue;
+    }
+    out.push(line);
+  }
+  writeFileSync(p, out.join("\n"));
+  console.log("[release] 已移除 pnpm-workspace.yaml 的 supportedArchitectures（跨平台安装）");
+}
+
 // ---------------------------------------------------------------------------
 step(`1/${totalSteps} 全量构建（pnpm build）`);
 // Next.js production build 会加载全部 server 路由（含 db 连接的 api 路由），为避免
@@ -103,6 +128,12 @@ copy("pnpm-workspace.yaml");
 copy("pnpm-lock.yaml");
 copy("turbo.json");
 copy(".env.example"); // 目标机配置参考（.env 需自行创建）
+// 轻量包在目标机执行 pnpm install 时需要 .npmrc：registry 与 better-sqlite3 预编译
+// 二进制镜像，否则会回退 node-gyp 源码编译（要求 VS C++ 工具链）。
+copy(".npmrc");
+
+// 轻量包需跨平台安装，移除会按构建机平台过滤依赖的 supportedArchitectures
+if (!withDeps) stripSupportedArchitectures();
 
 // workspace 包：源码 + dist + schema.sql（start.ts 启动时幂等建表）
 copy("packages/shared/package.json", "packages/shared/package.json");
@@ -212,6 +243,9 @@ writeFileSync(
     "环境要求：Node.js >= 20" + (withDeps ? "" : "、pnpm（>= 9）"),
     "",
     withDeps ? "无需安装依赖，解压后直接启动。" : "安装依赖：\n  pnpm install --frozen-lockfile",
+    withDeps
+      ? ""
+      : "（.npmrc 已随包提供 registry 与 better-sqlite3 预编译镜像；若镜像仍不可达，\n   可在安装前设置 npm_config_better_sqlite3_binary_host_mirror 指向可用镜像）",
     "",
     "启动（生产模式，默认 http://localhost:3100）：",
     "  Windows: start.cmd",
@@ -219,12 +253,12 @@ writeFileSync(
     "",
     "常用环境变量（可选）：",
     "  PORT    Web 端口，默认 3100",
-    "  DATA_DIR 数据目录，默认 standalone/.machora-data",
+    "  DATA_DIR 数据目录（相对当前工作目录），默认 ./.machora-data",
     "",
     "环境变量：应用根目录存在 .env 时自动加载（可参考 .env.example 复制改名）。",
     "",
     withDeps ? "" : "开发模式（热重载）：\n  pnpm dev\n",
-    "数据说明：SQLite 数据库文件位于 standalone/.machora-data/machora.db，删除即清空。",
+    "数据说明：SQLite 数据库文件位于 <解压目录>/.machora-data/machora.db，删除即清空。",
     "",
     "Schema 初始化：表结构定义在 packages/shared/sql/schema.sql（幂等建表），",
     "启动时直接 exec，无需任何 ORM CLI / 数据库服务。",

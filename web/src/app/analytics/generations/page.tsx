@@ -14,6 +14,7 @@ import {
 } from "../../../lib/format";
 import { levelBadge } from "../../../lib/levelBadge";
 import {
+  parseDays,
   parseGenerationFilters,
   buildGenerationWhere,
 } from "../../../server/traceQuery";
@@ -31,8 +32,7 @@ export default async function GenerationsPage({
   const str = (v: string | string[] | undefined) =>
     Array.isArray(v) ? v[0] : v;
 
-  const daysRaw = str(sp.days);
-  const days = daysRaw ? Number.parseInt(daysRaw, 10) : 7;
+  const days = parseDays(sp.days, 7);
   const gf = parseGenerationFilters(sp);
   const { since, level, model } = gf;
   const rawPage = Number.parseInt(str(sp.page) ?? "", 10);

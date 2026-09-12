@@ -80,7 +80,8 @@ export function EvalConfigForm() {
   return (
     <div className="card mb-3">
       <div className="form-title">新建评估配置</div>
-      <form onSubmit={onSubmit} className="form-inline">
+      <form onSubmit={onSubmit}>
+        <div className="form-inline">
         <input
           name="name"
           required
@@ -113,8 +114,8 @@ export function EvalConfigForm() {
           {pending && <span className="spinner" aria-hidden="true" />}
           {pending ? "创建中…" : "创建"}
         </button>
-      </form>
-      <div className="form-inline mt-2">
+        </div>
+        <div className="form-inline mt-2">
         <input
           name="apiBase"
           placeholder="API 端点（可选，默认 https://api.openai.com/v1）"
@@ -143,7 +144,8 @@ export function EvalConfigForm() {
           className="input"
           style={{ width: 110 }}
         />
-      </div>
+        </div>
+      </form>
       {error && (
         <div className="form-error" role="alert">{error}</div>
       )}

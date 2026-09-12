@@ -7,8 +7,10 @@
 --    DOUBLE PRECISION → REAL / BOOLEAN → INTEGER(0|1) / TEXT[] → TEXT(JSON 数组)
 -- 3. 外键必须内联在 CREATE TABLE 中（SQLite 不支持 ALTER TABLE ADD CONSTRAINT），
 --    且运行时需 PRAGMA foreign_keys = ON 才生效（见 packages/shared/src/db.ts）
--- 4. 参与模糊搜索的列标注：使 LIKE 大小写不敏感（替代 PG 的 ILIKE），
---    且能命中索引。对应查询层 textSearch()（packages/shared/src/db-dialect.ts）
+-- 4. 模糊搜索不依赖列级 COLLATE NOCASE：SQLite 内置 LIKE 对 ASCII 默认即大小写
+--    不敏感，足以替代 PG 的 ILIKE；且不加 NOCASE 才能保住 = 精确匹配的语义
+--    （userId / sessionId / model 等身份字段依赖精确匹配）。
+--    查询层统一走 textSearch()（packages/shared/src/db-dialect.ts）
 -- 5. 本文件是表结构唯一真源：结构变更直接改本文件，库按全新结构重建（不做增量迁移）
 
 -- CreateTable

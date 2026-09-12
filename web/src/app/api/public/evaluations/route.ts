@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { and, count, desc, eq, lt, type SQL } from "drizzle-orm";
+import { and, count, desc, eq, type SQL } from "drizzle-orm";
 import { db, evaluation, queueBus, QUEUES, getEvaluator, trace, selfMetrics } from "@machora/shared";
-import { countOpenApiQuery, listEnvelope, parseCommonQuery, timeWindow } from "../../../../server/publicQuery";
+import { countOpenApiQuery, cursorCond, listEnvelope, nextCursorOf, parseCommonQuery, timeWindow } from "../../../../server/publicQuery";
 
 const EvaluationCreateSchema = z.object({
   traceId: z.string(),
@@ -16,13 +16,13 @@ export async function POST(req: Request) {
   try {
     body = await req.json();
   } catch {
-    selfMetrics.inc("machora.ingestion.requests", 1, { status: "bad-json" });
+    selfMetrics.inc("machora.evaluations.requests", 1, { status: "bad-json" });
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
   const parsed = EvaluationCreateSchema.safeParse(body);
   if (!parsed.success) {
-    selfMetrics.inc("machora.ingestion.requests", 1, { status: "bad-payload" });
+    selfMetrics.inc("machora.evaluations.requests", 1, { status: "bad-payload" });
     return Response.json(
       { error: "Invalid payload", details: parsed.error.flatten() },
       { status: 400 },
@@ -64,7 +64,7 @@ export async function POST(req: Request) {
     evaluationId: evaluationRow.id,
   });
 
-  selfMetrics.inc("machora.ingestion.requests", 1, { status: "ok" });
+  selfMetrics.inc("machora.evaluations.requests", 1, { status: "ok" });
   return Response.json({ data: evaluationRow }, { status: 201 });
 }
 
@@ -86,19 +86,20 @@ export async function GET(req: Request) {
   ];
   if (traceId) conds.push(eq(evaluation.traceId, traceId));
   if (status) conds.push(eq(evaluation.status, status));
-  if (cursor) conds.push(lt(evaluation.id, cursor));
+  const cursorWhere = cursorCond(evaluation.createdAt, evaluation.id, cursor);
+  if (cursorWhere) conds.push(cursorWhere);
 
   const [items, totalCount] = await Promise.all([
     db
       .select()
       .from(evaluation)
       .where(and(...conds))
-      .orderBy(desc(evaluation.createdAt))
+      .orderBy(desc(evaluation.createdAt), desc(evaluation.id))
       .limit(limit + 1),
     db.select({ c: count() }).from(evaluation).where(and(...conds)),
   ]);
 
-  const nextCursor = items.length > limit ? items[items.length - 1].id : null;
+  const nextCursor = nextCursorOf(items, limit, "createdAt", "id");
   countOpenApiQuery("ok");
   return Response.json(
     listEnvelope(items.slice(0, limit), {

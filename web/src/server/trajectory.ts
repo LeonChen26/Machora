@@ -29,7 +29,23 @@ export type TrajectoryRow = {
   badge: string | null;
 };
 
-export type Obs = typeof observationTable.$inferSelect;
+export type Obs = Pick<
+  typeof observationTable.$inferSelect,
+  | "id"
+  | "traceId"
+  | "parentObservationId"
+  | "name"
+  | "type"
+  | "level"
+  | "model"
+  | "agentName"
+  | "workflowName"
+  | "skillName"
+  | "startTime"
+  | "endTime"
+  | "output"
+  | "metadata"
+>;
 export type ObsNode = Obs & { children: ObsNode[] };
 
 /** 按 parentObservationId 构建调用树（根 = 父不在本集合内的节点；输入顺序决定同级顺序） */

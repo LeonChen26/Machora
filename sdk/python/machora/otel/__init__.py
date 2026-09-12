@@ -34,8 +34,26 @@ from .constants import (
     WORKFLOW_NAME,
 )
 from .base import create_probe_tracer
-from .langchain import MachoraOtelCallbackHandler
-from .langgraph import MachoraOtelGraphProbe
+
+# 惰性导出：MachoraOtelCallbackHandler 依赖 langchain-core（可选 extra），
+# MachoraOtelGraphProbe 依赖 LangGraph 运行时上下文。若在包顶层直接 import，
+# 只安装 machora-sdk[otel] 的用户会因缺 langchain-core 导致整个包不可导入
+# （连 MachoraOtelGraphProbe 也用不了）。改为 PEP 562 惰性加载：真正取用时
+# 才导入对应子模块，缺依赖时给出明确指引。
+_LAZY_EXPORTS = {
+    "MachoraOtelCallbackHandler": (".langchain", "MachoraOtelCallbackHandler"),
+    "MachoraOtelGraphProbe": (".langgraph", "MachoraOtelGraphProbe"),
+}
+
+
+def __getattr__(name: str):
+    target = _LAZY_EXPORTS.get(name)
+    if target is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    import importlib
+
+    module = importlib.import_module(target[0], __name__)
+    return getattr(module, target[1])
 
 __all__ = [
     "AGENT_NAME",

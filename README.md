@@ -61,7 +61,6 @@ pnpm standalone:start   # 生产模式，默认 http://localhost:3100
 
 `sdk/python/examples/`：
 
-- `demo.py`：原生注入 + LangChain 回调两种用法
 - `call_chain_demo.py`：多层嵌套调用链（演示 parentObservationId 层级树）
 - `langgraph_demo.py`：LangGraph 走 OTel 通道（标准 `OTLPSpanExporter`，`openinference.span.kind` 属性直接落库 type）
 
@@ -74,10 +73,10 @@ pnpm workspace monorepo，依赖方向：`standalone → web + worker + shared`�
 | 包 | 说明 |
 |---|---|
 | `packages/shared` | 领域模型（Zod）+ Drizzle schema（schema.sql 幂等建表）+ SQL 方言隔离层 + OTel 解码/解析 + 队列（单一真源） |
-| `web` | Next.js App Router UI（force-dynamic SSR）+ tRPC + 公共 REST（ingestion / otel / health） |
+| `web` | Next.js App Router UI（force-dynamic SSR）+ tRPC + 公共 REST（otel / health / public 查询） |
 | `worker` | 队列处理器（standalone 进程内注册，共享 queueBus，无 Redis） |
 | `standalone` | 单进程入口：SQLite + schema.sql 建表 + Next.js in-process |
-| `sdk/python` | Python SDK（httpx + pydantic，可选 langchain-core） |
+| `sdk/python` | Python SDK（OTel 探针：`opentelemetry-*`；LangChain 回调需可选 `langchain-core`） |
 
 技术栈：TypeScript · Next.js · tRPC · Drizzle ORM · SQLite（better-sqlite3，嵌入式）· Zod · OpenTelemetry（protobufjs）
 

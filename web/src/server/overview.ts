@@ -1,13 +1,14 @@
 // Overview 聚合：单一时间窗内的「全局健康 + Agent 风险榜 + 需要关注的 Trace」。
 // 设计约定（与「观测对象 = 以 Trace 为根的 AI 任务」一致）：
 //   - 不切维度：KPI 与趋势均为全局口径；维度视图交给 /agents、/sessions。
-//   - Agent 归属：observation.agentName ?? trace.agentName ?? "unknown"。
-//   - Trace 归属（trace 数/成功率/版本）：优先 trace.agentName（trace 级权威字段）。
+//   - Agent 归属：trace.agentName ?? observation.agentName ?? "unknown"
+//     （统一走 ./attribution.resolveAgentName，与 /agents、/models、Topology 同口径）
 //   - trace 是否出错：trace.status === "ERROR" 或该 trace 含 level=ERROR 的 observation
 //     （status 为上游显式上报，步骤级 ERROR 兜底，保证指标始终可用）。
 
 import { and, eq, gte } from "drizzle-orm";
 import { db, observation, trace } from "@machora/shared";
+import { resolveAgentName } from "./attribution";
 import {
   composeWatchlist,
   detectMetricSignals,
@@ -212,7 +213,7 @@ export async function getOverview(days: number): Promise<OverviewData> {
 
   for (const r of rows) {
     const isCur = r.startTime >= since;
-    const agent = r.agentName ?? r.traceAgent ?? UNKNOWN;
+    const agent = resolveAgentName(r.traceAgent, r.agentName);
     const isGen = GENERATION_TYPES.has(r.type);
     const dur = r.endTime ? r.endTime.getTime() - r.startTime.getTime() : null;
 
@@ -263,7 +264,7 @@ export async function getOverview(days: number): Promise<OverviewData> {
       ta = {
         id: r.traceId,
         name: r.traceName ?? null,
-        agent: r.traceAgent ?? agent,
+        agent,
         status: r.traceStatus ?? null,
         version: r.traceVersion ?? null,
         ts: r.traceTimestamp ?? r.startTime,
@@ -294,7 +295,8 @@ export async function getOverview(days: number): Promise<OverviewData> {
       steps += a.steps;
       errors += a.errors;
       cost += a.cost;
-      latencies.push(...a.latencies);
+      // 避免 push(...arr) 在大样本下展开压栈
+      for (const d of a.latencies) latencies.push(d);
     }
     return { calls, steps, errors, cost, errorRate: steps ? errors / steps : 0, p95: p95of(latencies) };
   };

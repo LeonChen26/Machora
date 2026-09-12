@@ -34,14 +34,6 @@ function errGrade(rate: number): "high" | "mid" | "low" {
   return rate >= 0.1 ? "high" : rate > 0 ? "mid" : "low";
 }
 
-function buildQuery(metric: MetricKey, page: number): string {
-  const params = new URLSearchParams();
-  if (metric !== "calls") params.set("metric", metric);
-  if (page > 1) params.set("page", String(page));
-  const qs = params.toString();
-  return qs ? `?${qs}` : "";
-}
-
 export default async function AgentDetailPage({
   params,
   searchParams,

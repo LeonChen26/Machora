@@ -549,7 +549,7 @@ export default async function TraceDetailPage({
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-          <Link href="/docs#semantic-conventions" prefetch={false}>
+          <Link href="/docs#semantics-machora" prefetch={false}>
             <span className="badge">语义规范</span>
           </Link>
           <Link className="btn" href={backHref} prefetch={false}>

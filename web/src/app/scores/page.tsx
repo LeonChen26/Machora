@@ -1,10 +1,11 @@
 import { Link } from "../../components/NativeLink";
-import { and, count, desc, gte, lt, type SQL } from "drizzle-orm";
+import { and, count, desc, gte, type SQL } from "drizzle-orm";
 import { db, score, textSearch } from "@machora/shared";
 import { formatRelative, formatDateTime } from "../../lib/format";
 import { BarChart } from "../../components/BarChart";
 import { EmptyIcon } from "../../components/EmptyIcon";
 import { Pager } from "../../components/Pager";
+import { cursorCond, encodeCursor } from "../../server/publicQuery";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +33,8 @@ export default async function ScoresPage({
     Array.isArray(v) ? v[0] : v;
 
   const rawDays = Number.parseInt(str(sp.days) ?? "", 10);
-  const days = DAY_OPTIONS.includes(rawDays) ? rawDays : 0;
+  // 默认 7 天（不再是「全部」）：无参访问不再触发全表扫描，用户可显式选「全部」
+  const days = DAY_OPTIONS.includes(rawDays) ? rawDays : 7;
   const name = str(sp.name)?.trim();
   const cursor = str(sp.cursor);
 
@@ -50,16 +52,18 @@ export default async function ScoresPage({
     .orderBy(desc(score.timestamp))
     .limit(AGG_LIMIT);
 
-  // 明细分页集
+  // 明细分页集：keyset 游标按 (timestamp, id)，避免仅按随机 id 翻页导致漏行/重行
   const rows = await db.query.score.findMany({
-    where: and(...conds, cursor ? lt(score.id, cursor) : undefined),
-    orderBy: (t, { desc }) => [desc(t.timestamp)],
+    where: and(...conds, cursorCond(score.timestamp, score.id, cursor)),
+    orderBy: (t, { desc }) => [desc(t.timestamp), desc(t.id)],
     limit: PAGE_SIZE + 1,
     with: { trace: true },
   });
   const hasNext = rows.length > PAGE_SIZE;
   const shown = hasNext ? rows.slice(0, PAGE_SIZE) : rows;
-  const nextCursor = hasNext ? rows[rows.length - 1].id : null;
+  const lastShown = shown[shown.length - 1];
+  const nextCursor =
+    hasNext && lastShown ? encodeCursor(lastShown.timestamp, lastShown.id) : null;
   const total = (
     await db.select({ c: count() }).from(score).where(and(...conds))
   )[0].c;

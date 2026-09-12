@@ -11,11 +11,17 @@ Machora 是参考 Langfuse 架构的轻量 LLM / AI Agent 可观测平台（单�
 pip install 'machora-sdk[otel]'
 ```
 
+- OTLP 探针 / LangGraph 图级探针（`MachoraOtelGraphProbe`）：`pip install 'machora-sdk[otel]'` 即可
+- LangChain 自动埋点（`MachoraOtelCallbackHandler`）：额外需要 langchain-core，请装
+  `pip install 'machora-sdk[otel,langchain]'`
+
 ## 快速开始
 
 SDK 通过标准 OTLP/HTTP 上报 span，`machora.span.kind` 直接落库 `observation.type`。
 
 ### LangChain 自动埋点
+
+（需 `machora-sdk[otel,langchain]`）
 
 ```python
 from langchain_core.callbacks import CallbackManager

@@ -1,6 +1,6 @@
 // 跨 Trace 拓扑（Agent Ontology 简化版）：Agent → Tool → Model 依赖聚合。
 // 复用轨迹分类器识别 tool / llm 节点；Tool↔Model 边为同 trace 共现计数（关联强度），
-// Agent 归属取 observation.agentName ?? trace.agentName ?? "unknown"。
+// Agent 归属统一走 ./attribution.resolveAgentName：trace.agentName ?? observation.agentName ?? "unknown"。
 
 import { and, eq, gte } from "drizzle-orm";
 import {
@@ -9,6 +9,7 @@ import {
   trace,
   classifyTrajectoryKind,
 } from "@machora/shared";
+import { resolveAgentName } from "./attribution";
 
 // get-or-init：Map 缺 key 时用工厂初始化并写入，避免 ?? set().get()! 的非空断言模式
 function getOrInit<K, V>(map: Map<K, V>, key: K, init: () => V): V {
@@ -125,7 +126,7 @@ export async function buildTopology(since: Date): Promise<TopologyData> {
       skillName: null,
       hasParent: r.parentObservationId != null,
     });
-    const agent = r.agentName ?? r.traceAgent ?? "unknown";
+    const agent = resolveAgentName(r.traceAgent, r.agentName);
     const t = getOrInit(perTrace, r.traceId, () => ({
       tools: new Map(),
       models: new Set(),
