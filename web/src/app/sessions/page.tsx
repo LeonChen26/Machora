@@ -1,6 +1,7 @@
 import { Link } from "../../components/NativeLink";
 import { EmptyIcon } from "../../components/EmptyIcon";
 import { Pager } from "../../components/Pager";
+import { StatCard } from "../../components/StatCard";
 import { and, gte, isNotNull } from "drizzle-orm";
 import { db, textSearch, trace } from "@machora/shared";
 import {
@@ -140,6 +141,12 @@ export default async function SessionsPage({
     .sort((a, b) => b.last.getTime() - a.last.getTime());
 
   const total = sessions.length;
+  // 全局聚合（口径与行内一致：成功率 = 无 ERROR 的 trace 占比，trace 级）
+  const totalTraces = sessions.reduce((s, x) => s + x.traceCount, 0);
+  const totalErrored = sessions.reduce((s, x) => s + x.erroredTraces, 0);
+  const overallSuccessRate =
+    totalTraces > 0 ? (totalTraces - totalErrored) / totalTraces : null;
+  const abnormalSessions = sessions.filter((s) => s.erroredTraces > 0).length;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const shown = sessions.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
@@ -159,7 +166,7 @@ export default async function SessionsPage({
         <div>
           <h1>Sessions</h1>
           <div className="sub">
-            按 sessionId 聚合的会话 · 共 {total} 个
+            按 sessionId 聚合的会话
             {since ? ` · 近 ${days} 天有活动` : ""}
             {q ? ` · 匹配「${q}」` : ""}
           </div>
@@ -187,6 +194,53 @@ export default async function SessionsPage({
             );
           })}
         </div>
+      </div>
+
+      {/* 首屏聚合：当前时间窗内全量会话的全局口径（不随分页变化） */}
+      <div className="grid grid-4 mb-3">
+        <StatCard
+          label="会话数"
+          value={total}
+          hint={since ? `近 ${days} 天有活动` : "全部时间"}
+          icon="folder"
+          accent
+          title="按 sessionId 聚合出的会话数"
+        />
+        <StatCard
+          label="Trace 总数"
+          value={totalTraces}
+          hint={`${total} 个会话聚合`}
+          icon="list"
+          title="全部会话包含的 trace 数之和"
+        />
+        <StatCard
+          label="整体成功率"
+          value={
+            overallSuccessRate == null
+              ? "—"
+              : `${(overallSuccessRate * 100).toFixed(1)}%`
+          }
+          hint={`${totalErrored} 个 trace 含 ERROR`}
+          tone={
+            overallSuccessRate != null && overallSuccessRate < 0.9
+              ? "danger"
+              : "success"
+          }
+          icon="star"
+          title="无 ERROR 的 trace 占比（trace 级口径）"
+        />
+        <StatCard
+          label="异常会话"
+          value={abnormalSessions}
+          hint={
+            total > 0
+              ? `${abnormalSessions} / ${total} 个会话有 ERROR`
+              : "暂无会话"
+          }
+          tone={abnormalSessions > 0 ? "danger" : "success"}
+          icon="alert"
+          title="至少含 1 个 ERROR trace 的会话数"
+        />
       </div>
 
       {/* 搜索（GET 提交，纯服务端） */}

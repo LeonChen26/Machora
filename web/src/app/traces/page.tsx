@@ -9,10 +9,12 @@ import {
   formatDateTime,
   formatTokens,
   formatCost,
+  formatDuration,
 } from "../../lib/format";
 import {
   parseTraceFilters,
   buildTraceWhere,
+  getTraceFilterStats,
 } from "../../server/traceQuery";
 import { getTraceSignalMap } from "../../server/signals";
 
@@ -144,8 +146,8 @@ export default async function TracesPage({
       .where(and(...where))
   )[0].c;
   // 健康摘要：当前筛选条件下含 ERROR observation 的 trace 数
-  const errorTotal = (
-    await db
+  const [errorTotal, filterStats] = await Promise.all([
+    db
       .select({ c: count() })
       .from(trace)
       .where(and(
@@ -162,7 +164,10 @@ export default async function TracesPage({
             ),
         ),
       ))
-  )[0]?.c ?? 0;
+      .then((r) => r[0]?.c ?? 0),
+    // 首屏指标条：筛选集全量聚合（不随分页变化），口径与 overview 一致
+    getTraceFilterStats(f),
+  ]);
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   // pageIds 路径已按聚合排序键在「全量结果」上排好序，按其顺序重排展示行
@@ -265,11 +270,11 @@ export default async function TracesPage({
         <div>
           <h1>Traces</h1>
           <div className="sub">
-            时间窗 {formatDateTime(from)} → {formatDateTime(to)} · 共 {total} 条
+            时间窗 {formatDateTime(from)} → {formatDateTime(to)}
             {errorTotal > 0 && (
               <>
                 {" · "}
-                <span className="text-danger">{errorTotal} 条 ERROR</span>
+                <span className="text-danger">{errorTotal} 个 Trace 含 ERROR</span>
               </>
             )}
           </div>
@@ -298,6 +303,41 @@ export default async function TracesPage({
             如何接入？
           </Link>
         </div>
+      </div>
+
+      {/* 首屏指标条：当前筛选集全量聚合（不随分页变化），随筛选联动 */}
+      <div className="stat-strip mb-3">
+        <span className="strip-item" title="当前筛选条件下的 Trace 数">
+          <span className="strip-label">Trace</span>
+          <span className="strip-value mono">{total}</span>
+        </span>
+        <span className="strip-item" title="当前筛选集的成本合计（observation.totalCost 求和）">
+          <span className="strip-label">成本</span>
+          <span className="strip-value mono">{formatCost(filterStats.cost)}</span>
+        </span>
+        <span
+          className="strip-item"
+          title="步骤耗时 P95 = 全部步骤 observation 时长的 95 分位"
+        >
+          <span className="strip-label">P95 耗时</span>
+          <span className="strip-value mono">
+            {filterStats.p95 != null ? formatDuration(filterStats.p95) : "—"}
+          </span>
+        </span>
+        <span
+          className="strip-item"
+          title={`步骤级错误率 = ERROR 步骤 / 全部步骤（${filterStats.errors} / ${filterStats.steps}）`}
+        >
+          <span className="strip-label">错误率</span>
+          <span
+            className={`strip-value mono ${filterStats.errorRate > 0 ? "text-danger" : ""}`}
+          >
+            {(filterStats.errorRate * 100).toFixed(1)}%
+          </span>
+          <span className="mute2 text-xs">
+            {filterStats.errors}/{filterStats.steps}
+          </span>
+        </span>
       </div>
 
       {/* 快捷时间窗 seg（点击重置其他筛选，仅设 from/to） */}

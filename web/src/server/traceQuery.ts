@@ -85,6 +85,65 @@ export function buildTraceWhere(f: TraceFilters): SQL<unknown>[] {
   return conds;
 }
 
+export interface TraceFilterStats {
+  /** 步骤数（observation 条数） */
+  steps: number;
+  /** ERROR 步骤数 */
+  errors: number;
+  /** 步骤级错误率 = ERROR 步骤 / 全部步骤 */
+  errorRate: number;
+  /** 成本合计 */
+  cost: number;
+  /** 步骤耗时 P95 */
+  p95: number | null;
+}
+
+function p95of(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))];
+}
+
+/**
+ * 当前筛选条件下的全量聚合（不随分页变化）。
+ * 口径与 overview.ts 一致：错误率 = ERROR 步骤 / 全部步骤；P95 = 全部步骤 observation 时长。
+ */
+export async function getTraceFilterStats(
+  f: TraceFilters,
+): Promise<TraceFilterStats> {
+  const where = buildTraceWhere(f);
+  const rows = await db
+    .select({
+      level: observation.level,
+      startTime: observation.startTime,
+      endTime: observation.endTime,
+      totalCost: observation.totalCost,
+    })
+    .from(observation)
+    .innerJoin(trace, eq(observation.traceId, trace.id))
+    .where(and(...where));
+
+  let steps = 0;
+  let errors = 0;
+  let cost = 0;
+  const durations: number[] = [];
+  for (const r of rows) {
+    steps++;
+    if (r.level === "ERROR") errors++;
+    cost += r.totalCost ?? 0;
+    if (r.endTime) {
+      durations.push(r.endTime.getTime() - r.startTime.getTime());
+    }
+  }
+  return {
+    steps,
+    errors,
+    errorRate: steps > 0 ? errors / steps : 0,
+    cost,
+    p95: p95of(durations),
+  };
+}
+
 export interface GenerationFilters {
   since: Date | null;
   level?: string;
