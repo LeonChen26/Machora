@@ -1706,6 +1706,7 @@ pre.code,
    点击 span 展开（.panel-open）后变为 左树 2fr / 右详情 3fr */
 .tree-layout {
   display: grid;
+  position: relative;
   grid-template-columns: minmax(0, 1fr);
   /* 显式行轨道：内容少时自然高度，内容多时封顶独立滚动。
      min 必须用 0（auto/min-content 会被表格行撑高，行轨道无视 max-height
@@ -1722,6 +1723,18 @@ pre.code,
 }
 .tree-layout.panel-open {
   grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+}
+/* 面板收起时的浮动恢复按钮 */
+.panel-reopen-fab {
+  position: absolute;
+  right: 0.5rem;
+  bottom: 0.5rem;
+  z-index: 10;
+  white-space: nowrap;
+  opacity: 0.6;
+}
+.panel-reopen-fab:hover {
+  opacity: 1;
 }
 .tree-layout .tree-col {
   min-width: 0;

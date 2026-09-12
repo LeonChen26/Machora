@@ -23,6 +23,7 @@ export function TraceDetailPanel({
 
   // 面板收起时不渲染任何内容（含 ObservationDetailPanel）：
   // 避免其"选中失效时兜底选第一条"的 effect 自动展开详情
+  // 恢复入口由 SelectionLayout 的浮动按钮提供
   if (!panelOpen) return null;
 
   if (selectedId === null) {

@@ -113,8 +113,21 @@ export function useSelection() {
  * 面板显隐通过 .panel-open class 切换 grid 列，收起时不渲染 panel-col。
  */
 export function SelectionLayout({ children }: { children: ReactNode }) {
-  const { panelOpen } = useSelection();
+  const { panelOpen, setPanelOpen } = useSelection();
   return (
-    <div className={`tree-layout${panelOpen ? " panel-open" : ""}`}>{children}</div>
+    <div className={`tree-layout${panelOpen ? " panel-open" : ""}`}>
+      {children}
+      {!panelOpen && (
+        <button
+          type="button"
+          className="btn-sm panel-reopen-fab"
+          onClick={() => setPanelOpen(true)}
+          title="展开详情面板"
+          aria-label="展开详情"
+        >
+          ← 详情
+        </button>
+      )}
+    </div>
   );
 }

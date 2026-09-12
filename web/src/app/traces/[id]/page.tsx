@@ -1,5 +1,6 @@
 import { Link } from "../../../components/NativeLink";
 import { notFound } from "next/navigation";
+import { headers } from "next/headers";
 import { asc, desc, eq } from "drizzle-orm";
 import { db, trace as traceTable, observation, evaluationConfig } from "@machora/shared";
 import {
@@ -85,6 +86,18 @@ export default async function TraceDetailPage({
     name: c.name,
     evaluatorType: c.evaluatorType,
   }));
+
+  // 返回列表时保留来源筛选条件（Referer 兜底）
+  let backHref = "/traces";
+  try {
+    const referer = (await headers()).get("referer");
+    if (referer) {
+      const url = new URL(referer);
+      if (url.pathname === "/traces") {
+        backHref = url.pathname + url.search;
+      }
+    }
+  } catch { /* ignore */ }
 
   // 时间轴范围
   const obsTimes = trace.observations.map((o) => o.startTime.getTime());
@@ -513,7 +526,16 @@ export default async function TraceDetailPage({
 
       <div className="page-head">
         <div>
-          <h1>{trace.name || "（未命名 Trace）"}</h1>
+          <h1>
+            {trace.name || "（未命名 Trace）"}
+            {errorCount > 0 ? (
+              <span className="badge red" style={{ marginLeft: "0.5rem", verticalAlign: "middle", fontSize: "0.7em" }}>ERROR</span>
+            ) : warningCount > 0 ? (
+              <span className="badge amber" style={{ marginLeft: "0.5rem", verticalAlign: "middle", fontSize: "0.7em" }}>WARNING</span>
+            ) : (
+              <span className="badge green" style={{ marginLeft: "0.5rem", verticalAlign: "middle", fontSize: "0.7em" }}>OK</span>
+            )}
+          </h1>
           <div className="sub">
             {formatDateTime(trace.timestamp)} ·{" "}
             {trace.observations.length} obs · {trace.scores.length} scores
@@ -530,16 +552,16 @@ export default async function TraceDetailPage({
           <Link href="/docs#semantic-conventions" prefetch={false}>
             <span className="badge">语义规范</span>
           </Link>
-          <Link className="btn" href="/traces" prefetch={false}>
+          <Link className="btn" href={backHref} prefetch={false}>
             ← 返回列表
           </Link>
         </div>
       </div>
 
       {/* 轨迹信号条：与列表页「信号」列、Overview「待关注」共用同一口径，进详情页仍能看到结论 */}
-      {(traceSig.ineffectiveStreak > 0 ||
-        traceSig.repeatStreak > 0 ||
-        traceSig.longTask) && (
+      {traceSig.ineffectiveStreak > 0 ||
+      traceSig.repeatStreak > 0 ||
+      traceSig.longTask ? (
         <div className="form-inline mb-2">
           <span className="mute2 text-sm">轨迹信号</span>
           {traceSig.ineffectiveStreak > 0 && (
@@ -563,6 +585,13 @@ export default async function TraceDetailPage({
               长任务
             </span>
           )}
+        </div>
+      ) : (
+        <div className="form-inline mb-2">
+          <span className="mute2 text-sm">轨迹信号</span>
+          <span className="badge green" title="未检测到重复调用、无效循环或长任务">
+            ✓ 无异常轨迹信号
+          </span>
         </div>
       )}
 

@@ -1,7 +1,7 @@
 import { Link } from "../../components/NativeLink";
 import { EmptyIcon } from "../../components/EmptyIcon";
 import { Pager } from "../../components/Pager";
-import { and, asc, count, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, exists, inArray, sql } from "drizzle-orm";
 import { db, trace, observation, score } from "@machora/shared";
 import type { ReactNode } from "react";
 import {
@@ -143,6 +143,26 @@ export default async function TracesPage({
       .from(trace)
       .where(and(...where))
   )[0].c;
+  // 健康摘要：当前筛选条件下含 ERROR observation 的 trace 数
+  const errorTotal = (
+    await db
+      .select({ c: count() })
+      .from(trace)
+      .where(and(
+        ...where,
+        exists(
+          db
+            .select({ x: sql`1` })
+            .from(observation)
+            .where(
+              and(
+                eq(observation.traceId, trace.id),
+                eq(observation.level, "ERROR"),
+              ),
+            ),
+        ),
+      ))
+  )[0]?.c ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   // pageIds 路径已按聚合排序键在「全量结果」上排好序，按其顺序重排展示行
@@ -230,6 +250,12 @@ export default async function TracesPage({
           <h1>Traces</h1>
           <div className="sub">
             时间窗 {formatDateTime(from)} → {formatDateTime(to)} · 共 {total} 条
+            {errorTotal > 0 && (
+              <>
+                {" · "}
+                <span className="text-danger">{errorTotal} 条 ERROR</span>
+              </>
+            )}
           </div>
         </div>
         <div className="btn-group">
@@ -344,6 +370,93 @@ export default async function TracesPage({
           重置
         </Link>
       </form>
+
+      {/* 当前筛选回显：每个 tag 点击即移除该筛选条件 */}
+      {(q || userId || sessionId || model || agent || tags.length > 0 || level || env) && (
+        <div className="form-inline mb-2">
+          <span className="mute2 text-sm">当前筛选</span>
+          {q && (
+            <Link
+              href={`/traces?${buildQuery({ from, to, userId, sessionId, model, tags, level, env, agent, sort: sortKey !== "time" ? sortKey : undefined, dir: sortDir !== "desc" ? sortDir : undefined, page: 1 })}`}
+              prefetch={false}
+              className="badge"
+              title="移除：名称搜索"
+            >
+              名称: {q} ✕
+            </Link>
+          )}
+          {userId && (
+            <Link
+              href={`/traces?${buildQuery({ from, to, sessionId, model, tags, level, env, agent, sort: sortKey !== "time" ? sortKey : undefined, dir: sortDir !== "desc" ? sortDir : undefined, page: 1 })}`}
+              prefetch={false}
+              className="badge"
+              title="移除：用户"
+            >
+              用户: {short(userId)} ✕
+            </Link>
+          )}
+          {sessionId && (
+            <Link
+              href={`/traces?${buildQuery({ from, to, userId, model, tags, level, env, agent, sort: sortKey !== "time" ? sortKey : undefined, dir: sortDir !== "desc" ? sortDir : undefined, page: 1 })}`}
+              prefetch={false}
+              className="badge"
+              title="移除：会话"
+            >
+              会话: {short(sessionId)} ✕
+            </Link>
+          )}
+          {model && (
+            <Link
+              href={`/traces?${buildQuery({ from, to, userId, sessionId, tags, level, env, agent, sort: sortKey !== "time" ? sortKey : undefined, dir: sortDir !== "desc" ? sortDir : undefined, page: 1 })}`}
+              prefetch={false}
+              className="badge"
+              title="移除：模型"
+            >
+              模型: {model} ✕
+            </Link>
+          )}
+          {agent && (
+            <Link
+              href={`/traces?${buildQuery({ from, to, userId, sessionId, model, tags, level, env, sort: sortKey !== "time" ? sortKey : undefined, dir: sortDir !== "desc" ? sortDir : undefined, page: 1 })}`}
+              prefetch={false}
+              className="badge"
+              title="移除：Agent"
+            >
+              Agent: {agent} ✕
+            </Link>
+          )}
+          {tags.length > 0 && (
+            <Link
+              href={`/traces?${buildQuery({ from, to, userId, sessionId, model, level, env, agent, sort: sortKey !== "time" ? sortKey : undefined, dir: sortDir !== "desc" ? sortDir : undefined, page: 1 })}`}
+              prefetch={false}
+              className="badge"
+              title="移除：标签"
+            >
+              标签: {tags.join(", ")} ✕
+            </Link>
+          )}
+          {level && (
+            <Link
+              href={`/traces?${buildQuery({ from, to, userId, sessionId, model, tags, env, agent, sort: sortKey !== "time" ? sortKey : undefined, dir: sortDir !== "desc" ? sortDir : undefined, page: 1 })}`}
+              prefetch={false}
+              className="badge"
+              title="移除：级别"
+            >
+              级别: {level} ✕
+            </Link>
+          )}
+          {env && (
+            <Link
+              href={`/traces?${buildQuery({ from, to, userId, sessionId, model, tags, level, agent, sort: sortKey !== "time" ? sortKey : undefined, dir: sortDir !== "desc" ? sortDir : undefined, page: 1 })}`}
+              prefetch={false}
+              className="badge"
+              title="移除：环境"
+            >
+              环境: {env} ✕
+            </Link>
+          )}
+        </div>
+      )}
 
       {shown.length === 0 ? (
         <div className="card empty">
@@ -574,6 +687,25 @@ export default async function TracesPage({
           shown.length === 0
             ? `0 / ${total} 条 · 第 ${page}/${totalPages} 页`
             : `显示 ${(page - 1) * PAGE_SIZE + 1}–${(page - 1) * PAGE_SIZE + shown.length} / ${total} 条 · 第 ${page}/${totalPages} 页`
+        }
+        firstHref={
+          page > 1
+            ? `/traces?${buildQuery({
+                from,
+                to,
+                q,
+                userId,
+                sessionId,
+                model,
+                tags,
+                level,
+                env,
+                agent,
+                sort: sortKey,
+                dir: sortDir,
+                page: 1,
+              })}`
+            : undefined
         }
         prevHref={
           page > 1
