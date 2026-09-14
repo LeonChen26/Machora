@@ -30,7 +30,8 @@ import {
   writeFileSync,
   readFileSync,
 } from "node:fs";
-import { resolve, sep } from "node:path";
+import { createRequire } from "node:module";
+import { dirname, resolve, sep } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
 const argVersion = process.argv.find((a) => a.startsWith("--version="));
@@ -70,6 +71,56 @@ function rmForce(p) {
     // 偶发失败（如目标已被并发删除）通常可忽略，但记录路径与错误，
     // 避免权限/占用类真实问题被静默掩盖
     console.warn(`[release] rmForce 删除失败（后续组装会覆盖）: ${p}`, e?.message ?? e);
+  }
+}
+
+// 原生模块的运行时依赖闭包必须与包本体一起固化。
+//
+// better-sqlite3 通过 require('bindings')('better_sqlite3.node') 定位原生二进制，
+// bindings 又依赖 file-uri-to-path。pnpm 隔离布局下它们位于
+// node_modules/.pnpm/<pkg>@<ver>/node_modules/ 的兄弟目录，**不在** Node 从
+// web/.next/node_modules/<alias>/ 向上的解析路径上（隐藏提升 node_modules/.pnpm/node_modules
+// 也命不中）。只固化包本体会导致轻量包安装后
+// "MODULE_NOT_FOUND: Cannot find module 'bindings'" → 所有走 DB 的路由 500。
+// 故把这些包按真实目录放到 web/.next/node_modules/ 同一层。
+function copyNativeDepClosure(destNm) {
+  let bs3Pkg;
+  try {
+    const sharedRequire = createRequire(
+      resolve(root, "packages", "shared", "package.json"),
+    );
+    bs3Pkg = sharedRequire.resolve("better-sqlite3/package.json");
+  } catch (e) {
+    console.warn(
+      `[release] 无法解析 better-sqlite3，跳过原生依赖闭包固化: ${e?.message ?? e}`,
+    );
+    return;
+  }
+
+  // 从 better-sqlite3 自身的解析上下文逐级取依赖（bindings → file-uri-to-path）
+  const closure = [];
+  try {
+    const bs3Require = createRequire(bs3Pkg);
+    const bindingsPkg = bs3Require.resolve("bindings/package.json");
+    closure.push({ name: "bindings", src: dirname(bindingsPkg) });
+    const bindingsRequire = createRequire(bindingsPkg);
+    closure.push({
+      name: "file-uri-to-path",
+      src: dirname(bindingsRequire.resolve("file-uri-to-path/package.json")),
+    });
+  } catch (e) {
+    console.warn(
+      `[release] 原生依赖闭包解析失败（运行时将 Cannot find module）: ${e?.message ?? e}`,
+    );
+    return;
+  }
+
+  mkdirSync(destNm, { recursive: true });
+  for (const { name, src } of closure) {
+    const dest = resolve(destNm, name);
+    if (existsSync(dest)) rmSync(dest, { recursive: true, force: true });
+    cpSync(src, dest, { recursive: true, dereference: true });
+    console.log(`[release] 原生依赖已固化: ${name}`);
   }
 }
 
@@ -162,8 +213,9 @@ copy("web/public", "web/public");
 // "Failed to load external module better-sqlite3-<hash>"。
 // 但它是 pnpm 符号链接/junction，直接 cpSync 会尝试解引用 →
 // 在 Windows 上目标解析失败会抛 ENOENT 中断整个打包。
-// 故先单独 rm 掉，再用 dereference:true 拷贝成真实目录（且去掉原哈希名，
-// 改为 better-sqlite3，同时保证下一段 node_modules 裁剪逻辑能正常处理）。
+// 故先单独 rm 掉，再用 dereference:true 拷贝成真实目录（保留原哈希名——
+// chunk 里写死的 require 别名就是 better-sqlite3-<hash>，改名反而会解析失败）；
+// 随后再补上其运行时依赖闭包（见 copyNativeDepClosure）。
 const webNextSrc = resolve(root, "web", ".next");
 if (existsSync(webNextSrc)) {
   cpSync(webNextSrc, resolve(staging, "web", ".next"), {
@@ -188,13 +240,15 @@ if (existsSync(webNextSrc)) {
         cpSync(src, dest, { recursive: true, dereference: true });
         console.log(`[release] .next 外部模块已固化: ${entry}`);
       } catch (e) {
-        // 解引用失败不致命：根 node_modules 里已有 better-sqlite3 真实副本，
+        // 解引用失败不致命：完整包（hoisted 扁平布局）下根 node_modules 有真实副本，
         // 记录后继续，避免因单个可选外部模块中断整个打包。
         console.warn(
           `[release] .next 外部模块固化失败（将从根 node_modules 解析）: ${entry} — ${e?.message ?? e}`,
         );
       }
     }
+    // 包本体（better-sqlite3-<hash>）不含依赖链，必须补上运行时依赖闭包
+    copyNativeDepClosure(destNm);
   }
 }
 rmForce(resolve(staging, "web", ".next", "dev"));

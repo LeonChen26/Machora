@@ -32,14 +32,15 @@ export async function GET(req: Request) {
   const observationId = sp.get("observationId") || undefined;
   const name = sp.get("name") || undefined;
 
-  const conds: SQL<unknown>[] = [
+  const baseConds: SQL<unknown>[] = [
     ...timeWindow(score.timestamp, from, to),
   ];
-  if (traceId) conds.push(eq(score.traceId, traceId));
-  if (observationId) conds.push(eq(score.observationId, observationId));
-  if (name) conds.push(eq(score.name, name));
+  if (traceId) baseConds.push(eq(score.traceId, traceId));
+  if (observationId) baseConds.push(eq(score.observationId, observationId));
+  if (name) baseConds.push(eq(score.name, name));
+  // 游标只用于取本页数据，不计入 totalCount（否则逐页递减）
   const cursorWhere = cursorCond(score.timestamp, score.id, cursor);
-  if (cursorWhere) conds.push(cursorWhere);
+  const conds = cursorWhere ? [...baseConds, cursorWhere] : baseConds;
 
   let fields: string[] | undefined;
   try {
@@ -57,7 +58,7 @@ export async function GET(req: Request) {
       .where(and(...conds))
       .orderBy(desc(score.timestamp), desc(score.id))
       .limit(limit + 1),
-    db.select({ c: count() }).from(score).where(and(...conds)),
+    db.select({ c: count() }).from(score).where(and(...baseConds)),
   ]);
 
   const nextCursor = nextCursorOf(items, limit, "timestamp", "id");

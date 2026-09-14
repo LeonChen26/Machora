@@ -18,6 +18,7 @@ import { db, observation, trace } from "@machora/shared";
 import { formatCost, formatDuration } from "../lib/format";
 import { buildObsTree, buildTrajectoryRows, type Obs } from "./trajectory";
 import { chunk } from "./chunk";
+import { yieldToEventLoop } from "./scan";
 
 /** 集中定义的阈值，页面不得再自行复制 */
 export const SIGNAL_THRESHOLDS = {
@@ -277,6 +278,8 @@ async function loadObservationsByTrace(
       .where(inArray(observation.traceId, part))
       .orderBy(asc(observation.startTime));
     for (const r of partRows) rows.push(r);
+    // 连续大 IN 查询之间让出事件循环，避免长时间独占（同步驱动）
+    await yieldToEventLoop();
   }
 
   for (const r of rows) {

@@ -37,19 +37,20 @@ export async function GET(req: Request) {
   const workflow = sp.get("workflow") || undefined;
   const skill = sp.get("skill") || undefined;
 
-  const conds: SQL<unknown>[] = [
+  const baseConds: SQL<unknown>[] = [
     ...timeWindow(observation.startTime, from, to),
   ];
-  if (traceId) conds.push(eq(observation.traceId, traceId));
-  if (type) conds.push(eq(observation.type, type));
-  if (name) conds.push(eq(observation.name, name));
-  if (level) conds.push(eq(observation.level, level));
-  if (model) conds.push(eq(observation.model, model));
-  if (agent) conds.push(textSearch(observation.agentName, agent));
-  if (workflow) conds.push(textSearch(observation.workflowName, workflow));
-  if (skill) conds.push(textSearch(observation.skillName, skill));
+  if (traceId) baseConds.push(eq(observation.traceId, traceId));
+  if (type) baseConds.push(eq(observation.type, type));
+  if (name) baseConds.push(eq(observation.name, name));
+  if (level) baseConds.push(eq(observation.level, level));
+  if (model) baseConds.push(eq(observation.model, model));
+  if (agent) baseConds.push(textSearch(observation.agentName, agent));
+  if (workflow) baseConds.push(textSearch(observation.workflowName, workflow));
+  if (skill) baseConds.push(textSearch(observation.skillName, skill));
+  // 游标只用于取本页数据，不计入 totalCount（否则逐页递减）
   const cursorWhere = cursorCond(observation.startTime, observation.id, cursor);
-  if (cursorWhere) conds.push(cursorWhere);
+  const conds = cursorWhere ? [...baseConds, cursorWhere] : baseConds;
 
   let fields: string[] | undefined;
   try {
@@ -70,7 +71,7 @@ export async function GET(req: Request) {
       .where(and(...conds))
       .orderBy(desc(observation.startTime), desc(observation.id))
       .limit(limit + 1),
-    db.select({ c: count() }).from(observation).where(and(...conds)),
+    db.select({ c: count() }).from(observation).where(and(...baseConds)),
   ]);
 
   const nextCursor = nextCursorOf(items, limit, "startTime", "id");

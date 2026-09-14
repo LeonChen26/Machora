@@ -53,6 +53,9 @@ export function textSearch(col: AnyColumn, q: string): SQL {
  * 不至于退化为全表扫描。
  */
 export function hasTags(col: AnyColumn, tags: string[]): SQL {
+  // 空数组会生成 `WHERE ` 这样的非法 SQL（sql.join([]) 展开为空）；
+  // 语义上「要求包含 0 个标签」恒真，直接返回恒真条件
+  if (tags.length === 0) return sql`1 = 1`;
   const conds = tags.map(
     (t) =>
       sql`(${col} IS NOT NULL AND json_valid(${col}) AND EXISTS (SELECT 1 FROM json_each(${col}) je WHERE je.value = ${t}))`,

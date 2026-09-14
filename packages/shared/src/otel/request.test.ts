@@ -166,6 +166,30 @@ describe("decodeOtelRequestBody", () => {
   });
 });
 
+describe("decodeOtelRequestBody: 体积上限", () => {
+  it("原始 body 超过压缩体上限返回 too-large", async () => {
+    // 9 MiB > 8 MiB 上限
+    const big = new Uint8Array(9 * 1024 * 1024);
+    const req = makeRequest({ body: big });
+    await expect(decodeOtelRequestBody(req)).rejects.toMatchObject({
+      status: "too-large",
+    });
+  });
+
+  it("解压后超过上限（zip bomb）返回 too-large", async () => {
+    // 40 MiB 全零压缩后仅约 40 KB：小压缩体解出海量数据
+    const bomb = await gzip(Buffer.alloc(40 * 1024 * 1024));
+    expect(bomb.length).toBeLessThan(8 * 1024 * 1024);
+    const req = makeRequest({
+      body: new Uint8Array(bomb),
+      contentEncoding: "gzip",
+    });
+    await expect(decodeOtelRequestBody(req)).rejects.toMatchObject({
+      status: "too-large",
+    });
+  });
+});
+
 describe("decodeOtelMetricsRequest", () => {
   it("解码 gzip 压缩 metrics json", async () => {
     const json = JSON.stringify({ resourceMetrics: [] });

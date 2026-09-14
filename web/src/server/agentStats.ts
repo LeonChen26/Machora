@@ -12,7 +12,7 @@
 //
 // 时间窗：以 since 为界拆「当前窗口 / 前一等长窗口」，供环比与异常标记使用。
 
-import { and, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, sql, type SQL } from "drizzle-orm";
 import {
   classifyTrajectoryKind,
   db,
@@ -29,6 +29,7 @@ import {
 } from "./signals";
 import { AGENT_UNKNOWN, resolveAgentName } from "./attribution";
 import { chunk } from "./chunk";
+import { afterCursor, scanBatches } from "./scan";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -263,6 +264,7 @@ function emptyAgentAcc(days: number): AgentAcc {
 
 /** 参与聚合的 observation ⟕ trace 行 */
 interface AggRow {
+  obsId: string;
   traceId: string;
   traceName: string | null;
   traceAgent: string | null;
@@ -286,6 +288,7 @@ interface AggRow {
 function selectRows() {
   return db
     .select({
+      obsId: observation.id,
       traceId: observation.traceId,
       traceName: trace.name,
       traceAgent: trace.agentName,
@@ -317,15 +320,15 @@ function attributionCond(name: string) {
     : sql`${attributed} = ${name}`;
 }
 
-function aggregate(
-  rows: AggRow[],
-  since: Date,
-  days: number,
-): { cur: Map<string, AgentAcc>; prev: Map<string, AgentAcc> } {
+/**
+ * 增量聚合器：按批喂入 observation 行并就地累计。
+ * 取代「一次性 select 全窗口 → aggregate(rows)」，使调用方能分批读取、批间让出事件循环。
+ */
+function createAggregator(since: Date, days: number) {
   const cur = new Map<string, AgentAcc>();
   const prev = new Map<string, AgentAcc>();
 
-  for (const r of rows) {
+  const add = (r: AggRow): void => {
     const agent = resolveAgentName(r.traceAgent, r.obsAgent);
     const isCur = r.obsStart.getTime() >= since.getTime();
     const bucket = isCur ? cur : prev;
@@ -359,7 +362,14 @@ function aggregate(
         maxEnd: r.obsEnd ? r.obsEnd.getTime() : r.obsStart.getTime(),
       };
       acc.traces.set(r.traceId, t);
-      if (isCur && inDay) acc.dailyTraces[dayIdx]++;
+      // Trace 计数按 trace.timestamp 归日（与 modelStats / overview 一致）；
+      // 其余 daily* 是 observation 级指标，仍按 obsStart 归日（见下方 inDay）
+      if (isCur) {
+        const tDayIdx = Math.floor(
+          (r.traceTimestamp.getTime() - since.getTime()) / DAY_MS,
+        );
+        if (tDayIdx >= 0 && tDayIdx < days) acc.dailyTraces[tDayIdx]++;
+      }
     } else {
       if (!t.name && r.traceName) t.name = r.traceName;
       if (!t.status && r.traceStatus) t.status = r.traceStatus;
@@ -419,9 +429,36 @@ function aggregate(
         ma.cost += r.obsCost ?? 0;
       }
     }
-  }
+  };
 
-  return { cur, prev };
+  return { add, result: () => ({ cur, prev }) };
+}
+
+/**
+ * 按 (startTime, id) 分批扫描命中 conds 的 observation，逐批喂给增量聚合器。
+ * 批间让出事件循环，避免同步驱动下一次全量读取长时间独占（standalone 单进程）。
+ */
+async function aggregateWindow(
+  conds: SQL<unknown>[],
+  since: Date,
+  days: number,
+): Promise<{ cur: Map<string, AgentAcc>; prev: Map<string, AgentAcc> }> {
+  const agg = createAggregator(since, days);
+  for await (const batch of scanBatches(
+    async (after, limit) =>
+      (await selectRows()
+        .where(
+          after
+            ? and(...conds, afterCursor(observation.startTime, observation.id, after))
+            : and(...conds),
+        )
+        .orderBy(asc(observation.startTime), asc(observation.id))
+        .limit(limit)) as AggRow[],
+    (r) => ({ ts: r.obsStart, id: r.obsId }),
+  )) {
+    for (const r of batch) agg.add(r);
+  }
+  return agg.result();
 }
 
 /**
@@ -540,11 +577,11 @@ function windowBounds(days: number): { since: Date; prevSince: Date } {
 export async function getAgentDirectory(days: number): Promise<AgentDirectory> {
   const { since, prevSince } = windowBounds(days);
 
-  const rows = (await selectRows().where(
-    gte(observation.startTime, prevSince),
-  )) as AggRow[];
-
-  const { cur, prev } = aggregate(rows, since, days);
+  const { cur, prev } = await aggregateWindow(
+    [gte(observation.startTime, prevSince)],
+    since,
+    days,
+  );
 
   const agents: AgentRow[] = [];
   for (const [name, acc] of cur) {
@@ -596,16 +633,14 @@ export async function getAgentDetail(
 ): Promise<AgentDetail | null> {
   const { since, prevSince } = windowBounds(days);
 
-  const rows = (await selectRows().where(
-    and(
-      gte(observation.startTime, prevSince),
-      attributionCond(name),
-    ),
-  )) as AggRow[];
+  const { cur, prev } = await aggregateWindow(
+    [gte(observation.startTime, prevSince), attributionCond(name)],
+    since,
+    days,
+  );
 
-  if (rows.length === 0) return null;
+  if (cur.size === 0 && prev.size === 0) return null;
 
-  const { cur, prev } = aggregate(rows, since, days);
   const acc = cur.get(name);
   const prevAcc = prev.get(name);
 

@@ -38,16 +38,17 @@ export async function GET(req: Request) {
     ? sp.get("tags")!.split(",").map((t) => t.trim()).filter(Boolean)
     : undefined;
 
-  const conds: SQL<unknown>[] = [...timeWindow(trace.timestamp, from, to)];
-  if (name) conds.push(eq(trace.name, name));
-  if (userId) conds.push(eq(trace.userId, userId));
-  if (sessionId) conds.push(eq(trace.sessionId, sessionId));
-  if (agent) conds.push(textSearch(trace.agentName, agent));
-  if (workflow) conds.push(textSearch(trace.workflowName, workflow));
-  if (skill) conds.push(textSearch(trace.skillName, skill));
-  if (tags && tags.length > 0) conds.push(hasTags(trace.tags, tags));
+  const baseConds: SQL<unknown>[] = [...timeWindow(trace.timestamp, from, to)];
+  if (name) baseConds.push(eq(trace.name, name));
+  if (userId) baseConds.push(eq(trace.userId, userId));
+  if (sessionId) baseConds.push(eq(trace.sessionId, sessionId));
+  if (agent) baseConds.push(textSearch(trace.agentName, agent));
+  if (workflow) baseConds.push(textSearch(trace.workflowName, workflow));
+  if (skill) baseConds.push(textSearch(trace.skillName, skill));
+  if (tags && tags.length > 0) baseConds.push(hasTags(trace.tags, tags));
+  // 游标只用于取本页数据，不计入 totalCount（否则逐页递减）
   const cursorWhere = cursorCond(trace.timestamp, trace.id, cursor);
-  if (cursorWhere) conds.push(cursorWhere);
+  const conds = cursorWhere ? [...baseConds, cursorWhere] : baseConds;
 
   let fields: string[] | undefined;
   try {
@@ -66,7 +67,7 @@ export async function GET(req: Request) {
       // keyset 分页必须含 id 作为次序键（timestamp 可能重复）
       .orderBy(desc(trace.timestamp), desc(trace.id))
       .limit(limit + 1),
-    db.select({ c: count() }).from(trace).where(and(...conds)),
+    db.select({ c: count() }).from(trace).where(and(...baseConds)),
   ]);
 
   const nextCursor = nextCursorOf(items, limit, "timestamp", "id");

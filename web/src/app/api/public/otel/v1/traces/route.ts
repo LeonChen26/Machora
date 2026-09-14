@@ -21,7 +21,10 @@ export async function POST(req: Request) {
     const err = e instanceof Error ? e : new Error(String(e));
     if (e instanceof OtelDecodeError) {
       selfMetrics.inc("machora.traces.requests", 1, { status: e.status });
-      return Response.json({ error: err.message }, { status: 400 });
+      return Response.json(
+        { error: err.message },
+        { status: e.status === "too-large" ? 413 : 400 },
+      );
     }
     selfMetrics.inc("machora.traces.requests", 1, { status: "bad-protobuf" });
     return Response.json({ error: `Invalid protobuf payload: ${err.message}` }, { status: 400 });

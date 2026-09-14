@@ -81,13 +81,14 @@ export async function GET(req: Request) {
   const traceId = sp.get("traceId") || undefined;
   const status = sp.get("status") || undefined;
 
-  const conds: SQL<unknown>[] = [
+  const baseConds: SQL<unknown>[] = [
     ...timeWindow(evaluation.createdAt, from, to),
   ];
-  if (traceId) conds.push(eq(evaluation.traceId, traceId));
-  if (status) conds.push(eq(evaluation.status, status));
+  if (traceId) baseConds.push(eq(evaluation.traceId, traceId));
+  if (status) baseConds.push(eq(evaluation.status, status));
+  // 游标只用于取本页数据，不计入 totalCount（否则逐页递减）
   const cursorWhere = cursorCond(evaluation.createdAt, evaluation.id, cursor);
-  if (cursorWhere) conds.push(cursorWhere);
+  const conds = cursorWhere ? [...baseConds, cursorWhere] : baseConds;
 
   const [items, totalCount] = await Promise.all([
     db
@@ -96,7 +97,7 @@ export async function GET(req: Request) {
       .where(and(...conds))
       .orderBy(desc(evaluation.createdAt), desc(evaluation.id))
       .limit(limit + 1),
-    db.select({ c: count() }).from(evaluation).where(and(...conds)),
+    db.select({ c: count() }).from(evaluation).where(and(...baseConds)),
   ]);
 
   const nextCursor = nextCursorOf(items, limit, "createdAt", "id");

@@ -7,14 +7,12 @@ const projectRoot = resolve(__dirname);
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // pg 在 Next 内置默认 serverExternalPackages 列表中（config 只能追加不能移除），
-  // 会被 Turbopack 复制为 web/.next/node_modules/pg-<hash>/ 的外部副本，但副本不带
-  // 依赖链（pg-types 等）→ 发布环境 Cannot find module 'pg-types'。
-  // 用 transpilePackages 把 pg 从默认外部列表摘除，改为直接打进 server bundle。
-  transpilePackages: ["pg"],
-  // 纯 JS 驱动（pg/drizzle）直接打包进 .next，不 external：
-  // Turbopack 的 serverExternalPackages 只复制包本体，pg 的依赖链
-  // （pg-types 等）不随副本携带 → 发布环境 Cannot find module 'pg-types'。
+  // better-sqlite3 是原生模块（.node 二进制），不能被打包，必须保持 external：
+  // Next/Turbopack 会把它复制为 web/.next/node_modules/better-sqlite3-<hash>/，
+  // 但该副本不含依赖链（bindings / file-uri-to-path），发布环境会
+  // Cannot find module 'bindings'。故发布打包时必须把依赖闭包一并固化，
+  // 见 scripts/release.mjs 的 copyNativeDepClosure()。
+  //
   // 固定 Turbopack 的 workspace root（Next 16 顶层配置）：源码仓库里 next 等
   // 依赖位于仓库根 node_modules/.pnpm（web 外），root 必须指向仓库根，
   // 否则 Turbopack 从 app 目录向上解析 next/package.json 时越过 root 边界失败。

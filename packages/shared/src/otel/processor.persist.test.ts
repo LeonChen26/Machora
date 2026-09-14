@@ -82,6 +82,38 @@ describe("persistOtelRecords: tags 覆盖语义", () => {
   });
 });
 
+describe("persistOtelRecords: JSON 字段 null 不覆盖", () => {
+  it("后续批次缺 input/output/metadata 不覆盖已落库值", async () => {
+    await processor.persistOtelRecords(
+      [
+        mkTrace({
+          id: "tj1",
+          input: { q: "hi" },
+          output: { a: 1 },
+          metadata: { src: "x" },
+        }),
+      ],
+      [],
+    );
+    // 后续批次（如逐 span POST）常缺 trace 级属性
+    await processor.persistOtelRecords(
+      [mkTrace({ id: "tj1", input: null, output: null, metadata: null })],
+      [],
+    );
+    const rows = await db.select().from(s.trace).where(eq(s.trace.id, "tj1"));
+    expect(rows[0].input).toEqual({ q: "hi" });
+    expect(rows[0].output).toEqual({ a: 1 });
+    expect(rows[0].metadata).toEqual({ src: "x" });
+  });
+
+  it("非空 JSON 正常覆盖", async () => {
+    await processor.persistOtelRecords([mkTrace({ id: "tj2", input: { q: 1 } })], []);
+    await processor.persistOtelRecords([mkTrace({ id: "tj2", input: { q: 2 } })], []);
+    const rows = await db.select().from(s.trace).where(eq(s.trace.id, "tj2"));
+    expect(rows[0].input).toEqual({ q: 2 });
+  });
+});
+
 describe("persistOtelRecords: 事务内单条失败不中断整批", () => {
   it("外键失败的 observation 被记录，其余行正常落库", async () => {
     const obs = (id: string, traceId: string) => ({

@@ -34,9 +34,13 @@ export function TopologyDiagram({
   const topModels = models.slice(0, TOP_N);
   const modelNameSet = new Set(topModels.map((m) => m.name));
 
+  // 工具节点身份 = (agent, name)：同一工具被多个 agent 使用时是两个独立节点，
+  // 不能只用 name 作 key，否则坐标相互覆盖。
+  const toolIdOf = (t: TopologyTool) => `${t.agent}\u0000${t.name}`;
+
   const cy = (_: unknown[], i: number) => HEADER_Y + 46 + i * ROW_H;
   const agentCy = new Map(topAgents.map((a, i) => [a.name, cy(topAgents, i)]));
-  const toolCy = new Map(topTools.map((t, i) => [t.name, cy(topTools, i)]));
+  const toolCy = new Map(topTools.map((t, i) => [toolIdOf(t), cy(topTools, i)]));
   const modelCy = new Map(topModels.map((m, i) => [m.name, cy(topModels, i)]));
 
   const maxRows = Math.max(topAgents.length, topTools.length, topModels.length);
@@ -47,7 +51,7 @@ export function TopologyDiagram({
   const edges: Array<{ from: Pos; to: Pos; key: string; opacity: number }> = [];
   for (const t of topTools) {
     const ay = agentCy.get(t.agent);
-    const ty = toolCy.get(t.name);
+    const ty = toolCy.get(toolIdOf(t));
     if (ay != null && ty != null) {
       edges.push({
         from: { x: COL.agent, y: ay },
@@ -62,7 +66,7 @@ export function TopologyDiagram({
       edges.push({
         from: { x: COL.tool, y: ty ?? 0 },
         to: { x: COL.model, y: my },
-        key: `m-${t.name}->${m.name}`,
+        key: `m-${t.agent}->${t.name}->${m.name}`,
         opacity: 0.35 + 0.45 * Math.min(m.count / Math.max(t.count, 1), 1),
       });
     }
@@ -81,6 +85,7 @@ export function TopologyDiagram({
     s.length > n ? `${s.slice(0, n - 1)}…` : s;
 
   // 节点：左上角角色标 + 右上小字 + 名称 + 底部左右双指标
+  // keyId：节点身份（默认用 name）；工具同名的多 agent 节点需传 (agent,name) 复合键
   const node = (
     x: number,
     y: number,
@@ -90,11 +95,12 @@ export function TopologyDiagram({
     name: string,
     attrL: string,
     attrR: string,
+    keyId?: string,
   ) => {
     const x0 = x - NODE_W / 2;
     const y0 = y - NODE_H / 2;
     return (
-      <g key={`${fam}-${name}`} className="pn-node">
+      <g key={`${fam}-${keyId ?? name}`} className="pn-node">
         <title>{`[${label}] ${name}\n${attrL} · ${attrR}`}</title>
         <rect
           x={x0}
@@ -229,13 +235,14 @@ export function TopologyDiagram({
         {topTools.map((t) =>
           node(
             COL.tool,
-            toolCy.get(t.name)!,
+            toolCy.get(toolIdOf(t))!,
             "tool",
             "TOOL",
             `${t.count} 次`,
             t.name,
             t.avgDur != null ? formatDuration(t.avgDur) : "—",
             `${t.models.length} 模型`,
+            toolIdOf(t),
           ),
         )}
         {topModels.map((m) =>

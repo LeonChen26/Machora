@@ -7,6 +7,15 @@ import { decodeOtlpMetricsProtobuf, decodeOtlpProtobuf } from "./protobuf.ts";
 export type OtelContentEncoding = "gzip" | "deflate" | "identity" | "br";
 export type OtelContentType = "json" | "protobuf";
 
+/**
+ * 请求体体积上限。端点无鉴权且单进程承载，必须自带安全阀：
+ * - 压缩体上限：拦截超大原始 body 直接占满内存；
+ * - 解压体上限：拦截 zip bomb（小压缩体解出海量数据）。
+ * 解压时通过 zlib 的 maxOutputLength 在解压过程中即中止，避免先分配再判断。
+ */
+const MAX_COMPRESSED_BODY_BYTES = 8 * 1024 * 1024;
+const MAX_DECOMPRESSED_BODY_BYTES = 32 * 1024 * 1024;
+
 interface ParsedHeaders {
   encoding: OtelContentEncoding;
   type: OtelContentType;
@@ -45,11 +54,12 @@ async function decompress(
 
   const zlib = await import("node:zlib");
   const buf = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const opts = { maxOutputLength: MAX_DECOMPRESSED_BODY_BYTES };
 
   switch (encoding) {
     case "gzip":
       return new Promise((resolve, reject) => {
-        zlib.gunzip(buf, (err, out) => {
+        zlib.gunzip(buf, opts, (err, out) => {
           if (err) reject(err);
           else resolve(new Uint8Array(out.buffer, out.byteOffset, out.byteLength));
         });
@@ -59,13 +69,13 @@ async function decompress(
         // OTLP 规范中 deflate 指 RFC 1951 raw deflate，但不少 exporter 会发送 zlib
         // wrapper (RFC 1950)。先按 raw deflate 解，失败再回退 inflate（自动识别 wrapper）。
         const tryRaw = (next: () => void) => {
-          zlib.inflateRaw(buf, (err, out) => {
+          zlib.inflateRaw(buf, opts, (err, out) => {
             if (err) next();
             else resolve(new Uint8Array(out.buffer, out.byteOffset, out.byteLength));
           });
         };
         tryRaw(() => {
-          zlib.inflate(buf, (err, out) => {
+          zlib.inflate(buf, opts, (err, out) => {
             if (err) reject(err);
             else resolve(new Uint8Array(out.buffer, out.byteOffset, out.byteLength));
           });
@@ -73,7 +83,7 @@ async function decompress(
       });
     case "br":
       return new Promise((resolve, reject) => {
-        zlib.brotliDecompress(buf, (err, out) => {
+        zlib.brotliDecompress(buf, opts, (err, out) => {
           if (err) reject(err);
           else resolve(new Uint8Array(out.buffer, out.byteOffset, out.byteLength));
         });
@@ -87,7 +97,7 @@ async function decompress(
 export class OtelDecodeError extends Error {
   constructor(
     message: string,
-    public readonly status: "bad-encoding" | "bad-protobuf" | "bad-json",
+    public readonly status: "bad-encoding" | "bad-protobuf" | "bad-json" | "too-large",
   ) {
     super(message);
     this.name = "OtelDecodeError";
@@ -104,14 +114,36 @@ export async function decodeOtelRequestBody(req: { headers: Headers; arrayBuffer
   const { encoding, type } = parseHeaders(req);
   const raw = new Uint8Array(await req.arrayBuffer());
 
+  if (raw.byteLength > MAX_COMPRESSED_BODY_BYTES) {
+    throw new OtelDecodeError(
+      `Request body too large: ${raw.byteLength} bytes (max ${MAX_COMPRESSED_BODY_BYTES})`,
+      "too-large",
+    );
+  }
+
   let bytes: Uint8Array;
   try {
     bytes = await decompress(encoding, raw);
   } catch (e) {
     const err = e instanceof Error ? e : new Error(String(e));
+    // maxOutputLength 触顶时 zlib 报 ERR_BUFFER_TOO_LARGE，归入 too-large 而非解码失败
+    if ((err as NodeJS.ErrnoException).code === "ERR_BUFFER_TOO_LARGE") {
+      throw new OtelDecodeError(
+        `Decompressed body too large (max ${MAX_DECOMPRESSED_BODY_BYTES} bytes)`,
+        "too-large",
+      );
+    }
     throw new OtelDecodeError(
       `Failed to decompress ${encoding} body: ${err.message}`,
       "bad-encoding",
+    );
+  }
+
+  // 兜底：identity 或个别 zlib 版本未按 maxOutputLength 报错时仍拦截
+  if (bytes.byteLength > MAX_DECOMPRESSED_BODY_BYTES) {
+    throw new OtelDecodeError(
+      `Decompressed body too large: ${bytes.byteLength} bytes (max ${MAX_DECOMPRESSED_BODY_BYTES})`,
+      "too-large",
     );
   }
 

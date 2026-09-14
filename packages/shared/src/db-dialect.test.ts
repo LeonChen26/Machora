@@ -161,6 +161,13 @@ describe("hasTags（替代 @> ARRAY）", () => {
       await db.run(sql`DELETE FROM trace WHERE id = 'dirty1'`);
     }
   });
+
+  it("空标签数组返回恒真条件（不生成非法 SQL）", async () => {
+    // 修复前 sql.join([]) 会生成 `WHERE `，SQLite 报 "incomplete input"
+    const rows = await db.select({ id: s.trace.id }).from(s.trace)
+      .where(and(dialect.hasTags(s.trace.tags, [])));
+    expect(rows.map((r) => r.id).sort()).toEqual(["t1", "t2", "t3", "t4"]);
+  });
 });
 
 describe("列类型往返", () => {

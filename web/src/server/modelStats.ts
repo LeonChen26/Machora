@@ -20,7 +20,7 @@
 // 时间窗：以 since 为界拆「当前窗口 / 前一等长窗口」，供环比与异常标记使用。
 // trace 级指标按 trace.timestamp 归属窗口，调用级指标按 observation.startTime 归属。
 
-import { and, eq, gte, inArray } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, type SQL } from "drizzle-orm";
 import {
   db,
   isGenerationType,
@@ -36,6 +36,7 @@ import {
 } from "./signals";
 import { AGENT_UNKNOWN, resolveAgentName } from "./attribution";
 import { chunk } from "./chunk";
+import { afterCursor, scanBatches, yieldToEventLoop } from "./scan";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -261,6 +262,31 @@ function windowBounds(days: number): { since: Date; prevSince: Date } {
   return { since, prevSince };
 }
 
+/**
+ * 分批读取命中 conds 的 observation 行（批间让出事件循环）。
+ *
+ * 仍返回全量数组：本模块的聚合需要多遍完成（trace 元信息 → 注册 trace → 调用级累加 →
+ * 每日 trace 数），无法融成单遍增量。分批只为避免同步驱动下一次大读取长时间独占事件循环。
+ */
+async function collectRows(conds: SQL<unknown>[]): Promise<AggRow[]> {
+  const rows: AggRow[] = [];
+  for await (const batch of scanBatches(
+    async (after, limit) =>
+      (await selectRows()
+        .where(
+          after
+            ? and(...conds, afterCursor(observation.startTime, observation.id, after))
+            : and(...conds),
+        )
+        .orderBy(asc(observation.startTime), asc(observation.id))
+        .limit(limit)) as AggRow[],
+    (r) => ({ ts: r.obsStart, id: r.obsId }),
+  )) {
+    for (const r of batch) rows.push(r);
+  }
+  return rows;
+}
+
 function agentOf(r: AggRow): string {
   return resolveAgentName(r.traceAgent, r.obsAgent);
 }
@@ -455,9 +481,7 @@ function snapshot(m: ModelMetrics): MetricSnapshot {
 export async function getModelDirectory(days: number): Promise<ModelDirectory> {
   const { since, prevSince } = windowBounds(days);
 
-  const rows = (await selectRows().where(
-    gte(observation.startTime, prevSince),
-  )) as AggRow[];
+  const rows = await collectRows([gte(observation.startTime, prevSince)]);
 
   const { cur, prev } = aggregate(rows, since, days);
 
@@ -535,7 +559,8 @@ export async function getModelDetail(
   if (traceIds.length === 0) return null;
 
   const rows: AggRow[] = [];
-  // traceIds 规模不受控，按块 IN 查询后合并，规避 SQLite 绑定参数上限
+  // traceIds 规模不受控，按块 IN 查询后合并，规避 SQLite 绑定参数上限；
+  // 块间让出事件循环，避免连续大 IN 查询长时间独占
   for (const part of chunk(traceIds)) {
     const partRows = (await selectRows().where(
       and(
@@ -545,6 +570,7 @@ export async function getModelDetail(
     )) as AggRow[];
     // 用循环而非 push(...partRows)：单块结果仍可能很大，展开会压栈溢出
     for (const r of partRows) rows.push(r);
+    await yieldToEventLoop();
   }
 
   const { cur, prev } = aggregate(rows, since, days);

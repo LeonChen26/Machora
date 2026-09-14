@@ -32,6 +32,8 @@ export default async function TopologyPage({
       topo.tools.filter((t) => t.agent === a.name),
     ]),
   );
+  // topo.tools 按 (agent, tool) 拆分，同工具可能出现在多个 agent 下；头部计数按工具名去重
+  const distinctToolCount = new Set(topo.tools.map((t) => t.name)).size;
 
   return (
     <>
@@ -39,7 +41,7 @@ export default async function TopologyPage({
         <div>
           <h1>Agent 拓扑</h1>
           <div className="sub">
-            近 {days} 天 · {topo.agents.length} 个 Agent · {topo.tools.length} 个工具 ·{" "}
+            近 {days} 天 · {topo.agents.length} 个 Agent · {distinctToolCount} 个工具 ·{" "}
             {topo.models.length} 个模型 · {topo.totalTraces} 条 Trace
           </div>
         </div>

@@ -6,9 +6,10 @@
 //   - trace 是否出错：trace.status === "ERROR" 或该 trace 含 level=ERROR 的 observation
 //     （status 为上游显式上报，步骤级 ERROR 兜底，保证指标始终可用）。
 
-import { and, eq, gte } from "drizzle-orm";
+import { and, asc, eq, gte } from "drizzle-orm";
 import { db, observation, trace } from "@machora/shared";
 import { resolveAgentName } from "./attribution";
+import { afterCursor, scanBatches, type ScanCursor } from "./scan";
 import {
   composeWatchlist,
   detectMetricSignals,
@@ -120,7 +121,6 @@ function toSnapshot(a: {
 interface TraceAgg {
   id: string;
   name: string | null;
-  agent: string;
   status: string | null;
   version: string | null;
   ts: Date;
@@ -137,6 +137,17 @@ interface DayBucket {
   cost: number;
   latencies: number[];
   traces: number;
+}
+
+/**
+ * 某 Agent 在某 Trace 中的归属。
+ * ta 为全 trace 共享的聚合（成本/时长/名称/版本等）；
+ * errored 只累计「归属该 agent 的」ERROR 行——trace 内别的 agent 出错不应拉低本 agent 成功率，
+ * 与 /agents（agentStats 按 agent 桶累计 errors）口径一致。
+ */
+interface AgentTraceRef {
+  ta: TraceAgg;
+  errored: boolean;
 }
 
 function emptyAcc(days: number): ObsAcc {
@@ -162,37 +173,11 @@ function latencyOf(t: TraceAgg): number | null {
   return Math.max(...t.ends) - Math.min(...t.starts);
 }
 
-/** 该 trace 是否出错：显式 status=ERROR，或含步骤级 ERROR */
-function isErrored(t: TraceAgg): boolean {
-  return t.status === "ERROR" || t.errors > 0;
-}
-
 export async function getOverview(days: number): Promise<OverviewData> {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const since = new Date(today.getTime() - (days - 1) * DAY_MS);
   const prevSince = new Date(since.getTime() - days * DAY_MS);
-
-  const rows = await db
-    .select({
-      traceId: observation.traceId,
-      type: observation.type,
-      agentName: observation.agentName,
-      level: observation.level,
-      startTime: observation.startTime,
-      endTime: observation.endTime,
-      totalTokens: observation.totalTokens,
-      totalCost: observation.totalCost,
-      model: observation.model,
-      traceName: trace.name,
-      traceAgent: trace.agentName,
-      traceStatus: trace.status,
-      traceVersion: trace.agentVersion,
-      traceTimestamp: trace.timestamp,
-    })
-    .from(observation)
-    .leftJoin(trace, eq(observation.traceId, trace.id))
-    .where(and(gte(observation.startTime, prevSince)));
 
   const agentCur = new Map<string, ObsAcc>();
   const agentPrev = new Map<string, ObsAcc>();
@@ -201,6 +186,10 @@ export async function getOverview(days: number): Promise<OverviewData> {
   const modelPrev = new Map<string, ModelAcc>();
   const traceCur = new Map<string, TraceAgg>();
   const tracePrev = new Map<string, TraceAgg>();
+  // 每 Agent 参与的 Trace（按行归属，与 /agents、/models 同口径）：
+  // trace.agentName 为空时，同一 trace 会归属其出现过的每个 observation agent。
+  // 不能用「首行快照」——那会依赖未定义的行序，与 /agents 的 traces 数对不上。
+  const agentTraces = new Map<string, Map<string, AgentTraceRef>>();
   // 全局每日桶（指标面板折线数据源，与 Agent 维度桶相互独立）
   const dayBuckets: DayBucket[] = Array.from({ length: days }, () => ({
     calls: 0,
@@ -211,77 +200,131 @@ export async function getOverview(days: number): Promise<OverviewData> {
     traces: 0,
   }));
 
-  for (const r of rows) {
-    const isCur = r.startTime >= since;
-    const agent = resolveAgentName(r.traceAgent, r.agentName);
-    const isGen = GENERATION_TYPES.has(r.type);
-    const dur = r.endTime ? r.endTime.getTime() - r.startTime.getTime() : null;
+  // 窗口内 observation 按 (startTime, id) 分批扫描，每批之间让出事件循环：
+  // better-sqlite3 是同步驱动，一次性全量 select + 就地聚合会在整段期间独占事件循环
+  // （standalone 单进程同时承载 HTTP 与写入），分批后其它请求可穿插执行。
+  const fetchBatch = (after: ScanCursor | null, limit: number) => {
+    const cur = afterCursor(observation.startTime, observation.id, after);
+    return db
+      .select({
+        obsId: observation.id,
+        traceId: observation.traceId,
+        type: observation.type,
+        agentName: observation.agentName,
+        level: observation.level,
+        startTime: observation.startTime,
+        endTime: observation.endTime,
+        totalTokens: observation.totalTokens,
+        totalCost: observation.totalCost,
+        model: observation.model,
+        traceName: trace.name,
+        traceAgent: trace.agentName,
+        traceStatus: trace.status,
+        traceVersion: trace.agentVersion,
+        traceTimestamp: trace.timestamp,
+      })
+      .from(observation)
+      .leftJoin(trace, eq(observation.traceId, trace.id))
+      .where(
+        cur
+          ? and(gte(observation.startTime, prevSince), cur)
+          : gte(observation.startTime, prevSince),
+      )
+      .orderBy(asc(observation.startTime), asc(observation.id))
+      .limit(limit);
+  };
 
-    // 全局当日桶（按 observation.startTime 归日）
-    if (isCur) {
-      const gIdx = Math.floor((r.startTime.getTime() - since.getTime()) / DAY_MS);
-      if (gIdx >= 0 && gIdx < days) {
-        const b = dayBuckets[gIdx]!;
-        b.steps++;
-        if (isGen) b.calls++;
-        if (r.level === "ERROR") b.errors++;
-        b.cost += r.totalCost ?? 0;
-        if (dur !== null) b.latencies.push(dur);
-      }
-    }
+  for await (const batch of scanBatches(fetchBatch, (r) => ({
+    ts: r.startTime,
+    id: r.obsId,
+  }))) {
+    for (const r of batch) {
+      const isCur = r.startTime >= since;
+      const agent = resolveAgentName(r.traceAgent, r.agentName);
+      const isGen = GENERATION_TYPES.has(r.type);
+      const dur = r.endTime ? r.endTime.getTime() - r.startTime.getTime() : null;
 
-    const accMap = isCur ? agentCur : agentPrev;
-    const acc = accMap.get(agent) ?? emptyAcc(days);
-    acc.steps++;
-    if (isGen) {
-      acc.calls++;
+      // 全局当日桶（按 observation.startTime 归日）
       if (isCur) {
-        const idx = Math.floor((r.startTime.getTime() - since.getTime()) / DAY_MS);
-        if (idx >= 0 && idx < days) acc.daily[idx]++;
+        const gIdx = Math.floor((r.startTime.getTime() - since.getTime()) / DAY_MS);
+        if (gIdx >= 0 && gIdx < days) {
+          const b = dayBuckets[gIdx]!;
+          b.steps++;
+          if (isGen) b.calls++;
+          if (r.level === "ERROR") b.errors++;
+          b.cost += r.totalCost ?? 0;
+          if (dur !== null) b.latencies.push(dur);
+        }
+      }
+
+      const accMap = isCur ? agentCur : agentPrev;
+      const acc = accMap.get(agent) ?? emptyAcc(days);
+      acc.steps++;
+      if (isGen) {
+        acc.calls++;
+        if (isCur) {
+          const idx = Math.floor((r.startTime.getTime() - since.getTime()) / DAY_MS);
+          if (idx >= 0 && idx < days) acc.daily[idx]++;
+        }
+      }
+      if (r.level === "ERROR") acc.errors++;
+      acc.cost += r.totalCost ?? 0;
+      acc.tokens += r.totalTokens ?? 0;
+      if (dur !== null) acc.latencies.push(dur);
+      accMap.set(agent, acc);
+
+      // 模型维度累计（仅 LLM / Embedding）
+      if (isGen) {
+        const mMap = isCur ? modelCur : modelPrev;
+        const modelName = r.model ?? UNKNOWN;
+        const m = mMap.get(modelName) ?? emptyModelAcc();
+        m.calls++;
+        if (r.level === "ERROR") m.errors++;
+        m.cost += r.totalCost ?? 0;
+        if (dur !== null) m.latencies.push(dur);
+        mMap.set(modelName, m);
+      }
+
+      const tMap = isCur ? traceCur : tracePrev;
+      let ta = tMap.get(r.traceId);
+      if (!ta) {
+        ta = {
+          id: r.traceId,
+          name: r.traceName ?? null,
+          status: r.traceStatus ?? null,
+          version: r.traceVersion ?? null,
+          ts: r.traceTimestamp ?? r.startTime,
+          cost: 0,
+          starts: [],
+          ends: [],
+          errors: 0,
+        };
+        tMap.set(r.traceId, ta);
+      }
+      ta.cost += r.totalCost ?? 0;
+      ta.starts.push(r.startTime.getTime());
+      ta.ends.push(r.endTime ? r.endTime.getTime() : r.startTime.getTime());
+      if (r.level === "ERROR") ta.errors++;
+      if (!ta.name && r.traceName) ta.name = r.traceName;
+      if (!ta.status && r.traceStatus) ta.status = r.traceStatus;
+      if (!ta.version && r.traceVersion) ta.version = r.traceVersion;
+
+      // 该 Agent 参与此 trace（按当前窗口统计；同一 trace 可在多个 agent 下各计一次）
+      if (isCur) {
+        let perAgent = agentTraces.get(agent);
+        if (!perAgent) {
+          perAgent = new Map();
+          agentTraces.set(agent, perAgent);
+        }
+        let ref = perAgent.get(r.traceId);
+        if (!ref) {
+          ref = { ta, errored: false };
+          perAgent.set(r.traceId, ref);
+        }
+        // 只标记归属该 agent 的 ERROR 行（trace 级 status 另有判断）
+        if (r.level === "ERROR") ref.errored = true;
       }
     }
-    if (r.level === "ERROR") acc.errors++;
-    acc.cost += r.totalCost ?? 0;
-    acc.tokens += r.totalTokens ?? 0;
-    if (dur !== null) acc.latencies.push(dur);
-    accMap.set(agent, acc);
-
-    // 模型维度累计（仅 LLM / Embedding）
-    if (isGen) {
-      const mMap = isCur ? modelCur : modelPrev;
-      const modelName = r.model ?? UNKNOWN;
-      const m = mMap.get(modelName) ?? emptyModelAcc();
-      m.calls++;
-      if (r.level === "ERROR") m.errors++;
-      m.cost += r.totalCost ?? 0;
-      if (dur !== null) m.latencies.push(dur);
-      mMap.set(modelName, m);
-    }
-
-    const tMap = isCur ? traceCur : tracePrev;
-    let ta = tMap.get(r.traceId);
-    if (!ta) {
-      ta = {
-        id: r.traceId,
-        name: r.traceName ?? null,
-        agent,
-        status: r.traceStatus ?? null,
-        version: r.traceVersion ?? null,
-        ts: r.traceTimestamp ?? r.startTime,
-        cost: 0,
-        starts: [],
-        ends: [],
-        errors: 0,
-      };
-      tMap.set(r.traceId, ta);
-    }
-    ta.cost += r.totalCost ?? 0;
-    ta.starts.push(r.startTime.getTime());
-    ta.ends.push(r.endTime ? r.endTime.getTime() : r.startTime.getTime());
-    if (r.level === "ERROR") ta.errors++;
-    if (!ta.name && r.traceName) ta.name = r.traceName;
-    if (!ta.status && r.traceStatus) ta.status = r.traceStatus;
-    if (!ta.version && r.traceVersion) ta.version = r.traceVersion;
   }
 
   const agg = (m: Map<string, ObsAcc>) => {
@@ -340,20 +383,16 @@ export async function getOverview(days: number): Promise<OverviewData> {
   });
 
   // Agent 风险榜
-  const tracesByAgent = new Map<string, TraceAgg[]>();
-  for (const t of traceCur.values()) {
-    const list = tracesByAgent.get(t.agent) ?? [];
-    list.push(t);
-    tracesByAgent.set(t.agent, list);
-  }
-
-  const agentNames = new Set<string>([...agentCur.keys(), ...tracesByAgent.keys()]);
+  const agentNames = new Set<string>([...agentCur.keys(), ...agentTraces.keys()]);
   const agents: AgentRiskRow[] = [];
   for (const name of agentNames) {
     const c = agentCur.get(name);
     const p = agentPrev.get(name);
-    const ts = tracesByAgent.get(name) ?? [];
-    const errored = ts.filter(isErrored).length;
+    const refs = Array.from(agentTraces.get(name)?.values() ?? []);
+    // 与 agentStats 一致：trace 级 status=ERROR 或该 agent 自身有 ERROR 行才算失败
+    const errored = refs.filter(
+      (x) => x.errored || x.ta.status === "ERROR",
+    ).length;
     const calls = c?.calls ?? 0;
     const cost = c?.cost ?? 0;
     const errorRate = c && c.steps ? c.errors / c.steps : 0;
@@ -382,18 +421,18 @@ export async function getOverview(days: number): Promise<OverviewData> {
     // 版本：取该 Agent 最近一条带版本的 trace
     let version: string | null = null;
     let versionTs = 0;
-    for (const t of ts) {
-      if (t.version && t.ts.getTime() > versionTs) {
-        version = t.version;
-        versionTs = t.ts.getTime();
+    for (const { ta } of refs) {
+      if (ta.version && ta.ts.getTime() > versionTs) {
+        version = ta.version;
+        versionTs = ta.ts.getTime();
       }
     }
 
     agents.push({
       name,
       version,
-      traces: ts.length,
-      successRate: ts.length ? 1 - errored / ts.length : null,
+      traces: refs.length,
+      successRate: refs.length ? 1 - errored / refs.length : null,
       calls,
       cost,
       errorRate,

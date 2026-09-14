@@ -120,8 +120,17 @@ function applySchemaSql(db: SqliteDb): void {
 /** 当前版本 Trace 表必须具备的列（后续新增列可追加到此集合） */
 const REQUIRED_TRACE_COLUMNS = ["agentVersion", "status", "tags"] as const;
 
-function assertNoLegacySchema(db: SqliteDb): void {
-  // 旧 PGlite 数据目录存在、但尚无 SQLite 文件：格式不通，不能静默建空库
+/**
+ * 旧 PGlite 数据目录检查。
+ *
+ * 必须在打开 SQLite 文件**之前**调用：新建 better-sqlite3 句柄会立即创建
+ * DATA_DIR/machora.db，之后再判断「有 pglite 目录但无 machora.db」就永远为 false，
+ * 会静默建空库（正是本检查要拦的场景）。
+ *
+ * 仅当「有 pglite 目录且尚无 machora.db」时拦截：已迁移用户残留的 pglite 目录
+ * 不应阻塞启动。
+ */
+function assertNoLegacyPgliteDir(): void {
   const dataDir = resolve(process.cwd(), DATA_DIR);
   const pgliteDir = resolve(dataDir, "pglite");
   if (existsSync(pgliteDir) && !existsSync(resolve(dataDir, "machora.db"))) {
@@ -131,7 +140,10 @@ function assertNoLegacySchema(db: SqliteDb): void {
         "（/api/export/traces、/api/export/generations），删除 DATA_DIR 后重导入。",
     );
   }
+}
 
+/** 存量 SQLite 结构检查（需句柄已就绪，读取 sqlite_master / PRAGMA table_info） */
+function assertCurrentSqliteSchema(db: SqliteDb): void {
   const table = db
     .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'Trace'")
     .get();
@@ -269,12 +281,16 @@ async function main() {
     collectSystemMetrics: shared.collectSystemMetrics,
   };
 
+  // 旧 PGlite 目录检查必须在打开 SQLite 文件之前（打开即会创建 machora.db，
+  // 之后「有 pglite 目录但无 machora.db」的判据永远为 false）
+  assertNoLegacyPgliteDir();
+
   // SQLite 句柄由 @machora/shared 的 db 单例惰性创建（DATA_DIR/machora.db）
   const sqlite = shared.getSqliteHandle();
   console.log(`[SQLite] 已就绪: ${shared.getDbPath()}`);
 
-  // 先校验存量库（旧 PGlite / 旧 SQLite 结构），再执行幂等建表
-  assertNoLegacySchema(sqlite);
+  // 句柄就绪后校验存量库结构（旧 SQLite 结构），再执行幂等建表
+  assertCurrentSqliteSchema(sqlite);
   applySchemaSql(sqlite);
 
   // 自观测：启动周期落库（60s），队列/请求指标由此采集；

@@ -375,6 +375,10 @@ export async function persistOtelRecords(
   // Prisma.JsonNull 的 drizzle 等价：JSON 字段为 null 时写 SQL NULL（读取语义一致）
   const jsonOrNull = (v: unknown) =>
     (v ?? null) as unknown as typeof trace.$inferInsert["input"];
+  // 更新时用：null 不覆盖已落库值（与 userId 等字段同策略）。分批导出（如逐 span POST）时，
+  // 后续批次常缺 trace 级 input/output/metadata，若直接写回会把先前批次的值洗成 NULL。
+  const jsonOrUndef = (v: unknown) =>
+    v == null ? undefined : (v as unknown as typeof trace.$inferInsert["input"]);
 
   // SQLite 写入批量化：better-sqlite3 是同步驱动，逐条 `await db.insert()`
   // 会让每条语句各自成为一个隐式事务（提交 + WAL fsync）。实测 800 条：
@@ -420,9 +424,9 @@ export async function persistOtelRecords(
               // 同上：null 不覆盖，避免后续批次把已落库的版本 / 任务结果洗掉
               agentVersion: t.agentVersion ?? undefined,
               status: t.status ?? undefined,
-              input: jsonOrNull(t.input),
-              output: jsonOrNull(t.output),
-              metadata: jsonOrNull(t.metadata),
+              input: jsonOrUndef(t.input),
+              output: jsonOrUndef(t.output),
+              metadata: jsonOrUndef(t.metadata),
               // tags 同理：解析层对缺失 tags 的兜底是 []（见上方 ?? []），
               // 若直接写回会把先前批次已落库的标签洗成空数组。
               // 空数组不覆盖，仅在有标签时更新（与上面 null 不覆盖的策略一致）。
@@ -475,9 +479,9 @@ export async function persistOtelRecords(
               agentName: o.agentName ?? undefined,
               workflowName: o.workflowName ?? undefined,
               skillName: o.skillName ?? undefined,
-              input: jsonOrNull(o.input),
-              output: jsonOrNull(o.output),
-              metadata: jsonOrNull(o.metadata),
+              input: jsonOrUndef(o.input),
+              output: jsonOrUndef(o.output),
+              metadata: jsonOrUndef(o.metadata),
               level: o.level,
               usage: jsonOrNull(o.usage),
               inputTokens: o.inputTokens,
