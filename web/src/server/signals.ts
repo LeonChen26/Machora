@@ -1,7 +1,7 @@
 // 统一信号检测器（观测层唯一异常口径）。
 //
 // 历史问题：成本突增 / 错误率上升 / 延迟恶化的阈值原先被复制在 4 处
-// （Overview 全局、Overview 按 Agent、Analytics 按模型、Agent 目录与详情），
+// （Overview 全局、Overview 按 Agent、Overview 按模型、Agent 目录与详情），
 // 改一次阈值要改 4 遍，且容易出现「同一对象在不同页面标记不一致」。
 // 本模块收敛为唯一实现，页面只负责渲染。
 //
@@ -90,7 +90,8 @@ function hrefFor(
     case "trace":
       return "/traces";
     case "global":
-      return kind === "cost" ? "/analytics" : "/traces";
+      // 成本类全局信号落到 Overview 的成本趋势；其余全局信号落到 Traces 列表
+      return kind === "cost" ? "/?metric=cost" : "/traces";
   }
 }
 

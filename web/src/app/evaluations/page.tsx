@@ -1,4 +1,5 @@
-// 评估中心：任务（Tab 1）+ 配置（Tab 2）+ 数据集（Tab 3）+ 趋势（Tab 4）
+// 评估中心：任务（Tab 1）+ 配置（Tab 2）+ 批量评测（Tab 3）+ 趋势（Tab 4）
+// 数据集「资产管理」已独立为 /datasets，此处只保留批量评测的发起入口。
 // SSR 直查 db（force-dynamic），交互走 /api/evaluations REST
 import { Link } from "../../components/NativeLink";
 import { desc, eq } from "drizzle-orm";
@@ -9,12 +10,11 @@ import { LineChart } from "../../components/LineChart";
 import { EvalConfigForm } from "./EvalConfigForm";
 import { EvalConfigActions } from "./EvalConfigActions";
 import { DatasetBatchPanel } from "./DatasetBatchPanel";
-import { DatasetManager } from "./DatasetManager";
 import { EvalReviewButton } from "./EvalReviewPanel";
 
 export const dynamic = "force-dynamic";
 
-const TAB_KEYS = ["tasks", "config", "datasets", "trend"] as const;
+const TAB_KEYS = ["tasks", "config", "batch", "trend"] as const;
 type TabKey = (typeof TAB_KEYS)[number];
 
 const STATUS_META: Record<string, { label: string; cls: string }> = {
@@ -32,7 +32,9 @@ export default async function EvaluationsPage({
   const sp = await searchParams;
   const str = (v: string | string[] | undefined) =>
     Array.isArray(v) ? v[0] : v;
-  const tabRaw = str(sp.tab);
+  const rawTab = str(sp.tab);
+  // 旧 tab=datasets 兼容：内容已拆分——资产查看在 /datasets，批量操作留在本页「批量评测」
+  const tabRaw = rawTab === "datasets" ? "batch" : rawTab;
   const tab: TabKey = TAB_KEYS.includes(tabRaw as TabKey) ? (tabRaw as TabKey) : "tasks";
 
   // 任务列表
@@ -52,15 +54,15 @@ export default async function EvaluationsPage({
 
   // 配置列表
   const configs =
-    tab === "config" || tab === "datasets"
+    tab === "config" || tab === "batch"
       ? await db.query.evaluationConfig.findMany({
           orderBy: (t, { asc }) => [asc(t.createdAt)],
         })
       : [];
 
-  // 数据集占位：trace 按 tag 分组计数（后续扩展为 Dataset 表）
+  // Tag 数据集：trace 按 tag 分组计数（后续扩展为 Dataset 表）
   const datasets: { tag: string; count: number }[] = [];
-  if (tab === "datasets") {
+  if (tab === "batch") {
     const rows = await db
       .select({ tag: trace.tags })
       .from(trace)
@@ -178,12 +180,12 @@ export default async function EvaluationsPage({
           配置
         </Link>
         <Link
-          href="/evaluations?tab=datasets"
+          href="/evaluations?tab=batch"
           prefetch={false}
-          className={tab === "datasets" ? "seg-btn active" : "seg-btn"}
-          aria-current={tab === "datasets" ? "true" : undefined}
+          className={tab === "batch" ? "seg-btn active" : "seg-btn"}
+          aria-current={tab === "batch" ? "true" : undefined}
         >
-          数据集
+          批量评测
         </Link>
         <Link
           href="/evaluations?tab=trend"
@@ -382,20 +384,17 @@ export default async function EvaluationsPage({
         </>
       )}
 
-      {tab === "datasets" && (
+      {tab === "batch" && (
         <>
           <div className="section-title">
-            Tag 数据集（trace 批量评测） <span className="count">{datasets.length}</span>
+            Tag 数据集批量评测 <span className="count">{datasets.length} 个 Tag</span>
+            <span className="spacer" />
+            <Link className="text-sm" href="/datasets" prefetch={false}>
+              管理数据集 →
+            </Link>
           </div>
           <DatasetBatchPanel
             tags={datasets}
-            configs={configs.map((c) => ({
-              id: c.id,
-              name: c.name,
-              evaluatorType: c.evaluatorType,
-            }))}
-          />
-          <DatasetManager
             configs={configs.map((c) => ({
               id: c.id,
               name: c.name,

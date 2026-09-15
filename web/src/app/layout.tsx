@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 const THEME_INIT_SCRIPT = `(function () {
   var KEY = "machora-theme";
   var mq = window.matchMedia("(prefers-color-scheme: light)");
-  function current() { return localStorage.getItem(KEY) || "system"; }
+  function current() { return localStorage.getItem(KEY) || "light"; }
   function apply() {
     var t = current();
     var light = t === "light" || (t === "system" && mq.matches);
@@ -58,9 +58,12 @@ export default async function RootLayout({
             <NavItem href="/" label="Overview" icon="dashboard" />
             <NavItem href="/traces" label="Traces" icon="traces" />
             <NavItem href="/sessions" label="Sessions" icon="sessions" />
+            <NavItem href="/generations" label="Generations" icon="generations" />
+            <div className="nav-section">资产</div>
             <NavItem href="/agents" label="Agents" icon="agents" />
             <NavItem href="/models" label="Models" icon="cube" />
-            <NavItem href="/analytics" label="Analytics" icon="analytics" />
+            <NavItem href="/topology" label="Topology" icon="topology" />
+            <NavItem href="/datasets" label="Datasets" icon="datasets" />
             <div className="nav-section">质量</div>
             <NavItem href="/scores" label="Scores" icon="scores" />
             <NavItem href="/evaluations" label="Evaluations" icon="evaluations" />

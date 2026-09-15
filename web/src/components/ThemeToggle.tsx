@@ -30,14 +30,14 @@ declare global {
 }
 
 export function ThemeToggle({ compact = false }: { compact?: boolean }) {
-  const [theme, setTheme] = useState<string>("system");
+  const [theme, setTheme] = useState<string>("light");
 
   useEffect(() => {
-    setTheme(window.__machoraTheme?.current() ?? "system");
+    setTheme(window.__machoraTheme?.current() ?? "light");
   }, []);
 
   const toggle = () => {
-    const next = window.__machoraTheme?.cycle() ?? "system";
+    const next = window.__machoraTheme?.cycle() ?? "light";
     setTheme(next);
   };
 

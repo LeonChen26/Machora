@@ -181,13 +181,6 @@ export default async function TracesPage({
   const hasSignals = [...signalMap.values()].some(
     (s) => s && (s.ineffectiveStreak > 0 || s.repeatStreak > 0 || s.longTask),
   );
-  // 同名 trace 序号
-  const nameCount = new Map<string, number>();
-  for (const tr of shown) {
-    const n = tr.name ?? "";
-    nameCount.set(n, (nameCount.get(n) ?? 0) + 1);
-  }
-  const nameIndex = new Map<string, number>();
   // 高级筛选数
   const advancedCount =
     [userId, sessionId, model, agent, tags.length > 0 ? "tags" : null, level, env]
@@ -340,7 +333,7 @@ export default async function TracesPage({
         </span>
       </div>
 
-      {/* 快捷时间窗 seg（点击重置其他筛选，仅设 from/to） */}
+      {/* 快捷时间窗 seg：仅调整时间窗口，保留其余筛选条件与排序 */}
       <div className="form-inline mb-2">
         <span className="mute2 text-sm">
           快捷时间窗
@@ -352,6 +345,16 @@ export default async function TracesPage({
               href={`/traces?${buildQuery({
                 from: new Date(Date.now() - r.ms),
                 to: new Date(),
+                q,
+                userId,
+                sessionId,
+                model,
+                tags,
+                level,
+                env,
+                agent,
+                sort: sortKey !== "time" ? sortKey : undefined,
+                dir: sortDir !== "desc" ? sortDir : undefined,
                 page: 1,
               })}`}
               prefetch={false}
@@ -364,8 +367,10 @@ export default async function TracesPage({
         </span>
       </div>
 
-      {/* 过滤表单（GET 提交，纯服务端） */}
+      {/* 过滤表单（GET 提交，纯服务端）。隐藏域透传排序，避免提交筛选后排序被静默重置 */}
       <form className="card mb-3">
+        {sortKey !== "time" && <input type="hidden" name="sort" value={sortKey} />}
+        {sortDir !== "desc" && <input type="hidden" name="dir" value={sortDir} />}
         <div className="filter-bar">
           <label>
             <span>名称搜索</span>
@@ -547,10 +552,6 @@ export default async function TracesPage({
               {shown.map((t) => {
                 const latency = traceSpan(t);
                 const sig = signalMap.get(t.id);
-                const tName = t.name ?? "";
-                const idx = (nameIndex.get(tName) ?? 0) + 1;
-                nameIndex.set(tName, idx);
-                const showSeq = (nameCount.get(tName) ?? 0) > 1;
                 const hasError = t.observations.some(
                   (o) => o.level === "ERROR",
                 );

@@ -38,6 +38,20 @@ import {
 type Observation = typeof observation.$inferSelect;
 type ObsNode = Observation & { children: ObsNode[] };
 
+// Tab 角标统一口径：过滤态显示「可见/总数」，未过滤只显示数字。
+// 此前调用树用全量、时间线/轨迹用过滤后数量，同一排 Tab 上两个数字不同源。
+function TabCount({ n, total }: { n: number; total: number }) {
+  const filtered = n !== total;
+  return (
+    <span
+      className="count"
+      title={filtered ? `仅异常：显示 ${n} / 共 ${total}` : undefined}
+    >
+      {filtered ? `${n}/${total}` : n}
+    </span>
+  );
+}
+
 export const dynamic = "force-dynamic";
 
 export default async function TraceDetailPage({
@@ -376,11 +390,17 @@ export default async function TraceDetailPage({
 
   // 推理轨迹：按 Agent 行为角色重组主链（event/other 聚合 + 循环检测）
   const traj = buildTrajectoryRows(visibleTree);
+  // 未过滤时 traj 已等同全量，仅在过滤态额外算一次总数，用于对齐 Tab 角标口径
+  const trajTotalCount = issuesOnly
+    ? buildTrajectoryRows(obsTree).rows.length
+    : traj.rows.length;
 
   // Tab 链接保留当前选中行：切 Tab 是 RSC 导航会重挂载 Provider，
-  // URL 带上 ?selected= 才能恢复选中（sessionStorage 兜底之外的第二层保障）
+  // URL 带上 ?selected= 才能恢复选中（sessionStorage 兜底之外的第二层保障）。
+  // 「仅异常」过滤同样必须随 Tab 传递，否则切视图会静默丢失过滤条件
   const sel = str(sp.selected)?.trim();
   const selectedParam = sel ? `&selected=${encodeURIComponent(sel)}` : "";
+  const issuesParam = issuesOnly ? "&issues=1" : "";
   const treeQs = [
     ...(issuesOnly ? ["issues=1"] : []),
     ...(sel ? [`selected=${encodeURIComponent(sel)}`] : []),
@@ -618,30 +638,30 @@ export default async function TraceDetailPage({
           aria-selected={tab === "tree"}
         >
           调用树
-          <span className="count">{trace.observations.length}</span>
+          <TabCount n={visibleIds.size} total={trace.observations.length} />
         </Link>
         <Link
-          href={`/traces/${id}?tab=timeline${selectedParam}`}
+          href={`/traces/${id}?tab=timeline${issuesParam}${selectedParam}`}
           prefetch={false}
           className={tab === "timeline" ? "tab active" : "tab"}
           role="tab"
           aria-selected={tab === "timeline"}
         >
           时间线
-          <span className="count">{rows.length}</span>
+          <TabCount n={rows.length} total={trace.observations.length} />
         </Link>
         <Link
-          href={`/traces/${id}?tab=trajectory${issuesOnly ? "&issues=1" : ""}${selectedParam}`}
+          href={`/traces/${id}?tab=trajectory${issuesParam}${selectedParam}`}
           prefetch={false}
           className={tab === "trajectory" ? "tab active" : "tab"}
           role="tab"
           aria-selected={tab === "trajectory"}
         >
           轨迹
-          <span className="count">{traj.rows.length}</span>
+          <TabCount n={traj.rows.length} total={trajTotalCount} />
         </Link>
         <Link
-          href={`/traces/${id}?tab=chat${selectedParam}`}
+          href={`/traces/${id}?tab=chat${issuesParam}${selectedParam}`}
           prefetch={false}
           className={tab === "chat" ? "tab active" : "tab"}
           role="tab"
@@ -651,7 +671,7 @@ export default async function TraceDetailPage({
           <span className="count">{chatMessages.length}</span>
         </Link>
         <Link
-          href={`/traces/${id}?tab=scores${selectedParam}`}
+          href={`/traces/${id}?tab=scores${issuesParam}${selectedParam}`}
           prefetch={false}
           className={tab === "scores" ? "tab active" : "tab"}
           role="tab"
@@ -670,11 +690,7 @@ export default async function TraceDetailPage({
             <div className="tree-col">
               <div className="section-title">
                 Observations{" "}
-                <span className="count">
-                  {issuesOnly
-                    ? `${visibleIds.size} / ${trace.observations.length}`
-                    : trace.observations.length}
-                </span>
+                <TabCount n={visibleIds.size} total={trace.observations.length} />
                 <span className="spacer" />
                 <span className="seg">
                   <Link
@@ -722,7 +738,7 @@ export default async function TraceDetailPage({
             <div className="tree-col">
               <div className="section-title">
                 Timeline{" "}
-                <span className="count">{rows.length}</span>
+                <TabCount n={rows.length} total={trace.observations.length} />
               </div>
               {trace.observations.length === 0 ? (
                 <div className="card empty">
@@ -748,7 +764,8 @@ export default async function TraceDetailPage({
           <SelectionLayout>
             <div className="tree-col">
               <div className="section-title">
-                推理轨迹 <span className="count">{traj.rows.length}</span>
+                推理轨迹{" "}
+                <TabCount n={traj.rows.length} total={trajTotalCount} />
                 {traj.longTask && (
                   <span className="badge amber" style={{ marginLeft: 8 }}>
                     长任务
